@@ -112,11 +112,15 @@ export default function TicketDetails() {
   
   // Handle assignee change
   const handleAssigneeChange = (assigneeId: string) => {
-    const id = assigneeId ? parseInt(assigneeId) : 0;
-    setNewAssignee(id || undefined);
-    if (id) {
-      assignTicketMutation.mutate(id);
+    if (assigneeId === 'no_assignee') {
+      setNewAssignee(undefined);
+      // You could add here a mutation to unassign ticket if needed
+      return;
     }
+    
+    const id = parseInt(assigneeId);
+    setNewAssignee(id);
+    assignTicketMutation.mutate(id);
   };
   
   if (isLoading) {
@@ -138,7 +142,7 @@ export default function TicketDetails() {
               <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
               <h2 className="text-xl font-semibold mb-2">Chamado não encontrado</h2>
               <p className="text-gray-500 mb-4">Não foi possível encontrar os detalhes deste chamado.</p>
-              <Button variant="outline" onClick={() => window.history.back()}>
+              <Button variant="outline" onClick={() => setLocation('/tickets')}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
               </Button>
             </div>
@@ -151,7 +155,7 @@ export default function TicketDetails() {
   return (
     <AppLayout title="Detalhes do Chamado">
       <div className="mb-4">
-        <Button variant="outline" onClick={() => window.history.back()}>
+        <Button variant="outline" onClick={() => setLocation('/tickets')}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Voltar para lista
         </Button>
       </div>
@@ -295,7 +299,7 @@ export default function TicketDetails() {
                   <UserCheck className="h-4 w-4 mr-2" /> Atribuído para
                 </div>
                 <Select
-                  value={newAssignee?.toString() || ticket.assigneeId?.toString() || ""}
+                  value={newAssignee?.toString() || ticket.assigneeId?.toString() || "no_assignee"}
                   onValueChange={handleAssigneeChange}
                 >
                   <SelectTrigger className="w-full">
@@ -304,7 +308,7 @@ export default function TicketDetails() {
                     } />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Não atribuído</SelectItem>
+                    <SelectItem value="no_assignee">Não atribuído</SelectItem>
                     {users?.map(user => (
                       <SelectItem key={user.id} value={user.id.toString()}>
                         {user.fullName}
