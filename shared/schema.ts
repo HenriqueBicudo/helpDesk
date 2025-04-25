@@ -1,5 +1,6 @@
 import { pgTable, text, serial, integer, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { relations } from "drizzle-orm";
 import { z } from "zod";
 
 // Enum definitions
@@ -55,8 +56,8 @@ export const tickets = pgTable("tickets", {
   status: ticketStatusEnum("status").notNull().default('open'),
   priority: ticketPriorityEnum("priority").notNull().default('medium'),
   category: ticketCategoryEnum("category").notNull(),
-  requesterId: integer("requester_id").notNull(),
-  assigneeId: integer("assignee_id"),
+  requesterId: integer("requester_id").notNull().references(() => requesters.id),
+  assigneeId: integer("assignee_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -89,6 +90,28 @@ export type InsertRequester = z.infer<typeof insertRequesterSchema>;
 
 export type Ticket = typeof tickets.$inferSelect;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
+
+// Relations
+export const usersRelations = relations(users, ({ many }) => ({
+  assignedTickets: many(tickets, { relationName: "userAssignedTickets" })
+}));
+
+export const requestersRelations = relations(requesters, ({ many }) => ({
+  tickets: many(tickets, { relationName: "requesterTickets" })
+}));
+
+export const ticketsRelations = relations(tickets, ({ one }) => ({
+  requester: one(requesters, {
+    fields: [tickets.requesterId],
+    references: [requesters.id],
+    relationName: "requesterTickets"
+  }),
+  assignee: one(users, {
+    fields: [tickets.assigneeId],
+    references: [users.id],
+    relationName: "userAssignedTickets"
+  })
+}));
 
 // Extended type for tickets with requester and assignee information
 export type TicketWithRelations = Ticket & {

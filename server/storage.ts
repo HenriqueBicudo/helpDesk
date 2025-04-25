@@ -45,6 +45,283 @@ export interface IStorage {
 }
 
 // In-memory storage implementation
+export class DatabaseStorage implements IStorage {
+  
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const avatarInitials = this.getInitials(insertUser.fullName);
+    const [user] = await db
+      .insert(users)
+      .values({...insertUser, avatarInitials})
+      .returning();
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users);
+  }
+  
+  async getRequester(id: number): Promise<Requester | undefined> {
+    const [requester] = await db.select().from(requesters).where(eq(requesters.id, id));
+    return requester || undefined;
+  }
+
+  async getRequesterByEmail(email: string): Promise<Requester | undefined> {
+    const [requester] = await db.select().from(requesters).where(eq(requesters.email, email));
+    return requester || undefined;
+  }
+
+  async createRequester(insertRequester: InsertRequester): Promise<Requester> {
+    const avatarInitials = this.getInitials(insertRequester.fullName);
+    const [requester] = await db
+      .insert(requesters)
+      .values({...insertRequester, avatarInitials})
+      .returning();
+    return requester;
+  }
+
+  async getAllRequesters(): Promise<Requester[]> {
+    return db.select().from(requesters);
+  }
+  
+  async getTicket(id: number): Promise<Ticket | undefined> {
+    const [ticket] = await db.select().from(tickets).where(eq(tickets.id, id));
+    return ticket || undefined;
+  }
+
+  async getTicketWithRelations(id: number): Promise<TicketWithRelations | undefined> {
+    const [ticket] = await db.select().from(tickets).where(eq(tickets.id, id));
+    if (!ticket) return undefined;
+    
+    const [requester] = await db.select().from(requesters).where(eq(requesters.id, ticket.requesterId));
+    
+    let assignee = undefined;
+    if (ticket.assigneeId) {
+      [assignee] = await db.select().from(users).where(eq(users.id, ticket.assigneeId));
+    }
+    
+    return {
+      ...ticket,
+      requester,
+      assignee
+    };
+  }
+
+  async createTicket(insertTicket: InsertTicket): Promise<Ticket> {
+    const [ticket] = await db
+      .insert(tickets)
+      .values(insertTicket)
+      .returning();
+    return ticket;
+  }
+
+  async updateTicket(id: number, updates: Partial<Ticket>): Promise<Ticket | undefined> {
+    const [updatedTicket] = await db
+      .update(tickets)
+      .set({...updates, updatedAt: new Date()})
+      .where(eq(tickets.id, id))
+      .returning();
+    return updatedTicket;
+  }
+
+  async getAllTickets(): Promise<Ticket[]> {
+    return db.select().from(tickets);
+  }
+
+  async getAllTicketsWithRelations(): Promise<TicketWithRelations[]> {
+    const allTickets = await db.select().from(tickets);
+    
+    // Load all requesters and assignees at once for efficiency
+    const requesterIds = [...new Set(allTickets.map(ticket => ticket.requesterId))];
+    const allRequesters = await db
+      .select()
+      .from(requesters)
+      .where(inArray(requesters.id, requesterIds));
+    
+    const assigneeIds = allTickets
+      .map(ticket => ticket.assigneeId)
+      .filter((id): id is number => id !== null && id !== undefined);
+      
+    const allAssignees = assigneeIds.length 
+      ? await db.select().from(users).where(inArray(users.id, assigneeIds))
+      : [];
+    
+    // Map for quick lookup
+    const requesterMap = new Map(allRequesters.map(r => [r.id, r]));
+    const assigneeMap = new Map(allAssignees.map(a => [a.id, a]));
+    
+    return allTickets.map(ticket => ({
+      ...ticket,
+      requester: requesterMap.get(ticket.requesterId)!,
+      assignee: ticket.assigneeId ? assigneeMap.get(ticket.assigneeId) : undefined
+    }));
+  }
+
+  async getTicketsByStatus(status: string): Promise<Ticket[]> {
+    return db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.status, status as any));
+  }
+
+  async getTicketsByPriority(priority: string): Promise<Ticket[]> {
+    return db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.priority, priority as any));
+  }
+
+  async getTicketsByCategory(category: string): Promise<Ticket[]> {
+    return db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.category, category as any));
+  }
+
+  async getTicketsByAssignee(assigneeId: number): Promise<Ticket[]> {
+    return db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.assigneeId, assigneeId));
+  }
+
+  async getTicketsByRequester(requesterId: number): Promise<Ticket[]> {
+    return db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.requesterId, requesterId));
+  }
+
+  async assignTicket(ticketId: number, assigneeId: number): Promise<Ticket | undefined> {
+    return this.updateTicket(ticketId, { assigneeId });
+  }
+
+  async changeTicketStatus(ticketId: number, status: string): Promise<Ticket | undefined> {
+    return this.updateTicket(ticketId, { status: status as any });
+  }
+
+  async getTicketStatistics(): Promise<{
+    totalTickets: number;
+    openTickets: number;
+    resolvedToday: number;
+    averageResponseTime: string;
+  }> {
+    // Get total tickets
+    const allTickets = await db.select().from(tickets);
+    const totalTickets = allTickets.length;
+    
+    // Get open tickets
+    const openTickets = await db
+      .select()
+      .from(tickets)
+      .where(notInArray(tickets.status, ['resolved', 'closed'] as any[]));
+    
+    // Get tickets resolved today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const resolvedToday = await db
+      .select()
+      .from(tickets)
+      .where(
+        and(
+          eq(tickets.status, 'resolved' as any),
+          gte(tickets.updatedAt, today),
+          lt(tickets.updatedAt, tomorrow)
+        )
+      );
+    
+    // For now, just return a placeholder for average response time
+    // In a real implementation, this would calculate based on ticket history
+    return {
+      totalTickets,
+      openTickets: openTickets.length,
+      resolvedToday: resolvedToday.length,
+      averageResponseTime: "4h 30m"
+    };
+  }
+
+  async getTicketsByCategory(): Promise<{category: string; count: number}[]> {
+    const categories = await db.select({
+      category: tickets.category,
+      count: sql<number>`count(*)::int`
+    })
+    .from(tickets)
+    .groupBy(tickets.category);
+    
+    return categories.map(c => ({
+      category: c.category,
+      count: c.count
+    }));
+  }
+
+  async getTicketVolumeByDate(): Promise<{date: string; count: number}[]> {
+    // Get the last 7 days
+    const dates: string[] = [];
+    const today = new Date();
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(today.getDate() - i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+    
+    // Format dates for PostgreSQL comparison
+    const formattedDates = dates.map(date => {
+      const d = new Date(date);
+      return d.toISOString().split('T')[0]; // YYYY-MM-DD format
+    });
+    
+    // Query creation count by date
+    const result = await Promise.all(
+      formattedDates.map(async (dateStr) => {
+        const startDate = new Date(dateStr);
+        startDate.setHours(0, 0, 0, 0);
+        
+        const endDate = new Date(dateStr);
+        endDate.setHours(23, 59, 59, 999);
+        
+        const dateTickets = await db
+          .select()
+          .from(tickets)
+          .where(
+            and(
+              gte(tickets.createdAt, startDate),
+              lte(tickets.createdAt, endDate)
+            )
+          );
+        
+        return {
+          date: dateStr,
+          count: dateTickets.length
+        };
+      })
+    );
+    
+    return result;
+  }
+  
+  private getInitials(name: string): string {
+    return name
+      .split(' ')
+      .map(part => part.charAt(0).toUpperCase())
+      .slice(0, 2)
+      .join('');
+  }
+
+}
+
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private requesters: Map<number, Requester>;
