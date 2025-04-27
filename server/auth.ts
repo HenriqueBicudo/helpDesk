@@ -178,7 +178,7 @@ export function setupAuth(app: Express) {
     }
     
     // Remover senha do objeto retornado
-    const { password, ...userWithoutPassword } = req.user as User;
+    const { password, ...userWithoutPassword } = req.user as UserSchema;
     res.json(userWithoutPassword);
   });
 
@@ -189,7 +189,7 @@ export function setupAuth(app: Express) {
     }
     
     try {
-      const userId = (req.user as User).id;
+      const userId = (req.user as UserSchema).id;
       const { currentPassword, newPassword, ...profileData } = req.body;
       
       // Se estiver alterando a senha
@@ -215,7 +215,7 @@ export function setupAuth(app: Express) {
 
       // Por enquanto, vamos apenas retornar o usuário atual
       // Remover senha do objeto retornado
-      const { password, ...userWithoutPassword } = req.user as User;
+      const { password, ...userWithoutPassword } = req.user as UserSchema;
       res.json(userWithoutPassword);
     } catch (error) {
       console.error("Erro ao atualizar perfil:", error);
