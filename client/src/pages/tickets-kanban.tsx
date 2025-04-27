@@ -26,11 +26,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+  DropdownMenuCheckboxItem
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDate, getInitials, translateStatus, statusToColor } from "@/lib/utils";
+import { formatDate, getInitials, translateStatus, statusToColor, priorityToColor, translatePriority } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -58,10 +61,9 @@ export default function TicketsKanban() {
   const [, setLocation] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Estado para controlar a pesquisa
+  // Estados para controle
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // Estado para controlar os grupos de kanban
+  const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
   const [kanbanGroups, setKanbanGroups] = useState<KanbanGroup[]>([]);
 
   // Buscar todos os tickets
@@ -79,8 +81,13 @@ export default function TicketsKanban() {
     if (tickets && users) {
       const agentGroups: KanbanGroup[] = [];
       
+      // Filtra os tickets ativos (excluindo resolvidos e fechados)
+      const activeTickets = tickets.filter(ticket => 
+        ticket.status !== "resolved" && ticket.status !== "closed"
+      );
+      
       // Criar um grupo para tickets não atribuídos
-      const unassignedTickets = tickets.filter(ticket => !ticket.assigneeId);
+      const unassignedTickets = activeTickets.filter(ticket => !ticket.assigneeId);
       if (unassignedTickets.length > 0) {
         agentGroups.push({
           title: "Não atribuídos",
@@ -89,15 +96,13 @@ export default function TicketsKanban() {
             { title: "Aberto", status: "open", tickets: unassignedTickets.filter(t => t.status === "open") },
             { title: "Em Andamento", status: "in_progress", tickets: unassignedTickets.filter(t => t.status === "in_progress") },
             { title: "Pendente", status: "pending", tickets: unassignedTickets.filter(t => t.status === "pending") },
-            { title: "Resolvido", status: "resolved", tickets: unassignedTickets.filter(t => t.status === "resolved") },
-            { title: "Fechado", status: "closed", tickets: unassignedTickets.filter(t => t.status === "closed") },
           ]
         });
       }
       
       // Agrupar por responsável
       users.forEach(agent => {
-        const agentTickets = tickets.filter(ticket => ticket.assigneeId === agent.id);
+        const agentTickets = activeTickets.filter(ticket => ticket.assigneeId === agent.id);
         
         if (agentTickets.length > 0) {
           agentGroups.push({
@@ -108,8 +113,6 @@ export default function TicketsKanban() {
               { title: "Aberto", status: "open", tickets: agentTickets.filter(t => t.status === "open") },
               { title: "Em Andamento", status: "in_progress", tickets: agentTickets.filter(t => t.status === "in_progress") },
               { title: "Pendente", status: "pending", tickets: agentTickets.filter(t => t.status === "pending") },
-              { title: "Resolvido", status: "resolved", tickets: agentTickets.filter(t => t.status === "resolved") },
-              { title: "Fechado", status: "closed", tickets: agentTickets.filter(t => t.status === "closed") },
             ]
           });
         }
@@ -128,15 +131,25 @@ export default function TicketsKanban() {
     });
   };
 
-  // Filtrar tickets por pesquisa
+  // Filtrar tickets por pesquisa e prioridade
   const filteredGroups = kanbanGroups.map(group => {
-    if (searchQuery.trim() === "") return group;
-    
     const filteredColumns = group.columns.map(column => {
-      const filteredTickets = column.tickets.filter(ticket => 
-        ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        ticket.description.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      let filteredTickets = column.tickets;
+      
+      // Filtrar por texto de pesquisa
+      if (searchQuery.trim() !== "") {
+        filteredTickets = filteredTickets.filter(ticket => 
+          ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) || 
+          ticket.description.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+      
+      // Filtrar por prioridade
+      if (priorityFilter) {
+        filteredTickets = filteredTickets.filter(ticket => 
+          ticket.priority === priorityFilter
+        );
+      }
       
       return { ...column, tickets: filteredTickets };
     });
@@ -181,9 +194,45 @@ export default function TicketsKanban() {
                 />
               </div>
               
-              <Button variant="outline" size="icon">
-                <Filter className="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className={priorityFilter ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""}>
+                    <Filter className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Filtrar por prioridade</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={priorityFilter === "critical"}
+                    onCheckedChange={() => setPriorityFilter(priorityFilter === "critical" ? null : "critical")}
+                  >
+                    Crítica
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={priorityFilter === "high"}
+                    onCheckedChange={() => setPriorityFilter(priorityFilter === "high" ? null : "high")}
+                  >
+                    Alta
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={priorityFilter === "medium"}
+                    onCheckedChange={() => setPriorityFilter(priorityFilter === "medium" ? null : "medium")}
+                  >
+                    Média
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={priorityFilter === "low"}
+                    onCheckedChange={() => setPriorityFilter(priorityFilter === "low" ? null : "low")}
+                  >
+                    Baixa
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setPriorityFilter(null)} disabled={!priorityFilter}>
+                    Limpar filtro
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
           
@@ -298,12 +347,20 @@ export default function TicketsKanban() {
                                         {getInitials(ticket.requester.fullName)}
                                       </AvatarFallback>
                                     </Avatar>
-                                    <span>{ticket.requester.fullName}</span>
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-medium">{ticket.requester.fullName}</span>
+                                      <span className="text-xs text-muted-foreground">{ticket.requester.company || ''}</span>
+                                    </div>
                                   </div>
                                   
-                                  <div className="flex items-center gap-1">
-                                    <CalendarDays className="h-3 w-3" />
-                                    <span>{formatDate(ticket.createdAt || new Date(), "dd/MM")}</span>
+                                  <div className="flex flex-col items-end">
+                                    <div className="flex items-center gap-1">
+                                      <CalendarDays className="h-3 w-3" />
+                                      <span>{formatDate(ticket.createdAt || new Date(), "dd/MM/yyyy")}</span>
+                                    </div>
+                                    <Badge variant="outline" className={`bg-${priorityToColor(ticket.priority)}-50 text-${priorityToColor(ticket.priority)}-700 text-[10px] py-0 px-1 h-4`}>
+                                      {translatePriority(ticket.priority)}
+                                    </Badge>
                                   </div>
                                 </CardFooter>
                               </Card>
