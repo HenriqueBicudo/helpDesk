@@ -195,26 +195,38 @@ export class SqlServerStorage implements IStorage {
   }
 
   async getAllTickets(): Promise<Ticket[]> {
-    return DB.query<Ticket>(`
+    console.log("Buscando todos os tickets");
+    const tickets = await DB.query<Ticket>(`
       SELECT id, subject, description, status, priority, category, 
              requester_id AS requesterId, assignee_id AS assigneeId,
              created_at AS createdAt, updated_at AS updatedAt
       FROM tickets
       ORDER BY updated_at DESC
     `);
+    console.log(`Encontrados ${tickets.length} tickets`);
+    return tickets;
   }
 
   async getAllTicketsWithRelations(): Promise<TicketWithRelations[]> {
     const tickets = await this.getAllTickets();
+    console.log('Tickets encontrados:', tickets.length);
     const results: TicketWithRelations[] = [];
     
     for (const ticket of tickets) {
+      console.log('Processando ticket:', ticket.id, 'com requesterId:', ticket.requesterId);
       const requester = await this.getRequester(ticket.requesterId);
-      if (!requester) continue; // Skip tickets with invalid requesterId
+      if (!requester) {
+        console.log('Requester não encontrado para o ticket:', ticket.id);
+        continue; // Skip tickets with invalid requesterId
+      }
       
       let assignee = undefined;
       if (ticket.assigneeId) {
+        console.log('Buscando assignee:', ticket.assigneeId);
         assignee = await this.getUser(ticket.assigneeId);
+        if (!assignee) {
+          console.log('Assignee não encontrado:', ticket.assigneeId);
+        }
       }
       
       results.push({
@@ -224,6 +236,7 @@ export class SqlServerStorage implements IStorage {
       });
     }
     
+    console.log('Total de tickets com relações:', results.length);
     return results;
   }
 
