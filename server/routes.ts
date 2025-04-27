@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage-interface";
-import { insertTicketSchema, insertRequesterSchema } from "@shared/schema";
+import { insertTicketSchema, insertRequesterSchema, insertUserSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -17,6 +17,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get(`${apiPrefix}/users`, async (req: Request, res: Response) => {
     const users = await storage.getAllUsers();
     res.json(users);
+  });
+  
+  app.post(`${apiPrefix}/users`, async (req: Request, res: Response) => {
+    try {
+      const data = insertUserSchema.parse(req.body);
+      const user = await storage.createUser(data);
+      res.status(201).json(user);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: 'Validation error', errors: error.errors });
+      } else {
+        console.error('Error creating user:', error);
+        res.status(500).json({ message: 'An error occurred creating the user' });
+      }
+    }
   });
 
   // Requester (customer) routes

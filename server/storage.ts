@@ -670,7 +670,4 @@ export class MemStorage implements IStorage {
   }
 }
 
-import { SqlServerStorage } from './sqlserver-storage';
-
-// Exporta a implementação SQL Server
-export const storage = new SqlServerStorage();
+// Não exportar aqui - a exportação é feita em storage-interface.ts
