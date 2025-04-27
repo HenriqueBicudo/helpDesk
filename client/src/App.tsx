@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/lib/protected-route";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Tickets from "@/pages/tickets";
+import TicketsKanban from "@/pages/tickets-kanban";
 import TicketDetails from "@/pages/ticket-details";
 import Customers from "@/pages/customers";
 import Agents from "@/pages/agents";
@@ -23,6 +24,7 @@ function Router() {
       {/* Rotas protegidas (requerem autenticação) */}
       <ProtectedRoute path="/" component={Dashboard} />
       <ProtectedRoute path="/tickets" component={Tickets} />
+      <ProtectedRoute path="/tickets/kanban" component={TicketsKanban} />
       <ProtectedRoute path="/tickets/:id" component={TicketDetails} />
       <ProtectedRoute path="/customers" component={Customers} />
       <ProtectedRoute path="/agents" component={Agents} />

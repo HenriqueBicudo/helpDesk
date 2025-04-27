@@ -9,26 +9,32 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 type SidebarLinkProps = {
   href: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   children: React.ReactNode;
   active?: boolean;
+  level?: number;
+  isExpanded?: boolean;
 };
 
-const SidebarLink = ({ href, icon, children, active }: SidebarLinkProps) => {
+const SidebarLink = ({ href, icon, children, active, level = 1, isExpanded }: SidebarLinkProps) => {
   const [, setLocation] = useLocation();
   
   return (
     <div
       className={cn(
-        "flex items-center px-4 py-2.5 text-sm font-medium rounded-md group mt-1 transition-colors cursor-pointer",
+        "flex items-center px-4 py-2.5 text-sm font-medium rounded-md group transition-colors cursor-pointer",
+        level === 1 ? "mt-1" : "mt-0 py-1.5",
         active
           ? "bg-primary text-white"
-          : "text-gray-300 hover:text-white hover:bg-gray-700"
+          : level === 1
+            ? "text-gray-300 hover:text-white hover:bg-gray-700"
+            : "text-gray-400 hover:text-white hover:bg-gray-800"
       )}
       onClick={() => setLocation(href)}
     >
       {icon}
-      <span className="ml-3">{children}</span>
+      <span className={icon ? "ml-3" : ""}>{children}</span>
+      {isExpanded && <ChevronRight className="ml-auto h-4 w-4 transform rotate-90" />}
     </div>
   );
 };
@@ -102,13 +108,34 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             Dashboard
           </SidebarLink>
           
-          <SidebarLink 
-            href="/tickets" 
-            icon={<Ticket className="mr-3 h-5 w-5" />} 
-            active={location === '/tickets' || location.startsWith('/tickets/')}
-          >
-            Chamados
-          </SidebarLink>
+          <div>
+            <SidebarLink 
+              href="/tickets" 
+              icon={<Ticket className="mr-3 h-5 w-5" />} 
+              active={location === '/tickets' || location.startsWith('/tickets/')}
+              isExpanded
+            >
+              Chamados
+            </SidebarLink>
+            
+            <div className="ml-10 pl-2 border-l border-gray-700 space-y-1">
+              <SidebarLink 
+                href="/tickets" 
+                level={2}
+                active={location === '/tickets' && !location.includes('/kanban')}
+              >
+                Lista
+              </SidebarLink>
+              
+              <SidebarLink 
+                href="/tickets/kanban" 
+                level={2}
+                active={location === '/tickets/kanban'}
+              >
+                Kanban
+              </SidebarLink>
+            </div>
+          </div>
           
           <SidebarLink 
             href="/customers" 
