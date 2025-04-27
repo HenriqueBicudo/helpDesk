@@ -67,8 +67,8 @@ export class SqlServerStorage implements IStorage {
       SELECT id, full_name AS fullName, email, company, 
              avatar_initials AS avatarInitials, created_at AS createdAt
       FROM requesters 
-      WHERE id = @id
-    `, { id });
+      WHERE id = $1
+    `, [id]);
   }
 
   async getRequesterByEmail(email: string): Promise<Requester | undefined> {
@@ -76,8 +76,8 @@ export class SqlServerStorage implements IStorage {
       SELECT id, full_name AS fullName, email, company, 
              avatar_initials AS avatarInitials, created_at AS createdAt
       FROM requesters 
-      WHERE email = @email
-    `, { email });
+      WHERE email = $1
+    `, [email]);
   }
 
   async createRequester(insertRequester: InsertRequester): Promise<Requester> {
@@ -117,8 +117,8 @@ export class SqlServerStorage implements IStorage {
              requester_id AS requesterId, assignee_id AS assigneeId,
              created_at AS createdAt, updated_at AS updatedAt
       FROM tickets 
-      WHERE id = @id
-    `, { id });
+      WHERE id = $1
+    `, [id]);
   }
 
   async getTicketWithRelations(id: number): Promise<TicketWithRelations | undefined> {
@@ -233,9 +233,9 @@ export class SqlServerStorage implements IStorage {
              requester_id AS requesterId, assignee_id AS assigneeId,
              created_at AS createdAt, updated_at AS updatedAt
       FROM tickets
-      WHERE status = @status
+      WHERE status = $1
       ORDER BY updated_at DESC
-    `, { status });
+    `, [status]);
   }
 
   async getTicketsByPriority(priority: string): Promise<Ticket[]> {
@@ -244,9 +244,9 @@ export class SqlServerStorage implements IStorage {
              requester_id AS requesterId, assignee_id AS assigneeId,
              created_at AS createdAt, updated_at AS updatedAt
       FROM tickets
-      WHERE priority = @priority
+      WHERE priority = $1
       ORDER BY updated_at DESC
-    `, { priority });
+    `, [priority]);
   }
 
   async getTicketsByCategory(category: string): Promise<Ticket[]> {
@@ -255,9 +255,9 @@ export class SqlServerStorage implements IStorage {
              requester_id AS requesterId, assignee_id AS assigneeId,
              created_at AS createdAt, updated_at AS updatedAt
       FROM tickets
-      WHERE category = @category
+      WHERE category = $1
       ORDER BY updated_at DESC
-    `, { category });
+    `, [category]);
   }
 
   async getTicketsByAssignee(assigneeId: number): Promise<Ticket[]> {
@@ -266,9 +266,9 @@ export class SqlServerStorage implements IStorage {
              requester_id AS requesterId, assignee_id AS assigneeId,
              created_at AS createdAt, updated_at AS updatedAt
       FROM tickets
-      WHERE assignee_id = @assigneeId
+      WHERE assignee_id = $1
       ORDER BY updated_at DESC
-    `, { assigneeId });
+    `, [assigneeId]);
   }
 
   async getTicketsByRequester(requesterId: number): Promise<Ticket[]> {
@@ -277,9 +277,9 @@ export class SqlServerStorage implements IStorage {
              requester_id AS requesterId, assignee_id AS assigneeId,
              created_at AS createdAt, updated_at AS updatedAt
       FROM tickets
-      WHERE requester_id = @requesterId
+      WHERE requester_id = $1
       ORDER BY updated_at DESC
-    `, { requesterId });
+    `, [requesterId]);
   }
 
   async assignTicket(ticketId: number, assigneeId: number): Promise<Ticket | undefined> {
@@ -318,8 +318,8 @@ export class SqlServerStorage implements IStorage {
     const resolvedResult = await DB.query<{count: number}>(`
       SELECT COUNT(*) AS count FROM tickets
       WHERE status = 'resolved'
-      AND CONVERT(DATE, updated_at) = @today
-    `, { today: todayStr });
+      AND DATE(updated_at) = $1
+    `, [todayStr]);
     const resolvedToday = resolvedResult[0]?.count || 0;
     
     // For now, just return a placeholder for average response time
@@ -357,8 +357,8 @@ export class SqlServerStorage implements IStorage {
       const countResult = await DB.query<{count: number}>(`
         SELECT COUNT(*) AS count
         FROM tickets
-        WHERE CONVERT(DATE, created_at) = @date
-      `, { date: dateStr });
+        WHERE DATE(created_at) = $1
+      `, [dateStr]);
       
       result.push({
         date: dateStr,
