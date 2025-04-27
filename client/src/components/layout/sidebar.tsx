@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { cn } from '@/lib/utils';
-import { MessageCircleCode, ChevronRight, LayoutDashboard, Ticket, Users, UserCog, Settings, FileBarChart, Database } from 'lucide-react';
+import { cn, getInitials } from '@/lib/utils';
+import { MessageCircleCode, ChevronRight, LayoutDashboard, Ticket, Users, UserCog, Settings, FileBarChart, Database, User } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useAuth } from '@/hooks/use-auth';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type SidebarLinkProps = {
   href: string;
@@ -38,6 +40,7 @@ type SidebarProps = {
 
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const [location] = useLocation();
+  const { user, isLoading } = useAuth();
   
   return (
     <div 
@@ -57,15 +60,32 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       {/* User */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-gray-700">
         <div className="flex items-center">
-          <Avatar className="h-10 w-10">
-            <AvatarFallback className="bg-primary/10 text-white">
-              AS
-            </AvatarFallback>
-          </Avatar>
-          <div className="ml-3">
-            <p className="text-sm font-medium text-white">Ana Silva</p>
-            <p className="text-xs text-gray-400">Administrador</p>
-          </div>
+          {isLoading ? (
+            <div className="flex items-center">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="ml-3">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-3 w-16 mt-1" />
+              </div>
+            </div>
+          ) : user ? (
+            <>
+              <Avatar className="h-10 w-10">
+                <AvatarFallback className="bg-primary/10 text-white">
+                  {getInitials(user.fullName)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-white">{user.fullName}</p>
+                <p className="text-xs text-gray-400">{user.role}</p>
+              </div>
+            </>
+          ) : (
+            <Link href="/auth" className="text-gray-300 hover:text-white flex items-center px-4 py-2 text-sm">
+              <User className="mr-2 h-5 w-5" />
+              <span>Entrar</span>
+            </Link>
+          )}
         </div>
       </div>
       
