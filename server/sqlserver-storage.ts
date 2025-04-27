@@ -10,12 +10,33 @@ export class SqlServerStorage implements IStorage {
   // ----- USER METHODS -----
   
   async getUser(id: number): Promise<User | undefined> {
-    return DB.getOne<User>(`
-      SELECT id, username, password, full_name AS fullName, email, role, 
-             avatar_initials AS avatarInitials, created_at AS createdAt
+    console.log(`Buscando user com id ${id}`);
+    const user = await DB.getOne<any>(`
+      SELECT id, username, password, full_name, email, role, 
+             avatar_initials, created_at
       FROM users 
       WHERE id = $1
     `, [id]);
+    
+    if (!user) {
+      console.log(`User com id ${id} não encontrado`);
+      return undefined;
+    }
+    
+    // Mapear manualmente os nomes de colunas
+    const mappedUser = {
+      id: user.id,
+      username: user.username,
+      password: user.password,
+      fullName: user.full_name,
+      email: user.email,
+      role: user.role,
+      avatarInitials: user.avatar_initials,
+      createdAt: user.created_at
+    };
+    
+    console.log(`User encontrado:`, JSON.stringify(mappedUser));
+    return mappedUser;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
@@ -63,12 +84,31 @@ export class SqlServerStorage implements IStorage {
   // ----- REQUESTER METHODS -----
   
   async getRequester(id: number): Promise<Requester | undefined> {
-    return DB.getOne<Requester>(`
-      SELECT id, full_name AS fullName, email, company, 
-             avatar_initials AS avatarInitials, created_at AS createdAt
+    console.log(`Buscando requester com id ${id}`);
+    const requester = await DB.getOne<any>(`
+      SELECT id, full_name, email, company, 
+             avatar_initials, created_at
       FROM requesters 
       WHERE id = $1
     `, [id]);
+    
+    if (!requester) {
+      console.log(`Requester com id ${id} não encontrado`);
+      return undefined;
+    }
+    
+    // Mapear manualmente os nomes de colunas
+    const mappedRequester = {
+      id: requester.id,
+      fullName: requester.full_name,
+      email: requester.email,
+      company: requester.company,
+      avatarInitials: requester.avatar_initials,
+      createdAt: requester.created_at
+    };
+    
+    console.log(`Requester encontrado:`, JSON.stringify(mappedRequester));
+    return mappedRequester;
   }
 
   async getRequesterByEmail(email: string): Promise<Requester | undefined> {
@@ -196,15 +236,31 @@ export class SqlServerStorage implements IStorage {
 
   async getAllTickets(): Promise<Ticket[]> {
     console.log("Buscando todos os tickets");
-    const tickets = await DB.query<Ticket>(`
+    const tickets = await DB.query<any>(`
       SELECT id, subject, description, status, priority, category, 
-             requester_id AS requesterId, assignee_id AS assigneeId,
-             created_at AS createdAt, updated_at AS updatedAt
+             requester_id, assignee_id,
+             created_at, updated_at
       FROM tickets
       ORDER BY updated_at DESC
     `);
-    console.log(`Encontrados ${tickets.length} tickets`);
-    return tickets;
+    
+    // Mapear manualmente os nomes de colunas
+    const mappedTickets = tickets.map(ticket => ({
+      id: ticket.id,
+      subject: ticket.subject,
+      description: ticket.description,
+      status: ticket.status,
+      priority: ticket.priority,
+      category: ticket.category,
+      requesterId: ticket.requester_id,
+      assigneeId: ticket.assignee_id,
+      createdAt: ticket.created_at,
+      updatedAt: ticket.updated_at
+    }));
+    
+    console.log(`Encontrados ${mappedTickets.length} tickets`);
+    console.log('Exemplo de ticket mapeado:', JSON.stringify(mappedTickets[0]));
+    return mappedTickets;
   }
 
   async getAllTicketsWithRelations(): Promise<TicketWithRelations[]> {
