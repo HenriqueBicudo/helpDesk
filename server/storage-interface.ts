@@ -44,6 +44,23 @@ export interface IStorage {
   getTicketVolumeByDate(): Promise<{date: string; count: number}[]>;
 }
 
-// Export the storage implementation
+// Import storage implementations
 import { SqlServerStorage } from './sqlserver-storage';
-export const storage = new SqlServerStorage();
+import { MemStorage } from './storage';
+
+// Choose storage implementation based on environment
+const dbType = process.env.DB_TYPE || 'memory';
+
+let storage: IStorage;
+
+switch (dbType) {
+  case 'sqlserver':
+    console.log('Using SQL Server storage');
+    storage = new SqlServerStorage();
+    break;
+  default:
+    console.log('Using in-memory storage');
+    storage = new MemStorage();
+}
+
+export { storage };
