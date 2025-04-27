@@ -625,7 +625,15 @@ export class MemStorage implements IStorage {
     };
   }
 
-  async getTicketsByCategory(): Promise<{category: string; count: number}[]> {
+  // Este método é para consulta por categoria (filtro)
+  async getTicketsByCategory(category: string): Promise<Ticket[]> {
+    return Array.from(this.tickets.values()).filter(
+      (ticket) => ticket.category === category
+    );
+  }
+  
+  // Este método é para estatísticas de contagem por categoria
+  async getTicketCategoriesCount(): Promise<{category: string; count: number}[]> {
     const allTickets = await this.getAllTickets();
     const categories = ['technical_support', 'financial', 'commercial', 'other'];
     return categories.map(category => ({
