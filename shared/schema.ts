@@ -1,117 +1,83 @@
-import { pgTable, text, serial, integer, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { relations } from "drizzle-orm";
 import { z } from "zod";
 
-// Enum definitions
-export const ticketStatusEnum = pgEnum('ticket_status', [
-  'open',
-  'in_progress',
-  'pending',
-  'resolved',
-  'closed'
-]);
+// Tipos de status, prioridade e categoria
+export const TICKET_STATUS = ['open', 'in_progress', 'pending', 'resolved', 'closed'] as const;
+export const TICKET_PRIORITY = ['low', 'medium', 'high', 'critical'] as const;
+export const TICKET_CATEGORY = ['technical_support', 'financial', 'commercial', 'other'] as const;
 
-export const ticketPriorityEnum = pgEnum('ticket_priority', [
-  'low',
-  'medium',
-  'high',
-  'critical'
-]);
+export type TicketStatus = typeof TICKET_STATUS[number];
+export type TicketPriority = typeof TICKET_PRIORITY[number];
+export type TicketCategory = typeof TICKET_CATEGORY[number];
 
-export const ticketCategoryEnum = pgEnum('ticket_category', [
-  'technical_support',
-  'financial',
-  'commercial',
-  'other'
-]);
+// Validadores Zod para os enum-like types
+export const ticketStatusSchema = z.enum(TICKET_STATUS);
+export const ticketPrioritySchema = z.enum(TICKET_PRIORITY);
+export const ticketCategorySchema = z.enum(TICKET_CATEGORY);
 
-// User schema
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  fullName: text("full_name").notNull(),
-  email: text("email").notNull(),
-  role: text("role").notNull().default('agent'),
-  avatarInitials: text("avatar_initials"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+// Esquema de usuário para validação com Zod
+export const userSchema = z.object({
+  id: z.number().optional(),
+  username: z.string().min(3),
+  password: z.string().min(6),
+  fullName: z.string().min(3),
+  email: z.string().email(),
+  role: z.string().default('agent'),
+  avatarInitials: z.string().nullable().optional(),
+  createdAt: z.date().optional()
 });
 
-// Requesters schema (customers who submit tickets)
-export const requesters = pgTable("requesters", {
-  id: serial("id").primaryKey(),
-  fullName: text("full_name").notNull(),
-  email: text("email").notNull().unique(),
-  avatarInitials: text("avatar_initials"),
-  company: text("company"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+// Esquema de requester (cliente) para validação com Zod
+export const requesterSchema = z.object({
+  id: z.number().optional(),
+  fullName: z.string().min(3),
+  email: z.string().email(),
+  avatarInitials: z.string().nullable().optional(),
+  company: z.string().nullable().optional(),
+  createdAt: z.date().optional()
 });
 
-// Tickets schema
-export const tickets = pgTable("tickets", {
-  id: serial("id").primaryKey(),
-  subject: text("subject").notNull(),
-  description: text("description").notNull(),
-  status: ticketStatusEnum("status").notNull().default('open'),
-  priority: ticketPriorityEnum("priority").notNull().default('medium'),
-  category: ticketCategoryEnum("category").notNull(),
-  requesterId: integer("requester_id").notNull().references(() => requesters.id),
-  assigneeId: integer("assignee_id").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+// Esquema de ticket para validação com Zod
+export const ticketSchema = z.object({
+  id: z.number().optional(),
+  subject: z.string().min(3),
+  description: z.string().min(10),
+  status: ticketStatusSchema.default('open'),
+  priority: ticketPrioritySchema.default('medium'),
+  category: ticketCategorySchema,
+  requesterId: z.number(),
+  assigneeId: z.number().optional().nullable(),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
 });
 
-// Insert schemas using drizzle-zod
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  avatarInitials: true,
-  createdAt: true,
+// Schemas para inserção (sem os campos gerados automaticamente)
+export const insertUserSchema = userSchema.omit({ 
+  id: true, 
+  avatarInitials: true, 
+  createdAt: true 
 });
 
-export const insertRequesterSchema = createInsertSchema(requesters).omit({
-  id: true,
-  avatarInitials: true,
-  createdAt: true,
+export const insertRequesterSchema = requesterSchema.omit({ 
+  id: true, 
+  avatarInitials: true, 
+  createdAt: true 
 });
 
-export const insertTicketSchema = createInsertSchema(tickets).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertTicketSchema = ticketSchema.omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
 });
 
 // Types
-export type User = typeof users.$inferSelect;
+export type User = z.infer<typeof userSchema>;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
-export type Requester = typeof requesters.$inferSelect;
+export type Requester = z.infer<typeof requesterSchema>;
 export type InsertRequester = z.infer<typeof insertRequesterSchema>;
 
-export type Ticket = typeof tickets.$inferSelect;
+export type Ticket = z.infer<typeof ticketSchema>;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
-
-// Relations
-export const usersRelations = relations(users, ({ many }) => ({
-  assignedTickets: many(tickets, { relationName: "userAssignedTickets" })
-}));
-
-export const requestersRelations = relations(requesters, ({ many }) => ({
-  tickets: many(tickets, { relationName: "requesterTickets" })
-}));
-
-export const ticketsRelations = relations(tickets, ({ one }) => ({
-  requester: one(requesters, {
-    fields: [tickets.requesterId],
-    references: [requesters.id],
-    relationName: "requesterTickets"
-  }),
-  assignee: one(users, {
-    fields: [tickets.assigneeId],
-    references: [users.id],
-    relationName: "userAssignedTickets"
-  })
-}));
 
 // Extended type for tickets with requester and assignee information
 export type TicketWithRelations = Ticket & {

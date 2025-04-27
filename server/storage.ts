@@ -1,10 +1,8 @@
 import { 
-  users, type User, type InsertUser,
-  requesters, type Requester, type InsertRequester,
-  tickets, type Ticket, type InsertTicket, type TicketWithRelations
+  type User, type InsertUser,
+  type Requester, type InsertRequester,
+  type Ticket, type InsertTicket, type TicketWithRelations
 } from "@shared/schema";
-import { db } from "./db";
-import { eq, and, gte, lt, lte, inArray, notInArray, sql } from "drizzle-orm";
 
 // Storage interface
 export interface IStorage {
@@ -664,4 +662,7 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new DatabaseStorage();
+import { SqlServerStorage } from './sqlserver-storage';
+
+// Exporta a implementação SQL Server
+export const storage = new SqlServerStorage();

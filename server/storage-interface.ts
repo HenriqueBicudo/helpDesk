@@ -1,0 +1,49 @@
+import { 
+  type User, type InsertUser,
+  type Requester, type InsertRequester,
+  type Ticket, type InsertTicket, type TicketWithRelations
+} from "@shared/schema";
+
+// Storage interface
+export interface IStorage {
+  // User methods
+  getUser(id: number): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+  
+  // Requester methods
+  getRequester(id: number): Promise<Requester | undefined>;
+  getRequesterByEmail(email: string): Promise<Requester | undefined>;
+  createRequester(requester: InsertRequester): Promise<Requester>;
+  getAllRequesters(): Promise<Requester[]>;
+  
+  // Ticket methods
+  getTicket(id: number): Promise<Ticket | undefined>;
+  getTicketWithRelations(id: number): Promise<TicketWithRelations | undefined>;
+  createTicket(ticket: InsertTicket): Promise<Ticket>;
+  updateTicket(id: number, updates: Partial<Ticket>): Promise<Ticket | undefined>;
+  getAllTickets(): Promise<Ticket[]>;
+  getAllTicketsWithRelations(): Promise<TicketWithRelations[]>;
+  getTicketsByStatus(status: string): Promise<Ticket[]>;
+  getTicketsByPriority(priority: string): Promise<Ticket[]>;
+  getTicketsByCategory(category: string): Promise<Ticket[]>;
+  getTicketsByAssignee(assigneeId: number): Promise<Ticket[]>;
+  getTicketsByRequester(requesterId: number): Promise<Ticket[]>;
+  assignTicket(ticketId: number, assigneeId: number): Promise<Ticket | undefined>;
+  changeTicketStatus(ticketId: number, status: string): Promise<Ticket | undefined>;
+  
+  // Dashboard statistics
+  getTicketStatistics(): Promise<{
+    totalTickets: number;
+    openTickets: number;
+    resolvedToday: number;
+    averageResponseTime: string;
+  }>;
+  getTicketCategoriesCount(): Promise<{category: string; count: number}[]>;
+  getTicketVolumeByDate(): Promise<{date: string; count: number}[]>;
+}
+
+// Export the storage implementation
+import { SqlServerStorage } from './sqlserver-storage';
+export const storage = new SqlServerStorage();

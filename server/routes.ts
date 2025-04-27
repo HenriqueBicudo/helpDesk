@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage } from "./storage-interface";
 import { insertTicketSchema, insertRequesterSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -164,7 +164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get(`${apiPrefix}/statistics/categories`, async (req: Request, res: Response) => {
     try {
-      const categoryStats = await storage.getTicketsByCategory();
+      const categoryStats = await storage.getTicketCategoriesCount();
       res.json(categoryStats);
     } catch (error) {
       res.status(500).json({ message: 'An error occurred fetching category statistics' });
