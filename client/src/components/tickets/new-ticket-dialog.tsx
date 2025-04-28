@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { insertTicketSchema } from '@shared/schema';
+import { insertTicketSchema, User, Requester } from '@shared/schema';
 import {
   Dialog,
   DialogContent,
@@ -47,11 +47,11 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
-  const { data: users } = useQuery({
+  const { data: users = [] } = useQuery<User[]>({
     queryKey: ['/api/users'],
   });
   
-  const { data: requesters } = useQuery({
+  const { data: requesters = [] } = useQuery<Requester[]>({
     queryKey: ['/api/requesters'],
   });
   
@@ -72,7 +72,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
     mutationFn: async (data: NewTicketFormValues) => {
       // Find or create requester
       let requesterId;
-      const existingRequester = requesters?.find(r => r.email === data.requesterEmail);
+      const existingRequester = requesters.find((r: Requester) => r.email === data.requesterEmail);
       
       if (existingRequester) {
         requesterId = existingRequester.id;
@@ -133,6 +133,9 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Novo Chamado</DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Crie um novo chamado de suporte preenchendo as informações abaixo.
+          </p>
         </DialogHeader>
         
         <Form {...form}>
@@ -249,11 +252,11 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="unassigned">Não atribuído</SelectItem>
-                        {users?.map((user) => (
+                        {users.map((user: User) => user.id ? (
                           <SelectItem key={user.id} value={user.id.toString()}>
                             {user.fullName}
                           </SelectItem>
-                        ))}
+                        ) : null)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
