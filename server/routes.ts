@@ -1,9 +1,16 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage-interface";
-import { insertTicketSchema, insertRequesterSchema, insertUserSchema } from "@shared/schema";
+import { 
+  insertTicketSchema, 
+  insertRequesterSchema, 
+  insertUserSchema, 
+  insertEmailTemplateSchema,
+  emailTemplateTypeSchema
+} from "@shared/schema";
 import { z } from "zod";
 import { setupAuth } from "./auth";
+import { emailService } from "./email-service";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Configurar autenticação

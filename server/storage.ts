@@ -1,7 +1,8 @@
 import { 
   type User, type InsertUser,
   type Requester, type InsertRequester,
-  type Ticket, type InsertTicket, type TicketWithRelations
+  type Ticket, type InsertTicket, type TicketWithRelations,
+  type EmailTemplate, type InsertEmailTemplate, type EmailTemplateType
 } from "@shared/schema";
 
 // Storage interface
@@ -326,17 +327,21 @@ export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private requesters: Map<number, Requester>;
   private tickets: Map<number, Ticket>;
+  private emailTemplates: Map<number, EmailTemplate>;
   private userIdCounter: number;
   private requesterIdCounter: number;
   private ticketIdCounter: number;
+  private emailTemplateIdCounter: number;
 
   constructor() {
     this.users = new Map();
     this.requesters = new Map();
     this.tickets = new Map();
+    this.emailTemplates = new Map();
     this.userIdCounter = 1;
     this.requesterIdCounter = 1;
     this.ticketIdCounter = 1;
+    this.emailTemplateIdCounter = 1;
     
     // Initialize with some sample data
     this.initializeData();
@@ -431,6 +436,86 @@ export class MemStorage implements IStorage {
     ticketData.forEach(data => {
       const id = this.ticketIdCounter++;
       this.tickets.set(id, { id, ...data } as Ticket);
+    });
+    
+    // Add default email templates
+    const emailTemplates: InsertEmailTemplate[] = [
+      {
+        name: 'Novo Chamado',
+        type: 'new_ticket',
+        subject: 'Novo Chamado: {{ticketSubject}}',
+        body: `<p>Olá {{requesterName}},</p>
+<p>Um novo chamado foi aberto com sucesso:</p>
+<p><strong>Assunto:</strong> {{ticketSubject}}<br>
+<strong>Número do chamado:</strong> #{{ticketId}}<br>
+<strong>Prioridade:</strong> {{ticketPriority}}<br>
+<strong>Categoria:</strong> {{ticketCategory}}</p>
+<p>Nossos atendentes estão analisando seu chamado e entrarão em contato em breve.</p>
+<p>Atenciosamente,<br>
+Equipe de Suporte</p>`,
+        isDefault: true,
+        isActive: true
+      },
+      {
+        name: 'Atualização de Chamado',
+        type: 'ticket_update',
+        subject: 'Atualização do Chamado #{{ticketId}}: {{ticketSubject}}',
+        body: `<p>Olá {{requesterName}},</p>
+<p>Houve uma atualização em seu chamado:</p>
+<p><strong>Assunto:</strong> {{ticketSubject}}<br>
+<strong>Número do chamado:</strong> #{{ticketId}}<br>
+<strong>Status:</strong> {{ticketStatus}}<br>
+<strong>Atendente:</strong> {{assigneeName}}</p>
+<p><strong>Atualização:</strong><br>
+{{updateDetails}}</p>
+<p>Para mais informações, acesse o sistema de suporte.</p>
+<p>Atenciosamente,<br>
+Equipe de Suporte</p>`,
+        isDefault: true,
+        isActive: true
+      },
+      {
+        name: 'Chamado Resolvido',
+        type: 'ticket_resolution',
+        subject: 'Chamado #{{ticketId}} Resolvido: {{ticketSubject}}',
+        body: `<p>Olá {{requesterName}},</p>
+<p>Seu chamado foi resolvido:</p>
+<p><strong>Assunto:</strong> {{ticketSubject}}<br>
+<strong>Número do chamado:</strong> #{{ticketId}}<br>
+<strong>Solução:</strong> {{resolutionDetails}}</p>
+<p>Caso precise reabrir este chamado ou tenha alguma dúvida, responda este email ou acesse o sistema de suporte.</p>
+<p>Atenciosamente,<br>
+Equipe de Suporte</p>`,
+        isDefault: true,
+        isActive: true
+      },
+      {
+        name: 'Chamado Atribuído',
+        type: 'ticket_assignment',
+        subject: 'Chamado #{{ticketId}} Atribuído: {{ticketSubject}}',
+        body: `<p>Olá,</p>
+<p>O chamado foi atribuído para um atendente:</p>
+<p><strong>Assunto:</strong> {{ticketSubject}}<br>
+<strong>Número do chamado:</strong> #{{ticketId}}<br>
+<strong>Atendente:</strong> {{assigneeName}}<br>
+<strong>Prioridade:</strong> {{ticketPriority}}</p>
+<p>O atendente responsável está trabalhando para resolver sua solicitação o mais rápido possível.</p>
+<p>Atenciosamente,<br>
+Equipe de Suporte</p>`,
+        isDefault: true,
+        isActive: true
+      }
+    ];
+    
+    emailTemplates.forEach(template => {
+      const id = this.emailTemplateIdCounter++;
+      const now = new Date();
+      this.emailTemplates.set(id, { 
+        ...template, 
+        id, 
+        createdAt: now, 
+        updatedAt: now 
+      });
     });
   }
   
@@ -656,6 +741,7 @@ export class MemStorage implements IStorage {
       nextDate.setDate(nextDate.getDate() + 1);
       
       const count = allTickets.filter(ticket => 
+        ticket.createdAt && 
         ticket.createdAt.getTime() >= date.getTime() && 
         ticket.createdAt.getTime() < nextDate.getTime()
       ).length;
@@ -667,6 +753,98 @@ export class MemStorage implements IStorage {
     }
     
     return result;
+  }
+  
+  // Email template methods
+  async getEmailTemplate(id: number): Promise<EmailTemplate | undefined> {
+    return this.emailTemplates.get(id);
+  }
+  
+  async getEmailTemplateByType(type: EmailTemplateType, active?: boolean): Promise<EmailTemplate | undefined> {
+    const templates = Array.from(this.emailTemplates.values())
+      .filter(template => template.type === type);
+    
+    if (active !== undefined) {
+      return templates.find(template => template.isActive === active && template.isDefault);
+    }
+    
+    // Return the default template first, if exists
+    return templates.find(template => template.isDefault) || templates[0];
+  }
+  
+  async createEmailTemplate(template: InsertEmailTemplate): Promise<EmailTemplate> {
+    const id = this.emailTemplateIdCounter++;
+    const now = new Date();
+    const emailTemplate: EmailTemplate = {
+      ...template,
+      id,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    // If this is set as default, update other templates of the same type
+    if (template.isDefault) {
+      const templatesOfSameType = Array.from(this.emailTemplates.values())
+        .filter(t => t.type === template.type);
+      
+      for (const existingTemplate of templatesOfSameType) {
+        if (existingTemplate.isDefault) {
+          existingTemplate.isDefault = false;
+          this.emailTemplates.set(existingTemplate.id!, existingTemplate);
+        }
+      }
+    }
+    
+    this.emailTemplates.set(id, emailTemplate);
+    return emailTemplate;
+  }
+  
+  async updateEmailTemplate(id: number, updates: Partial<EmailTemplate>): Promise<EmailTemplate | undefined> {
+    const template = this.emailTemplates.get(id);
+    if (!template) return undefined;
+    
+    // If setting this template as default, update other templates of same type
+    if (updates.isDefault) {
+      const templatesOfSameType = Array.from(this.emailTemplates.values())
+        .filter(t => t.type === template.type && t.id !== id);
+      
+      for (const existingTemplate of templatesOfSameType) {
+        if (existingTemplate.isDefault) {
+          existingTemplate.isDefault = false;
+          this.emailTemplates.set(existingTemplate.id!, existingTemplate);
+        }
+      }
+    }
+    
+    const updatedTemplate: EmailTemplate = {
+      ...template,
+      ...updates,
+      updatedAt: new Date()
+    };
+    
+    this.emailTemplates.set(id, updatedTemplate);
+    return updatedTemplate;
+  }
+  
+  async deleteEmailTemplate(id: number): Promise<boolean> {
+    const template = this.emailTemplates.get(id);
+    if (!template) return false;
+    
+    if (template.isDefault) {
+      // Can't delete default template
+      return false;
+    }
+    
+    return this.emailTemplates.delete(id);
+  }
+  
+  async getAllEmailTemplates(): Promise<EmailTemplate[]> {
+    return Array.from(this.emailTemplates.values());
+  }
+  
+  async getEmailTemplatesByType(type: EmailTemplateType): Promise<EmailTemplate[]> {
+    return Array.from(this.emailTemplates.values())
+      .filter(template => template.type === type);
   }
 }
 
