@@ -62,7 +62,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
       description: '',
       status: 'open',
       priority: 'medium',
-      category: '',
+      category: 'technical_support', // Valor válido para categoria
       requesterEmail: '',
       assigneeId: undefined,
     },
@@ -239,8 +239,8 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                   <FormItem>
                     <FormLabel>Atribuir para</FormLabel>
                     <Select 
-                      onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)} 
-                      defaultValue={field.value?.toString()}
+                      onValueChange={(value) => field.onChange(value === "unassigned" ? undefined : parseInt(value))} 
+                      defaultValue={field.value?.toString() || "unassigned"}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -248,7 +248,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">Não atribuído</SelectItem>
+                        <SelectItem value="unassigned">Não atribuído</SelectItem>
                         {users?.map((user) => (
                           <SelectItem key={user.id} value={user.id.toString()}>
                             {user.fullName}
