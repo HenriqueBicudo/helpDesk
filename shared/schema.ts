@@ -84,3 +84,43 @@ export type TicketWithRelations = Ticket & {
   requester: Requester;
   assignee?: User;
 };
+
+// Email template types
+export const EMAIL_TEMPLATE_TYPES = [
+  'new_ticket', 
+  'ticket_update', 
+  'ticket_resolution', 
+  'ticket_assignment',
+  'welcome_user',
+  'password_reset',
+  'ticket_escalation',
+  'sla_breach',
+  'satisfaction_survey'
+] as const;
+
+export type EmailTemplateType = typeof EMAIL_TEMPLATE_TYPES[number];
+
+export const emailTemplateTypeSchema = z.enum(EMAIL_TEMPLATE_TYPES);
+
+// Email template schema
+export const emailTemplateSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().min(3),
+  type: emailTemplateTypeSchema,
+  subject: z.string().min(3),
+  body: z.string().min(10),
+  isDefault: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
+});
+
+export const insertEmailTemplateSchema = emailTemplateSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+// Types
+export type EmailTemplate = z.infer<typeof emailTemplateSchema>;
+export type InsertEmailTemplate = z.infer<typeof insertEmailTemplateSchema>;

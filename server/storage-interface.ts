@@ -1,7 +1,8 @@
 import { 
   type User, type InsertUser,
   type Requester, type InsertRequester,
-  type Ticket, type InsertTicket, type TicketWithRelations
+  type Ticket, type InsertTicket, type TicketWithRelations,
+  type EmailTemplate, type InsertEmailTemplate, type EmailTemplateType
 } from "@shared/schema";
 
 // Storage interface
@@ -42,6 +43,15 @@ export interface IStorage {
   }>;
   getTicketCategoriesCount(): Promise<{category: string; count: number}[]>;
   getTicketVolumeByDate(): Promise<{date: string; count: number}[]>;
+  
+  // Email template methods
+  getEmailTemplate(id: number): Promise<EmailTemplate | undefined>;
+  getEmailTemplateByType(type: EmailTemplateType, active?: boolean): Promise<EmailTemplate | undefined>;
+  createEmailTemplate(template: InsertEmailTemplate): Promise<EmailTemplate>;
+  updateEmailTemplate(id: number, updates: Partial<EmailTemplate>): Promise<EmailTemplate | undefined>;
+  deleteEmailTemplate(id: number): Promise<boolean>;
+  getAllEmailTemplates(): Promise<EmailTemplate[]>;
+  getEmailTemplatesByType(type: EmailTemplateType): Promise<EmailTemplate[]>;
 }
 
 // Import storage implementations
