@@ -4,11 +4,13 @@ import {
 } from "@shared/schema";
 import { DB } from "./db";
 import { IStorage } from "./storage-interface";
+import { EmailTemplate, InsertEmailTemplate, EmailTemplateType } from './email-template';
+
 
 export class SqlServerStorage implements IStorage {
-  
+
   // ----- USER METHODS -----
-  
+
   async getUser(id: number): Promise<User | undefined> {
     console.log(`Buscando user com id ${id}`);
     const user = await DB.getOne<any>(`
@@ -17,12 +19,12 @@ export class SqlServerStorage implements IStorage {
       FROM users 
       WHERE id = $1
     `, [id]);
-    
+
     if (!user) {
       console.log(`User com id ${id} não encontrado`);
       return undefined;
     }
-    
+
     // Mapear manualmente os nomes de colunas
     const mappedUser = {
       id: user.id,
@@ -34,7 +36,7 @@ export class SqlServerStorage implements IStorage {
       avatarInitials: user.avatar_initials,
       createdAt: user.created_at
     };
-    
+
     console.log(`User encontrado:`, JSON.stringify(mappedUser));
     return mappedUser;
   }
@@ -50,7 +52,7 @@ export class SqlServerStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const avatarInitials = this.getInitials(insertUser.fullName);
-    
+
     const id = await DB.insert('users', {
       username: insertUser.username,
       password: insertUser.password,
@@ -59,7 +61,7 @@ export class SqlServerStorage implements IStorage {
       role: insertUser.role || 'agent',
       avatar_initials: avatarInitials
     });
-    
+
     return {
       id,
       username: insertUser.username,
@@ -80,9 +82,9 @@ export class SqlServerStorage implements IStorage {
       ORDER BY full_name
     `);
   }
-  
+
   // ----- REQUESTER METHODS -----
-  
+
   async getRequester(id: number): Promise<Requester | undefined> {
     console.log(`Buscando requester com id ${id}`);
     const requester = await DB.getOne<any>(`
@@ -91,12 +93,12 @@ export class SqlServerStorage implements IStorage {
       FROM requesters 
       WHERE id = $1
     `, [id]);
-    
+
     if (!requester) {
       console.log(`Requester com id ${id} não encontrado`);
       return undefined;
     }
-    
+
     // Mapear manualmente os nomes de colunas
     const mappedRequester = {
       id: requester.id,
@@ -106,7 +108,7 @@ export class SqlServerStorage implements IStorage {
       avatarInitials: requester.avatar_initials,
       createdAt: requester.created_at
     };
-    
+
     console.log(`Requester encontrado:`, JSON.stringify(mappedRequester));
     return mappedRequester;
   }
@@ -122,14 +124,14 @@ export class SqlServerStorage implements IStorage {
 
   async createRequester(insertRequester: InsertRequester): Promise<Requester> {
     const avatarInitials = this.getInitials(insertRequester.fullName);
-    
+
     const id = await DB.insert('requesters', {
       full_name: insertRequester.fullName,
       email: insertRequester.email,
       company: insertRequester.company || null,
       avatar_initials: avatarInitials
     });
-    
+
     return {
       id,
       fullName: insertRequester.fullName,
@@ -148,9 +150,9 @@ export class SqlServerStorage implements IStorage {
       ORDER BY full_name
     `);
   }
-  
+
   // ----- TICKET METHODS -----
-  
+
   async getTicket(id: number): Promise<Ticket | undefined> {
     return DB.getOne<Ticket>(`
       SELECT id, subject, description, status, priority, category, 
@@ -164,15 +166,15 @@ export class SqlServerStorage implements IStorage {
   async getTicketWithRelations(id: number): Promise<TicketWithRelations | undefined> {
     const ticket = await this.getTicket(id);
     if (!ticket) return undefined;
-    
+
     const requester = await this.getRequester(ticket.requesterId);
     if (!requester) throw new Error(`Requester with ID ${ticket.requesterId} not found`);
-    
+
     let assignee = undefined;
     if (ticket.assigneeId) {
       assignee = await this.getUser(ticket.assigneeId);
     }
-    
+
     return {
       ...ticket,
       requester,
@@ -182,7 +184,7 @@ export class SqlServerStorage implements IStorage {
 
   async createTicket(insertTicket: InsertTicket): Promise<Ticket> {
     const now = new Date();
-    
+
     const id = await DB.insert('tickets', {
       subject: insertTicket.subject,
       description: insertTicket.description,
@@ -194,7 +196,7 @@ export class SqlServerStorage implements IStorage {
       created_at: now,
       updated_at: now
     });
-    
+
     return {
       id,
       subject: insertTicket.subject,
@@ -212,25 +214,25 @@ export class SqlServerStorage implements IStorage {
   async updateTicket(id: number, updates: Partial<Ticket>): Promise<Ticket | undefined> {
     const ticket = await this.getTicket(id);
     if (!ticket) return undefined;
-    
+
     const updateData: Record<string, any> = {};
-    
+
     if (updates.subject) updateData.subject = updates.subject;
     if (updates.description) updateData.description = updates.description;
     if (updates.status) updateData.status = updates.status;
     if (updates.priority) updateData.priority = updates.priority;
     if (updates.category) updateData.category = updates.category;
     if (updates.requesterId) updateData.requester_id = updates.requesterId;
-    
+
     // assigneeId can be null, so we need to check if it's undefined
     if (updates.assigneeId !== undefined) {
       updateData.assignee_id = updates.assigneeId;
     }
-    
+
     updateData.updated_at = new Date();
-    
+
     await DB.update('tickets', id, updateData);
-    
+
     return this.getTicket(id);
   }
 
@@ -243,7 +245,7 @@ export class SqlServerStorage implements IStorage {
       FROM tickets
       ORDER BY updated_at DESC
     `);
-    
+
     // Mapear manualmente os nomes de colunas
     const mappedTickets = tickets.map(ticket => ({
       id: ticket.id,
@@ -257,7 +259,7 @@ export class SqlServerStorage implements IStorage {
       createdAt: ticket.created_at,
       updatedAt: ticket.updated_at
     }));
-    
+
     console.log(`Encontrados ${mappedTickets.length} tickets`);
     console.log('Exemplo de ticket mapeado:', JSON.stringify(mappedTickets[0]));
     return mappedTickets;
@@ -267,7 +269,7 @@ export class SqlServerStorage implements IStorage {
     const tickets = await this.getAllTickets();
     console.log('Tickets encontrados:', tickets.length);
     const results: TicketWithRelations[] = [];
-    
+
     for (const ticket of tickets) {
       console.log('Processando ticket:', ticket.id, 'com requesterId:', ticket.requesterId);
       const requester = await this.getRequester(ticket.requesterId);
@@ -275,7 +277,7 @@ export class SqlServerStorage implements IStorage {
         console.log('Requester não encontrado para o ticket:', ticket.id);
         continue; // Skip tickets with invalid requesterId
       }
-      
+
       let assignee = undefined;
       if (ticket.assigneeId) {
         console.log('Buscando assignee:', ticket.assigneeId);
@@ -284,14 +286,14 @@ export class SqlServerStorage implements IStorage {
           console.log('Assignee não encontrado:', ticket.assigneeId);
         }
       }
-      
+
       results.push({
         ...ticket,
         requester,
         assignee
       });
     }
-    
+
     console.log('Total de tickets com relações:', results.length);
     return results;
   }
@@ -358,9 +360,9 @@ export class SqlServerStorage implements IStorage {
   async changeTicketStatus(ticketId: number, status: string): Promise<Ticket | undefined> {
     return this.updateTicket(ticketId, { status: status as any });
   }
-  
+
   // ----- STATISTICS METHODS -----
-  
+
   async getTicketStatistics(): Promise<{
     totalTickets: number;
     openTickets: number;
@@ -372,25 +374,25 @@ export class SqlServerStorage implements IStorage {
       SELECT COUNT(*) AS count FROM tickets
     `);
     const totalTickets = totalResult[0]?.count || 0;
-    
+
     // Get open tickets (not resolved or closed)
     const openResult = await DB.query<{count: number}>(`
       SELECT COUNT(*) AS count FROM tickets
       WHERE status NOT IN ('resolved', 'closed')
     `);
     const openTickets = openResult[0]?.count || 0;
-    
+
     // Get tickets resolved today
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
-    
+
     const resolvedResult = await DB.query<{count: number}>(`
       SELECT COUNT(*) AS count FROM tickets
       WHERE status = 'resolved'
       AND DATE(updated_at) = $1
     `, [todayStr]);
     const resolvedToday = resolvedResult[0]?.count || 0;
-    
+
     // For now, just return a placeholder for average response time
     // In a real implementation, this would calculate based on ticket history
     return {
@@ -400,7 +402,7 @@ export class SqlServerStorage implements IStorage {
       averageResponseTime: "4h 30m"
     };
   }
-  
+
   async getTicketCategoriesCount(): Promise<{category: string; count: number}[]> {
     return DB.query<{category: string; count: number}>(`
       SELECT category, COUNT(*) AS count
@@ -413,38 +415,86 @@ export class SqlServerStorage implements IStorage {
     // Get the last 7 days
     const dates: string[] = [];
     const today = new Date();
-    
+
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
       date.setDate(today.getDate() - i);
       dates.push(date.toISOString().split('T')[0]);
     }
-    
+
     const result: {date: string; count: number}[] = [];
-    
+
     for (const dateStr of dates) {
       const countResult = await DB.query<{count: number}>(`
         SELECT COUNT(*) AS count
         FROM tickets
         WHERE DATE(created_at) = $1
       `, [dateStr]);
-      
+
       result.push({
         date: dateStr,
         count: countResult[0]?.count || 0
       });
     }
-    
+
     return result;
   }
-  
+
   // ----- HELPER METHODS -----
-  
+
   private getInitials(name: string): string {
     return name
       .split(' ')
       .map(part => part.charAt(0).toUpperCase())
       .slice(0, 2)
       .join('');
+  }
+
+  // Email Templates
+  async createEmailTemplate(template: InsertEmailTemplate): Promise<EmailTemplate> {
+    const result = await DB.query<EmailTemplate>(
+      `INSERT INTO email_templates (name, type, subject, body, is_default, is_active)
+       OUTPUT INSERTED.*
+       VALUES (@name, @type, @subject, @body, @isDefault, @isActive)`,
+      [template.name, template.type, template.subject, template.body, template.isDefault, template.isActive]
+    );
+    return result[0];
+  }
+
+  async updateEmailTemplate(id: number, updates: Partial<EmailTemplate>): Promise<EmailTemplate | undefined> {
+    const result = await DB.query<EmailTemplate>(
+      `UPDATE email_templates
+       SET name = COALESCE(@name, name),
+           type = COALESCE(@type, type),
+           subject = COALESCE(@subject, subject),
+           body = COALESCE(@body, body),
+           is_default = COALESCE(@isDefault, is_default),
+           is_active = COALESCE(@isActive, is_active),
+           updated_at = GETDATE()
+       OUTPUT INSERTED.*
+       WHERE id = @id`,
+      [updates.name, updates.type, updates.subject, updates.body, updates.isDefault, updates.isActive, id]
+    );
+    return result[0];
+  }
+
+  async deleteEmailTemplate(id: number): Promise<boolean> {
+    const result = await DB.query(
+      'DELETE FROM email_templates WHERE id = @id',
+      [id]
+    );
+    return result.rowCount > 0;
+  }
+
+  async getAllEmailTemplates(): Promise<EmailTemplate[]> {
+    return DB.query<EmailTemplate>('SELECT * FROM email_templates ORDER BY name');
+  }
+
+  async getEmailTemplateByType(type: EmailTemplateType, isDefault: boolean = true): Promise<EmailTemplate | undefined> {
+    const result = await DB.query<EmailTemplate>(
+      'SELECT * FROM email_templates WHERE type = @type AND is_default = @isDefault AND is_active = 1',
+      [type, isDefault]
+    );
+    return result[0];
   }
 }

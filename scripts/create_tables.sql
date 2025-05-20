@@ -100,3 +100,20 @@ BEGIN
          'open', 'medium', 'technical_support', 5, NULL,
          DATEADD(day, -5, GETDATE()), GETDATE());
 END
+
+-- Tabela de templates de email
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'email_templates')
+BEGIN
+    CREATE TABLE email_templates (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        name NVARCHAR(255) NOT NULL,
+        type NVARCHAR(50) NOT NULL,
+        subject NVARCHAR(255) NOT NULL,
+        body NVARCHAR(MAX) NOT NULL,
+        is_default BIT NOT NULL DEFAULT 0,
+        is_active BIT NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT GETDATE(),
+        updated_at DATETIME NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT CK_email_templates_type CHECK (type IN ('new_ticket', 'ticket_update', 'ticket_resolution', 'ticket_assignment', 'welcome_user', 'password_reset', 'ticket_escalation', 'sla_breach', 'satisfaction_survey'))
+    );
+END
