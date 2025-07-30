@@ -33,6 +33,10 @@ export const requesterSchema = z.object({
   email: z.string().email(),
   avatarInitials: z.string().nullable().optional(),
   company: z.string().nullable().optional(),
+  planType: z.string().default('basic'),
+  monthlyHours: z.number().default(10),
+  usedHours: z.string().default('0'),
+  resetDate: z.date().nullable().optional(),
   createdAt: z.date().optional()
 });
 
@@ -124,3 +128,110 @@ export const insertEmailTemplateSchema = emailTemplateSchema.omit({
 // Types
 export type EmailTemplate = z.infer<typeof emailTemplateSchema>;
 export type InsertEmailTemplate = z.infer<typeof insertEmailTemplateSchema>;
+
+// Interaction types
+export const INTERACTION_TYPES = ['comment', 'internal_note', 'status_change', 'assignment'] as const;
+export type InteractionType = typeof INTERACTION_TYPES[number];
+export const interactionTypeSchema = z.enum(INTERACTION_TYPES);
+
+// Attachment types
+export const ATTACHMENT_TYPES = ['image', 'document', 'other'] as const;
+export type AttachmentType = typeof ATTACHMENT_TYPES[number];
+export const attachmentTypeSchema = z.enum(ATTACHMENT_TYPES);
+
+// Ticket interaction schema
+export const ticketInteractionSchema = z.object({
+  id: z.number().optional(),
+  ticketId: z.number(),
+  type: interactionTypeSchema,
+  content: z.string().min(1),
+  isInternal: z.boolean().default(false),
+  timeSpent: z.number().min(0).default(0),
+  createdBy: z.number(),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
+});
+
+export const insertTicketInteractionSchema = ticketInteractionSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+// Attachment schema
+export const attachmentSchema = z.object({
+  id: z.number().optional(),
+  ticketId: z.number(),
+  fileName: z.string().min(1),
+  fileSize: z.number().min(0),
+  mimeType: z.string().min(1),
+  filePath: z.string().min(1),
+  createdAt: z.date().optional()
+});
+
+export const insertAttachmentSchema = attachmentSchema.omit({
+  id: true,
+  createdAt: true
+});
+
+// Response template schema
+export const responseTemplateSchema = z.object({
+  id: z.number().optional(),
+  title: z.string().min(3),
+  content: z.string().min(10),
+  category: z.string().min(3),
+  isActive: z.boolean().default(true),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
+});
+
+export const insertResponseTemplateSchema = responseTemplateSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+// Types for new schemas
+export type TicketInteraction = z.infer<typeof ticketInteractionSchema>;
+export type InsertTicketInteraction = z.infer<typeof insertTicketInteractionSchema>;
+
+export type Attachment = z.infer<typeof attachmentSchema>;
+export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;
+
+export type ResponseTemplate = z.infer<typeof responseTemplateSchema>;
+export type InsertResponseTemplate = z.infer<typeof insertResponseTemplateSchema>;
+
+// System settings schemas
+export const SETTING_CATEGORIES = ['general', 'notifications', 'security', 'automation', 'customization', 'integrations'] as const;
+export type SettingCategory = typeof SETTING_CATEGORIES[number];
+export const settingCategorySchema = z.enum(SETTING_CATEGORIES);
+
+export const systemSettingSchema = z.object({
+  id: z.number().optional(),
+  key: z.string().min(1),
+  value: z.any(),
+  category: settingCategorySchema,
+  description: z.string().optional(),
+  isActive: z.boolean().default(true),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
+});
+
+export const insertSystemSettingSchema = systemSettingSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const updateSystemSettingsSchema = z.object({
+  general: z.record(z.any()).optional(),
+  notifications: z.record(z.any()).optional(),
+  security: z.record(z.any()).optional(),
+  automation: z.record(z.any()).optional(),
+  customization: z.record(z.any()).optional(),
+  integrations: z.record(z.any()).optional(),
+});
+
+export type SystemSetting = z.infer<typeof systemSettingSchema>;
+export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
+export type UpdateSystemSettings = z.infer<typeof updateSystemSettingsSchema>;

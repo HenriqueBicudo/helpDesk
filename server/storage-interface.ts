@@ -2,7 +2,11 @@ import {
   type User, type InsertUser,
   type Requester, type InsertRequester,
   type Ticket, type InsertTicket, type TicketWithRelations,
-  type EmailTemplate, type InsertEmailTemplate, type EmailTemplateType
+  type EmailTemplate, type InsertEmailTemplate, type EmailTemplateType,
+  type TicketInteraction, type InsertTicketInteraction,
+  type Attachment, type InsertAttachment,
+  type ResponseTemplate, type InsertResponseTemplate,
+  type SystemSetting, type InsertSystemSetting, type SettingCategory
 } from "@shared/schema";
 
 // Storage interface
@@ -17,6 +21,7 @@ export interface IStorage {
   getRequester(id: number): Promise<Requester | undefined>;
   getRequesterByEmail(email: string): Promise<Requester | undefined>;
   createRequester(requester: InsertRequester): Promise<Requester>;
+  updateRequester(id: number, updates: Partial<Requester>): Promise<Requester | undefined>;
   getAllRequesters(): Promise<Requester[]>;
   
   // Ticket methods
@@ -33,6 +38,20 @@ export interface IStorage {
   getTicketsByRequester(requesterId: number): Promise<Ticket[]>;
   assignTicket(ticketId: number, assigneeId: number): Promise<Ticket | undefined>;
   changeTicketStatus(ticketId: number, status: string): Promise<Ticket | undefined>;
+  
+  // Ticket Interaction methods
+  getTicketInteractions(ticketId: number): Promise<TicketInteraction[]>;
+  createTicketInteraction(interaction: InsertTicketInteraction): Promise<TicketInteraction>;
+  
+  // Attachment methods
+  createAttachment(attachment: InsertAttachment): Promise<Attachment>;
+  getTicketAttachments(ticketId: number): Promise<Attachment[]>;
+  
+  // Response Template methods
+  getResponseTemplate(id: number): Promise<ResponseTemplate | undefined>;
+  getAllResponseTemplates(): Promise<ResponseTemplate[]>;
+  getResponseTemplatesByCategory(category: string): Promise<ResponseTemplate[]>;
+  createResponseTemplate(template: InsertResponseTemplate): Promise<ResponseTemplate>;
   
   // Dashboard statistics
   getTicketStatistics(): Promise<{
@@ -52,25 +71,34 @@ export interface IStorage {
   deleteEmailTemplate(id: number): Promise<boolean>;
   getAllEmailTemplates(): Promise<EmailTemplate[]>;
   getEmailTemplatesByType(type: EmailTemplateType): Promise<EmailTemplate[]>;
+  
+  // System settings methods
+  getSystemSetting(key: string): Promise<SystemSetting | undefined>;
+  getSystemSettingsByCategory(category: SettingCategory): Promise<SystemSetting[]>;
+  getAllSystemSettings(): Promise<SystemSetting[]>;
+  createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting>;
+  updateSystemSetting(key: string, value: any): Promise<SystemSetting | undefined>;
+  upsertSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting>;
+  deleteSystemSetting(key: string): Promise<boolean>;
+  bulkUpdateSettings(settings: Record<string, any>, category: SettingCategory): Promise<boolean>;
 }
 
 // Import storage implementations
-import { SqlServerStorage } from './sqlserver-storage';
-import { MemStorage } from './storage';
+import { PostgresStorage } from './postgres-storage';
 
 // Choose storage implementation based on environment
-const dbType = process.env.DB_TYPE || 'memory';
+const dbType = process.env.DB_TYPE || 'postgres';
 
 let storage: IStorage;
 
 switch (dbType) {
-  case 'sqlserver':
-    console.log('Using SQL Server storage');
-    storage = new SqlServerStorage();
+  case 'postgres':
+    console.log('Using PostgreSQL storage');
+    storage = new PostgresStorage();
     break;
   default:
-    console.log('Using in-memory storage');
-    storage = new MemStorage();
+    console.log('Using PostgreSQL storage (default)');
+    storage = new PostgresStorage();
 }
 
 export { storage };

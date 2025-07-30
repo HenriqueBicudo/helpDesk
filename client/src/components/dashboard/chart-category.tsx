@@ -26,19 +26,19 @@ export function ChartCategory() {
   }, [data]);
   
   return (
-    <Card className="col-span-1">
-      <CardHeader className="px-5 pt-5 border-b border-gray-200">
-        <CardTitle className="text-lg font-medium">Chamados por Categoria</CardTitle>
+    <Card className="col-span-1 bg-card border-border">
+      <CardHeader className="px-5 pt-5 border-b border-border">
+        <CardTitle className="text-lg font-medium text-foreground">Chamados por Categoria</CardTitle>
       </CardHeader>
       
-      <CardContent className="p-5">
+      <CardContent className="p-5 bg-card">
         {isLoading ? (
           <div className="h-64 flex items-center justify-center">
-            <p>Carregando dados...</p>
+            <p className="text-muted-foreground">Carregando dados...</p>
           </div>
         ) : error ? (
           <div className="h-64 flex items-center justify-center">
-            <p className="text-red-500">Erro ao carregar dados</p>
+            <p className="text-destructive">Erro ao carregar dados</p>
           </div>
         ) : (
           <div className="h-64">
@@ -60,8 +60,18 @@ export function ChartCategory() {
                 </Pie>
                 <Tooltip 
                   formatter={(value) => [`${value} chamados`, 'Quantidade']}
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    color: 'hsl(var(--foreground))'
+                  }}
                 />
-                <Legend />
+                <Legend 
+                  wrapperStyle={{
+                    color: 'hsl(var(--foreground))'
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>

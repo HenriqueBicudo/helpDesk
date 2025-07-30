@@ -1,0 +1,57 @@
+# Dependências do Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Arquivos de build
+dist/
+build/
+
+# Arquivos de ambiente (não devem ir para a imagem)
+.env
+.env.local
+.env.production
+
+# Logs
+logs/
+*.log
+
+# Arquivos temporários
+.tmp/
+temp/
+
+# Cache
+.cache/
+.parcel-cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentação
+README.md
+docs/
+
+# Testes
+__tests__/
+*.test.js
+*.test.ts
+
+# Configuração de desenvolvimento
+vite.config.local.ts

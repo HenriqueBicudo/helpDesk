@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Estilos customizados para o editor TipTap */
+.ProseMirror {
+  min-height: 200px !important;
+  width: 100% !important;
+  outline: none !important;
+  resize: none !important;
+  padding: 1rem !important;
+}
+
+.ProseMirror:focus {
+  outline: none !important;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: #adb5bd;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 :root {
       --background: 0 0% 100%;
 --foreground: 20 14.3% 4.1%;
@@ -25,33 +46,29 @@
 --radius: 0.5rem;
   }
   .dark {
-      --background: 240 10% 3.9%;
---foreground: 0 0% 98%;
---muted: 240 3.7% 15.9%;
---muted-foreground: 240 5% 64.9%;
---popover: 240 10% 3.9%;
---popover-foreground: 0 0% 98%;
---card: 240 10% 3.9%;
---card-foreground: 0 0% 98%;
---border: 240 3.7% 15.9%;
---input: 240 3.7% 15.9%;
+      --background: 222 17% 8%;
+--foreground: 210 40% 98%;
+--muted: 222 17% 12%;
+--muted-foreground: 215 20% 65%;
+--popover: 222 17% 8%;
+--popover-foreground: 210 40% 98%;
+--card: 222 17% 10%;
+--card-foreground: 210 40% 98%;
+--border: 215 25% 16%;
+--input: 215 25% 16%;
 --primary: 207 90% 54%;
---primary-foreground: 211 100% 99%;
---secondary: 240 3.7% 15.9%;
---secondary-foreground: 0 0% 98%;
---accent: 240 3.7% 15.9%;
---accent-foreground: 0 0% 98%;
---destructive: 0 62.8% 30.6%;
---destructive-foreground: 0 0% 98%;
---ring: 240 4.9% 83.9%;
+--primary-foreground: 210 40% 98%;
+--secondary: 222 17% 14%;
+--secondary-foreground: 210 40% 98%;
+--accent: 222 17% 14%;
+--accent-foreground: 210 40% 98%;
+--destructive: 0 62.8% 55%;
+--destructive-foreground: 210 40% 98%;
+--ring: 215 25% 20%;
 --radius: 0.5rem;
   }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }

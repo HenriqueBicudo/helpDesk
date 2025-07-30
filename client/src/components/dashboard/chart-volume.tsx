@@ -26,19 +26,19 @@ export function ChartVolume() {
   }, [data]);
   
   return (
-    <Card className="col-span-1 lg:col-span-2">
-      <CardHeader className="px-5 pt-5 border-b border-gray-200">
-        <CardTitle className="text-lg font-medium">Volume de Chamados</CardTitle>
+    <Card className="col-span-1 lg:col-span-2 bg-card border-border">
+      <CardHeader className="px-5 pt-5 border-b border-border">
+        <CardTitle className="text-lg font-medium text-foreground">Volume de Chamados</CardTitle>
       </CardHeader>
       
-      <CardContent className="p-5">
+      <CardContent className="p-5 bg-card">
         {isLoading ? (
           <div className="h-64 flex items-center justify-center">
-            <p>Carregando dados...</p>
+            <p className="text-muted-foreground">Carregando dados...</p>
           </div>
         ) : error ? (
           <div className="h-64 flex items-center justify-center">
-            <p className="text-red-500">Erro ao carregar dados</p>
+            <p className="text-destructive">Erro ao carregar dados</p>
           </div>
         ) : (
           <div className="h-64">
@@ -52,24 +52,38 @@ export function ChartVolume() {
                   bottom: 0,
                 }}
               >
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid 
+                  strokeDasharray="3 3" 
+                  stroke="hsl(var(--border))"
+                  opacity={0.3}
+                />
                 <XAxis 
                   dataKey="displayDate" 
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
                 />
                 <YAxis 
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
                   allowDecimals={false}
+                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
                 />
                 <Tooltip 
                   formatter={(value) => [`${value} chamados`, 'Quantidade']}
                   labelFormatter={(value) => `Data: ${value}`}
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    color: 'hsl(var(--foreground))'
+                  }}
                 />
                 <Area 
                   type="monotone" 
                   dataKey="count" 
-                  stroke="#3498db" 
-                  fill="#3498db" 
+                  stroke="hsl(var(--primary))" 
+                  fill="hsl(var(--primary))" 
                   fillOpacity={0.3}
                   name="Chamados"
                 />

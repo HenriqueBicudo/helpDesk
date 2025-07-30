@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Ticket, User, Requester } from "@shared/schema";
 import { 
@@ -12,6 +12,27 @@ import {
   Clock,
   Plus
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { 
   Card, 
   CardContent, 
@@ -33,7 +54,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDate, getInitials, translateStatus, statusToColor, priorityToColor, translatePriority } from "@/lib/utils";
+import { formatDate, getInitials } from "@/lib/utils";
+import { TicketStatusBadge } from "@/components/tickets/ticket-status-badge";
+import { TicketPriorityBadge } from "@/components/tickets/ticket-priority-badge";
 import { useAuth } from "@/hooks/use-auth";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -56,15 +79,166 @@ type KanbanGroup = {
   columns: KanbanColumn[];
 }
 
+// Componente do card de ticket com drag and drop
+function TicketCard({ ticket, groupId }: { ticket: TicketWithRelations; groupId: string }) {
+  const [, setLocation] = useLocation();
+  
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: `ticket-${ticket.id}`,
+    data: {
+      type: 'ticket',
+      ticket,
+      groupId,
+    },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const navigateToTicket = (ticketId: number) => {
+    if (ticketId) {
+      setLocation(`/tickets/${ticketId}`);
+    }
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+    >
+      <Card 
+        className="shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer select-none"
+        onClick={() => navigateToTicket(ticket.id || 0)}
+      >
+        <CardHeader className="p-3 pb-0">
+          <div className="flex justify-between items-start">
+            <CardTitle className="text-sm font-medium line-clamp-2">
+              {ticket.subject}
+            </CardTitle>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={(e) => {
+                  e.stopPropagation();
+                  navigateToTicket(ticket.id || 0);
+                }}>
+                  Ver detalhes
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                  Atribuir
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                  Mudar status
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <div className="flex gap-1 mt-2">
+            <TicketStatusBadge status={ticket.status} />
+            <Badge variant="outline" className="bg-muted/30 border-border text-muted-foreground">
+              #{ticket.id}
+            </Badge>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="p-3 pt-2">
+          <p className="text-xs text-muted-foreground line-clamp-2">
+            {ticket.description}
+          </p>
+        </CardContent>
+        
+        <CardFooter className="p-3 pt-0 flex justify-between items-center text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Avatar className="h-6 w-6">
+              <AvatarFallback className="text-xs">
+                {getInitials(ticket.requester.fullName)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col">
+              <span className="text-xs font-medium">{ticket.requester.fullName}</span>
+              <span className="text-xs text-muted-foreground">{ticket.requester.company || ''}</span>
+            </div>
+          </div>
+          
+          <div className="flex flex-col items-end">
+            <div className="flex items-center gap-1">
+              <CalendarDays className="h-3 w-3" />
+              <span>{formatDate(ticket.createdAt || new Date(), "dd/MM/yyyy")}</span>
+            </div>
+            <TicketPriorityBadge priority={ticket.priority} />
+          </div>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
+
 export default function TicketsKanban() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const queryClient = useQueryClient();
 
   // Estados para controle
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
   const [kanbanGroups, setKanbanGroups] = useState<KanbanGroup[]>([]);
+  const [activeTicket, setActiveTicket] = useState<TicketWithRelations | null>(null);
+
+  // Configurar sensores para drag and drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Mutation para atualizar ticket
+  const updateTicketMutation = useMutation({
+    mutationFn: async ({ ticketId, updates }: { ticketId: number; updates: Partial<Ticket> }) => {
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update ticket');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+    },
+  });
 
   // Buscar todos os tickets
   const { data: tickets, isLoading } = useQuery<TicketWithRelations[]>({ 
@@ -131,6 +305,48 @@ export default function TicketsKanban() {
     });
   };
 
+  // Função para lidar com o início do arraste
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const ticketData = active.data.current;
+    
+    if (ticketData?.type === 'ticket') {
+      setActiveTicket(ticketData.ticket);
+    }
+  };
+
+  // Função para lidar com o fim do arraste
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveTicket(null);
+    
+    if (!over) return;
+    
+    const activeData = active.data.current;
+    const overData = over.data.current;
+    
+    if (activeData?.type === 'ticket' && overData?.type === 'column') {
+      const ticket = activeData.ticket;
+      const newStatus = overData.status;
+      const newAssigneeId = overData.assigneeId;
+      
+      // Se o status ou assignee mudou, atualizar o ticket
+      if (ticket.status !== newStatus || ticket.assigneeId !== newAssigneeId) {
+        const updates: Partial<Ticket> = { status: newStatus };
+        
+        // Se moveu para uma coluna de um agente específico, atribuir o ticket
+        if (newAssigneeId !== undefined) {
+          updates.assigneeId = newAssigneeId;
+        }
+        
+        updateTicketMutation.mutate({
+          ticketId: ticket.id,
+          updates,
+        });
+      }
+    }
+  };
+
   // Filtrar tickets por pesquisa e prioridade
   const filteredGroups = kanbanGroups.map(group => {
     const filteredColumns = group.columns.map(column => {
@@ -159,6 +375,62 @@ export default function TicketsKanban() {
 
   // Total de tickets
   const totalTickets = tickets?.length || 0;
+function DroppableColumn({ 
+  column, 
+  groupId, 
+  assigneeId 
+}: { 
+  column: KanbanColumn; 
+  groupId: string; 
+  assigneeId?: number; 
+}) {
+  const {
+    setNodeRef,
+    isOver,
+  } = useSortable({
+    id: `column-${groupId}-${column.status}`,
+    data: {
+      type: 'column',
+      status: column.status,
+      assigneeId,
+    },
+  });
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      className={`flex-1 min-w-[250px] ${isOver ? 'bg-blue-50 border-2 border-blue-200 border-dashed rounded-lg' : ''}`}
+    >
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="font-medium text-sm">{column.title}</h3>
+        <Badge variant="outline">{column.tickets.length}</Badge>
+      </div>
+      
+      <SortableContext 
+        items={column.tickets.map(ticket => `ticket-${ticket.id}`)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-3 min-h-[100px]">
+          {column.tickets.map((ticket) => (
+            <TicketCard 
+              key={ticket.id} 
+              ticket={ticket} 
+              groupId={groupId}
+            />
+          ))}
+          
+          {column.tickets.length === 0 && (
+            <div className={`border border-dashed rounded-md p-4 text-center text-muted-foreground text-sm transition-colors ${
+              isOver ? 'border-blue-300 bg-blue-50' : ''
+            }`}>
+              {isOver ? 'Solte o ticket aqui' : 'Sem tickets'}
+            </div>
+          )}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
 
   // Função para navegar para a página de detalhes do ticket
   const navigateToTicket = (ticketId: number) => {
@@ -250,135 +522,73 @@ export default function TicketsKanban() {
               ))}
             </div>
           ) : (
-            <div className="space-y-6">
-              {filteredGroups.map((group, groupIndex) => (
-                <div key={groupIndex} className="border rounded-lg overflow-hidden">
-                  {/* Cabeçalho do Grupo */}
-                  <div 
-                    className="flex justify-between items-center p-3 bg-muted cursor-pointer"
-                    onClick={() => toggleGroupCollapse(groupIndex)}
-                  >
-                    <div className="flex items-center gap-2">
-                      {group.collapsed ? (
-                        <ChevronDown className="h-5 w-5" />
-                      ) : (
-                        <ChevronUp className="h-5 w-5" />
-                      )}
-                      <span className="font-medium">{group.title}</span>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="space-y-6">
+                {filteredGroups.map((group, groupIndex) => (
+                  <div key={groupIndex} className="border rounded-lg overflow-hidden">
+                    {/* Cabeçalho do Grupo */}
+                    <div 
+                      className="flex justify-between items-center p-3 bg-muted cursor-pointer"
+                      onClick={() => toggleGroupCollapse(groupIndex)}
+                    >
+                      <div className="flex items-center gap-2">
+                        {group.collapsed ? (
+                          <ChevronDown className="h-5 w-5" />
+                        ) : (
+                          <ChevronUp className="h-5 w-5" />
+                        )}
+                        <span className="font-medium">{group.title}</span>
+                      </div>
+                      
+                      <div className="text-sm text-muted-foreground">
+                        {group.columns.reduce((acc, col) => acc + col.tickets.length, 0)} tickets
+                      </div>
                     </div>
                     
-                    <div className="text-sm text-muted-foreground">
-                      {group.columns.reduce((acc, col) => acc + col.tickets.length, 0)} tickets
-                    </div>
+                    {/* Conteúdo do Grupo (colunas e tickets) */}
+                    {!group.collapsed && (
+                      <div className="flex gap-4 p-4">
+                        {group.columns.map((column, colIndex) => (
+                          <DroppableColumn
+                            key={`${groupIndex}-${colIndex}`}
+                            column={column}
+                            groupId={`group-${groupIndex}`}
+                            assigneeId={group.id}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  
-                  {/* Conteúdo do Grupo (colunas e tickets) */}
-                  {!group.collapsed && (
-                    <div className="flex gap-4 p-4">
-                      {group.columns.map((column, colIndex) => (
-                        <div key={colIndex} className="flex-1 min-w-[250px]">
-                          <div className="flex justify-between items-center mb-2">
-                            <h3 className="font-medium text-sm">{column.title}</h3>
-                            <Badge variant="outline">{column.tickets.length}</Badge>
-                          </div>
-                          
-                          <div className="space-y-3">
-                            {column.tickets.map((ticket) => (
-                              <Card 
-                                key={ticket.id} 
-                                className="shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer"
-                                onClick={() => navigateToTicket(ticket.id || 0)}
-                              >
-                                <CardHeader className="p-3 pb-0">
-                                  <div className="flex justify-between items-start">
-                                    <CardTitle className="text-sm font-medium line-clamp-2">
-                                      {ticket.subject}
-                                    </CardTitle>
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button 
-                                          variant="ghost" 
-                                          size="icon" 
-                                          className="h-8 w-8"
-                                          onClick={(e) => e.stopPropagation()}  // Impedir propagação do clique
-                                        >
-                                          <MoreVertical className="h-4 w-4" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onClick={(e) => {
-                                          e.stopPropagation();
-                                          navigateToTicket(ticket.id || 0);
-                                        }}>
-                                          Ver detalhes
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                                          Atribuir
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                                          Mudar status
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  </div>
-                                  <div className="flex gap-1 mt-2">
-                                    <Badge 
-                                      variant="outline"
-                                      className={`bg-${statusToColor(ticket.status)}-50 text-${statusToColor(ticket.status)}-700 border-${statusToColor(ticket.status)}-200`}
-                                    >
-                                      {translateStatus(ticket.status)}
-                                    </Badge>
-                                    <Badge variant="outline" className="bg-gray-50">
-                                      #{ticket.id}
-                                    </Badge>
-                                  </div>
-                                </CardHeader>
-                                
-                                <CardContent className="p-3 pt-2">
-                                  <p className="text-xs text-muted-foreground line-clamp-2">
-                                    {ticket.description}
-                                  </p>
-                                </CardContent>
-                                
-                                <CardFooter className="p-3 pt-0 flex justify-between items-center text-xs text-muted-foreground">
-                                  <div className="flex items-center gap-2">
-                                    <Avatar className="h-6 w-6">
-                                      <AvatarFallback className="text-xs">
-                                        {getInitials(ticket.requester.fullName)}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col">
-                                      <span className="text-xs font-medium">{ticket.requester.fullName}</span>
-                                      <span className="text-xs text-muted-foreground">{ticket.requester.company || ''}</span>
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="flex flex-col items-end">
-                                    <div className="flex items-center gap-1">
-                                      <CalendarDays className="h-3 w-3" />
-                                      <span>{formatDate(ticket.createdAt || new Date(), "dd/MM/yyyy")}</span>
-                                    </div>
-                                    <Badge variant="outline" className={`bg-${priorityToColor(ticket.priority)}-50 text-${priorityToColor(ticket.priority)}-700 text-[10px] py-0 px-1 h-4`}>
-                                      {translatePriority(ticket.priority)}
-                                    </Badge>
-                                  </div>
-                                </CardFooter>
-                              </Card>
-                            ))}
-                            
-                            {column.tickets.length === 0 && (
-                              <div className="border border-dashed rounded-md p-4 text-center text-muted-foreground text-sm">
-                                Sem tickets
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              
+              <DragOverlay>
+                {activeTicket ? (
+                  <Card className="shadow-lg rotate-3 opacity-90">
+                    <CardHeader className="p-3 pb-0">
+                      <CardTitle className="text-sm font-medium line-clamp-2">
+                        {activeTicket.subject}
+                      </CardTitle>
+                      <div className="flex gap-1 mt-2">
+                        <Badge variant="outline" className="bg-muted/30 border-border text-muted-foreground">
+                          #{activeTicket.id}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-3 pt-2">
+                      <p className="text-xs text-muted-foreground line-clamp-2">
+                        {activeTicket.description}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           )}
         </div>
       </div>

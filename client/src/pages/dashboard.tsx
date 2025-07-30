@@ -60,10 +60,10 @@ export default function Dashboard() {
         value={dateRange}
         onValueChange={setDateRange}
       >
-        <SelectTrigger className="bg-white w-[150px]">
+        <SelectTrigger className="bg-card border-border text-foreground w-[150px]">
           <SelectValue placeholder="Período" />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="bg-card border-border">
           <SelectItem value="today">Hoje</SelectItem>
           <SelectItem value="last7days">Último 7 dias</SelectItem>
           <SelectItem value="last30days">Último 30 dias</SelectItem>
@@ -84,8 +84,8 @@ export default function Dashboard() {
 
   return (
     <AppLayout title="Dashboard">
-      <div className="flex flex-col md:flex-row items-center justify-between pb-4 mb-4 border-b border-gray-200">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-4 md:mb-0">Dashboard</h1>
+      <div className="flex flex-col md:flex-row items-center justify-between pb-4 mb-4 border-b border-border">
+        <h1 className="text-2xl font-semibold text-foreground mb-4 md:mb-0">Dashboard</h1>
         <DashboardActions />
       </div>
       
@@ -149,10 +149,10 @@ export default function Dashboard() {
       </div>
       
       {/* Recent Tickets */}
-      <Card className="overflow-hidden mb-6">
-        <div className="p-5 border-b border-gray-200">
+      <Card className="overflow-hidden mb-6 bg-card border-border">
+        <div className="p-5 border-b border-border">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium text-gray-900">Chamados Recentes</h3>
+            <h3 className="text-lg font-medium text-foreground">Chamados Recentes</h3>
             <Button variant="link" className="text-primary text-sm" onClick={() => setLocation('/tickets')}>
               Ver todos
             </Button>

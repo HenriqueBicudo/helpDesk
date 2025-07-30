@@ -7,7 +7,7 @@ import { promisify } from "util";
 import { storage } from "./storage-interface";
 import { User as UserSchema, InsertUser } from "@shared/schema";
 import connectPg from "connect-pg-simple";
-import { pool } from "./db";
+import { Pool } from "pg";
 
 const scryptAsync = promisify(scrypt);
 
@@ -46,8 +46,11 @@ export function setupAuth(app: Express) {
   if (process.env.NODE_ENV === 'production') {
     // Usar PostgreSQL para armazenar sessões em produção
     const PostgresSessionStore = connectPg(session);
+    const pgPool = new Pool({
+      connectionString: process.env.DATABASE_URL
+    });
     sessionStore = new PostgresSessionStore({
-      pool,
+      pool: pgPool,
       tableName: 'session', // Nome da tabela para as sessões
       createTableIfMissing: true
     });
@@ -200,6 +203,10 @@ export function setupAuth(app: Express) {
       
       // Se estiver alterando a senha
       if (currentPassword && newPassword) {
+        if (!userId) {
+          return res.status(400).json({ message: "ID do usuário é necessário" });
+        }
+        
         const user = await storage.getUser(userId);
         
         if (!user) {

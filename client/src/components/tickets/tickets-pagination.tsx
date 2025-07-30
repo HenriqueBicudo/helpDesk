@@ -72,7 +72,7 @@ export function TicketsPagination({
   };
 
   return (
-    <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+    <div className="bg-card px-4 py-3 flex items-center justify-between border-t border-border sm:px-6">
       <div className="flex-1 flex justify-between sm:hidden">
         <Button
           variant="outline"
@@ -94,10 +94,10 @@ export function TicketsPagination({
       
       <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm text-gray-700">
-            Mostrando <span className="font-medium">{startItem}</span> a{" "}
-            <span className="font-medium">{endItem}</span> de{" "}
-            <span className="font-medium">{totalItems}</span> resultados
+          <p className="text-sm text-muted-foreground">
+            Mostrando <span className="font-medium text-foreground">{startItem}</span> a{" "}
+            <span className="font-medium text-foreground">{endItem}</span> de{" "}
+            <span className="font-medium text-foreground">{totalItems}</span> resultados
           </p>
         </div>
         
@@ -106,7 +106,7 @@ export function TicketsPagination({
             <Button
               variant="outline"
               size="icon"
-              className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+              className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted"
               onClick={() => onPageChange(currentPage - 1)}
               disabled={currentPage === 1}
             >
@@ -118,7 +118,7 @@ export function TicketsPagination({
               page < 0 ? (
                 <span
                   key={page} // Using negative numbers as unique keys for ellipsis
-                  className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                  className="relative inline-flex items-center px-4 py-2 border border-border bg-card text-sm font-medium text-foreground"
                 >
                   ...
                 </span>
@@ -129,8 +129,8 @@ export function TicketsPagination({
                   className={cn(
                     "relative inline-flex items-center px-4 py-2 border",
                     currentPage === page
-                      ? "z-10 bg-primary border-primary text-white"
-                      : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
+                      ? "z-10 bg-primary border-primary text-primary-foreground"
+                      : "bg-card border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                   onClick={() => onPageChange(page)}
                 >
@@ -142,7 +142,7 @@ export function TicketsPagination({
             <Button
               variant="outline"
               size="icon"
-              className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+              className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted"
               onClick={() => onPageChange(currentPage + 1)}
               disabled={currentPage === totalPages}
             >

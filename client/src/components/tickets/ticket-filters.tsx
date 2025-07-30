@@ -25,16 +25,16 @@ export function TicketFilters({ onFilterChange, filters }: TicketFiltersProps) {
   });
   
   return (
-    <div className="p-4 border-b border-gray-200 bg-gray-50">
+    <div className="p-4 border-b border-border bg-muted/30">
       <div className="flex flex-wrap gap-3">
         <Select
           value={filters.status}
           onValueChange={(value) => onFilterChange('status', value)}
         >
-          <SelectTrigger className="w-[180px] bg-white">
+          <SelectTrigger className="w-[180px] bg-card border-border text-foreground">
             <SelectValue placeholder="Status: Todos" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-card border-border">
             <SelectItem value="all_status">Status: Todos</SelectItem>
             <SelectItem value="open">Aberto</SelectItem>
             <SelectItem value="in_progress">Em andamento</SelectItem>
@@ -48,10 +48,10 @@ export function TicketFilters({ onFilterChange, filters }: TicketFiltersProps) {
           value={filters.priority}
           onValueChange={(value) => onFilterChange('priority', value)}
         >
-          <SelectTrigger className="w-[180px] bg-white">
+          <SelectTrigger className="w-[180px] bg-card border-border text-foreground">
             <SelectValue placeholder="Prioridade: Todas" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-card border-border">
             <SelectItem value="all_priority">Prioridade: Todas</SelectItem>
             <SelectItem value="low">Baixa</SelectItem>
             <SelectItem value="medium">Média</SelectItem>
@@ -64,10 +64,10 @@ export function TicketFilters({ onFilterChange, filters }: TicketFiltersProps) {
           value={filters.category}
           onValueChange={(value) => onFilterChange('category', value)}
         >
-          <SelectTrigger className="w-[180px] bg-white">
+          <SelectTrigger className="w-[180px] bg-card border-border text-foreground">
             <SelectValue placeholder="Categoria: Todas" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-card border-border">
             <SelectItem value="all_category">Categoria: Todas</SelectItem>
             <SelectItem value="technical_support">Suporte técnico</SelectItem>
             <SelectItem value="financial">Financeiro</SelectItem>
@@ -80,10 +80,10 @@ export function TicketFilters({ onFilterChange, filters }: TicketFiltersProps) {
           value={filters.assignee}
           onValueChange={(value) => onFilterChange('assignee', value)}
         >
-          <SelectTrigger className="w-[180px] bg-white">
+          <SelectTrigger className="w-[180px] bg-card border-border text-foreground">
             <SelectValue placeholder="Agente: Todos" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-card border-border">
             <SelectItem value="all_assignee">Agente: Todos</SelectItem>
             {users?.map((user) => (
               <SelectItem key={user.id} value={user.id.toString()}>

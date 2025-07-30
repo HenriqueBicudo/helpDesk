@@ -25,10 +25,10 @@ const SidebarLink = ({ href, icon, children, active, level = 1, isExpanded }: Si
         "flex items-center px-4 py-2.5 text-sm font-medium rounded-md group transition-colors cursor-pointer",
         level === 1 ? "mt-1" : "mt-0 py-1.5",
         active
-          ? "bg-primary text-white"
+          ? "bg-primary text-primary-foreground"
           : level === 1
-            ? "text-gray-300 hover:text-white hover:bg-gray-700"
-            : "text-gray-400 hover:text-white hover:bg-gray-800"
+            ? "text-muted-foreground hover:text-foreground hover:bg-accent"
+            : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
       )}
       onClick={() => setLocation(href)}
     >
@@ -51,20 +51,20 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   return (
     <div 
       className={cn(
-        "flex flex-col w-64 bg-[#2c3e50] h-screen transition-transform duration-300 ease-in-out",
+        "flex flex-col w-64 bg-card border-r border-border h-screen transition-transform duration-300 ease-in-out",
         !isOpen && "transform -translate-x-full md:translate-x-0 fixed inset-y-0 z-50 md:relative"
       )}
     >
       {/* Logo */}
-      <div className="flex items-center h-16 px-4 bg-[#2c3e50] border-b border-gray-700">
+      <div className="flex items-center h-16 px-4 bg-card border-b border-border">
         <div className="flex items-center">
-          <MessageCircleCode className="text-white mr-2 h-6 w-6" />
-          <span className="text-white font-semibold text-lg">HelpDesk</span>
+          <MessageCircleCode className="text-primary mr-2 h-6 w-6" />
+          <span className="text-foreground font-semibold text-lg">HelpDesk</span>
         </div>
       </div>
       
       {/* User */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-700">
+      <div className="flex-shrink-0 px-4 py-3 border-b border-border">
         <div className="flex items-center">
           {isLoading ? (
             <div className="flex items-center">
@@ -77,17 +77,17 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           ) : user ? (
             <>
               <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-primary/10 text-white">
+                <AvatarFallback className="bg-primary text-primary-foreground">
                   {getInitials(user.fullName)}
                 </AvatarFallback>
               </Avatar>
               <div className="ml-3">
-                <p className="text-sm font-medium text-white">{user.fullName}</p>
-                <p className="text-xs text-gray-400">{user.role}</p>
+                <p className="text-sm font-medium text-foreground">{user.fullName}</p>
+                <p className="text-xs text-muted-foreground">{user.role}</p>
               </div>
             </>
           ) : (
-            <Link href="/auth" className="text-gray-300 hover:text-white flex items-center px-4 py-2 text-sm">
+            <Link href="/auth" className="text-muted-foreground hover:text-foreground flex items-center px-4 py-2 text-sm">
               <User className="mr-2 h-5 w-5" />
               <span>Entrar</span>
             </Link>
@@ -98,7 +98,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       {/* Navigation Menu */}
       <div className="flex-1 h-0 overflow-y-auto scrollbar-thin">
         <nav className="py-4">
-          <div className="px-4 mb-2 text-xs font-semibold text-gray-400 uppercase">Principal</div>
+          <div className="px-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Principal</div>
           
           <SidebarLink 
             href="/" 
@@ -118,7 +118,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               Chamados
             </SidebarLink>
             
-            <div className="ml-10 pl-2 border-l border-gray-700 space-y-1">
+            <div className="ml-10 pl-2 border-l border-border space-y-1">
               <SidebarLink 
                 href="/tickets" 
                 level={2}
@@ -153,7 +153,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             Agentes
           </SidebarLink>
           
-          <div className="px-4 mt-4 mb-2 text-xs font-semibold text-gray-400 uppercase">Gerenciamento</div>
+          <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Gerenciamento</div>
           
           <SidebarLink 
             href="/settings" 

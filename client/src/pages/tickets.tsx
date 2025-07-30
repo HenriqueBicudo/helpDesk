@@ -76,8 +76,8 @@ export default function Tickets() {
   
   return (
     <AppLayout title="Chamados">
-      <div className="flex flex-col md:flex-row items-center justify-between pb-4 mb-4 border-b border-gray-200">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-4 md:mb-0">Chamados</h1>
+      <div className="flex flex-col md:flex-row items-center justify-between pb-4 mb-4 border-b border-border">
+        <h1 className="text-2xl font-semibold text-foreground mb-4 md:mb-0">Chamados</h1>
         <TicketsActions />
       </div>
       

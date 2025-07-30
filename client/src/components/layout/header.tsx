@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, Menu, Bell, User, LogOut, Settings as SettingsIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { useAuth } from '@/hooks/use-auth';
 import { Link, useLocation } from 'wouter';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -33,13 +34,13 @@ export function Header({ onMenuClick }: HeaderProps) {
   };
   
   return (
-    <header className="bg-white shadow-sm">
+    <header className="bg-background border-b border-border">
       <div className="flex justify-between items-center h-16 px-4 sm:px-6">
         <div className="flex">
           <Button 
             variant="ghost"
             size="icon"
-            className="md:hidden text-gray-500"
+            className="md:hidden text-muted-foreground"
             onClick={onMenuClick}
           >
             <Menu className="h-5 w-5" />
@@ -47,7 +48,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           
           <div className="relative ml-4 md:ml-0">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-gray-400" />
+              <Search className="h-4 w-4 text-muted-foreground" />
             </div>
             <Input 
               className="pl-10 w-full md:w-64 focus:ring-primary focus:border-primary"
@@ -56,15 +57,17 @@ export function Header({ onMenuClick }: HeaderProps) {
           </div>
         </div>
         
-        <div className="flex items-center">
-          <Button variant="ghost" size="icon" className="text-gray-500 mr-2">
+        <div className="flex items-center space-x-2">
+          <ThemeToggle />
+          
+          <Button variant="ghost" size="icon" className="text-muted-foreground">
             <Bell className="h-5 w-5" />
           </Button>
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {isLoading ? (
-                <Button variant="ghost" size="icon" className="text-gray-500">
+                <Button variant="ghost" size="icon" className="text-muted-foreground">
                   <Skeleton className="h-8 w-8 rounded-full" />
                 </Button>
               ) : (
@@ -77,37 +80,37 @@ export function Header({ onMenuClick }: HeaderProps) {
                 </Button>
               )}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="bg-card border-border">
               {user && (
                 <>
                   <DropdownMenuLabel>
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium">{user.fullName}</p>
+                      <p className="text-sm font-medium text-foreground">{user.fullName}</p>
                       <p className="text-xs text-muted-foreground">{user.email}</p>
                     </div>
                   </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
+                  <DropdownMenuSeparator className="bg-border" />
+                  <DropdownMenuItem asChild className="text-foreground hover:bg-muted">
                     <Link href="/profile" className="cursor-pointer">
                       <User className="mr-2 h-4 w-4" />
                       <span>Meu Perfil</span>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
+                  <DropdownMenuItem asChild className="text-foreground hover:bg-muted">
                     <Link href="/settings" className="cursor-pointer">
                       <SettingsIcon className="mr-2 h-4 w-4" />
                       <span>Configurações</span>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleLogout} disabled={logoutMutation.isPending}>
+                  <DropdownMenuSeparator className="bg-border" />
+                  <DropdownMenuItem onClick={handleLogout} disabled={logoutMutation.isPending} className="text-foreground hover:bg-muted">
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>{logoutMutation.isPending ? "Saindo..." : "Sair"}</span>
                   </DropdownMenuItem>
                 </>
               )}
               {!user && !isLoading && (
-                <DropdownMenuItem asChild>
+                <DropdownMenuItem asChild className="text-foreground hover:bg-muted">
                   <Link href="/auth" className="cursor-pointer">
                     <User className="mr-2 h-4 w-4" />
                     <span>Entrar</span>

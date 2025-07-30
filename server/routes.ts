@@ -1,16 +1,58 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { storage } from "./storage-interface";
 import { 
   insertTicketSchema, 
   insertRequesterSchema, 
   insertUserSchema, 
   insertEmailTemplateSchema,
-  emailTemplateTypeSchema
+  emailTemplateTypeSchema,
+  updateSystemSettingsSchema
 } from "@shared/schema";
 import { z } from "zod";
 import { setupAuth } from "./auth";
 import { emailService } from "./email-service";
+
+// Configurar multer para upload de arquivos
+const uploadDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const multerStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: multerStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    // Permitir apenas tipos de arquivo específicos
+    const allowedMimeTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain', 'text/csv'
+    ];
+    
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Tipo de arquivo não suportado'));
+    }
+  }
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Configurar autenticação
@@ -314,6 +356,178 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Ticket Interactions routes
+  app.get(`${apiPrefix}/tickets/:id/interactions`, async (req: Request, res: Response) => {
+    try {
+      const ticketId = Number(req.params.id);
+      const interactions = await storage.getTicketInteractions(ticketId);
+      res.json(interactions);
+    } catch (error) {
+      console.error('Error fetching interactions:', error);
+      res.status(500).json({ message: 'An error occurred fetching interactions' });
+    }
+  });
+
+  app.post(`${apiPrefix}/tickets/:id/interactions`, upload.array('attachments', 5), async (req: Request, res: Response) => {
+    try {
+      const ticketId = Number(req.params.id);
+      const { type, content, isInternal = 'false', timeSpent = 0 } = req.body;
+      
+      if (!type || !content) {
+        return res.status(400).json({ message: 'type and content are required' });
+      }
+      
+      // Converter isInternal corretamente (FormData sempre envia como string)
+      const isInternalBool = isInternal === 'true' || isInternal === true;
+      
+      // Criar a interação
+      const interaction = await storage.createTicketInteraction({
+        ticketId,
+        type,
+        content,
+        isInternal: isInternalBool,
+        timeSpent: timeSpent ? parseFloat(timeSpent.toString()) : 0,
+        createdBy: (req as any).user?.id || 1, // TODO: get from auth
+      });
+      
+      // Processar anexos se existirem
+      const files = req.files as Express.Multer.File[];
+      if (files && files.length > 0) {
+        for (const file of files) {
+          await storage.createAttachment({
+            ticketId,
+            fileName: file.filename,
+            fileSize: file.size,
+            mimeType: file.mimetype,
+            filePath: file.path,
+          });
+        }
+      }
+      
+      // Atualizar as horas utilizadas do cliente se for necessário
+      if (timeSpent && timeSpent > 0) {
+        const ticket = await storage.getTicketWithRelations(ticketId);
+        if (ticket?.requester) {
+          const currentUsed = parseFloat(ticket.requester.usedHours || '0');
+          const newUsed = currentUsed + parseFloat(timeSpent.toString());
+          await storage.updateRequester(ticket.requesterId, {
+            usedHours: newUsed.toString(),
+          });
+        }
+      }
+      
+      res.status(201).json(interaction);
+    } catch (error) {
+      console.error('Error creating interaction:', error);
+      res.status(500).json({ message: 'An error occurred creating the interaction' });
+    }
+  });
+
+  // Response Templates routes
+  app.get(`${apiPrefix}/response-templates`, async (req: Request, res: Response) => {
+    try {
+      const { category, isActive } = req.query;
+      
+      let templates;
+      if (category) {
+        templates = await storage.getResponseTemplatesByCategory(category as string);
+      } else {
+        templates = await storage.getAllResponseTemplates();
+      }
+      
+      // Filtrar por ativo se especificado
+      if (isActive !== undefined) {
+        const active = isActive === 'true';
+        templates = templates.filter((t: any) => t.isActive === active);
+      }
+      
+      res.json(templates);
+    } catch (error) {
+      console.error('Error fetching response templates:', error);
+      res.status(500).json({ message: 'An error occurred fetching response templates' });
+    }
+  });
+
+  app.get(`${apiPrefix}/response-templates/:id`, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      const template = await storage.getResponseTemplate(id);
+      
+      if (!template) {
+        return res.status(404).json({ message: 'Response template not found' });
+      }
+      
+      res.json(template);
+    } catch (error) {
+      console.error('Error fetching response template:', error);
+      res.status(500).json({ message: 'An error occurred fetching the response template' });
+    }
+  });
+
+  // Endpoint para processar template com variáveis específicas do ticket
+  app.post(`${apiPrefix}/response-templates/:id/process`, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      const { ticketId } = req.body;
+      
+      const template = await storage.getResponseTemplate(id);
+      if (!template) {
+        return res.status(404).json({ message: 'Response template not found' });
+      }
+      
+      let processedContent = template.content;
+      
+      // Se ticketId for fornecido, buscar dados do ticket
+      if (ticketId) {
+        const ticket = await storage.getTicketWithRelations(ticketId);
+        
+        if (ticket) {
+          // Substituir variáveis com dados reais
+          processedContent = processedContent.replace(/\{\{customer_name\}\}/g, ticket.requester?.fullName || 'Cliente');
+          processedContent = processedContent.replace(/\{\{customer_email\}\}/g, ticket.requester?.email || '');
+          processedContent = processedContent.replace(/\{\{company_name\}\}/g, ticket.requester?.company || 'Nossa Empresa');
+          processedContent = processedContent.replace(/\{\{ticket_number\}\}/g, ticket.id?.toString().padStart(6, '0') || '');
+          processedContent = processedContent.replace(/\{\{ticket_subject\}\}/g, ticket.subject || '');
+          processedContent = processedContent.replace(/\{\{agent_name\}\}/g, ticket.assignee?.fullName || 'Equipe de Suporte');
+        }
+      }
+      
+      // Variáveis gerais sempre processadas
+      processedContent = processedContent.replace(/\{\{current_date\}\}/g, new Date().toLocaleDateString('pt-BR'));
+      processedContent = processedContent.replace(/\{\{current_time\}\}/g, new Date().toLocaleTimeString('pt-BR'));
+      
+      res.json({
+        ...template,
+        content: processedContent
+      });
+    } catch (error) {
+      console.error('Error processing response template:', error);
+      res.status(500).json({ message: 'An error occurred processing the response template' });
+    }
+  });
+
+  app.post(`${apiPrefix}/response-templates`, async (req: Request, res: Response) => {
+    try {
+      const { title, content, category, isActive = true } = req.body;
+      
+      if (!title || !content || !category) {
+        return res.status(400).json({ message: 'title, content, and category are required' });
+      }
+      
+      const template = await storage.createResponseTemplate({
+        title,
+        content,
+        category,
+        isActive: Boolean(isActive),
+      });
+      
+      res.status(201).json(template);
+    } catch (error) {
+      console.error('Error creating response template:', error);
+      res.status(500).json({ message: 'An error occurred creating the response template' });
+    }
+  });
+
   // Atualizar a rota de criação de tickets para enviar email
   app.post(`${apiPrefix}/tickets`, async (req: Request, res: Response) => {
     try {
@@ -411,6 +625,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(ticket);
     } catch (error) {
       res.status(500).json({ message: 'An error occurred changing the ticket status' });
+    }
+  });
+
+  // System Settings routes
+  app.get(`${apiPrefix}/settings`, async (req: Request, res: Response) => {
+    try {
+      const { category } = req.query;
+      
+      let settings;
+      if (category) {
+        settings = await storage.getSystemSettingsByCategory(category as any);
+      } else {
+        settings = await storage.getAllSystemSettings();
+      }
+      
+      // Transform to grouped object by category
+      const groupedSettings: Record<string, Record<string, any>> = {};
+      
+      for (const setting of settings) {
+        if (!groupedSettings[setting.category]) {
+          groupedSettings[setting.category] = {};
+        }
+        
+        // Remove category prefix from key
+        const cleanKey = setting.key.replace(`${setting.category}.`, '');
+        groupedSettings[setting.category][cleanKey] = setting.value;
+      }
+      
+      res.json(groupedSettings);
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+      res.status(500).json({ message: 'An error occurred fetching settings' });
+    }
+  });
+
+  app.get(`${apiPrefix}/settings/:key`, async (req: Request, res: Response) => {
+    try {
+      const key = req.params.key;
+      const setting = await storage.getSystemSetting(key);
+      
+      if (!setting) {
+        return res.status(404).json({ message: 'Setting not found' });
+      }
+      
+      res.json(setting);
+    } catch (error) {
+      console.error('Error fetching setting:', error);
+      res.status(500).json({ message: 'An error occurred fetching the setting' });
+    }
+  });
+
+  app.post(`${apiPrefix}/settings`, async (req: Request, res: Response) => {
+    try {
+      const data = updateSystemSettingsSchema.parse(req.body);
+      
+      const results: Record<string, boolean> = {};
+      
+      // Process each category
+      for (const [category, settings] of Object.entries(data)) {
+        if (settings) {
+          const success = await storage.bulkUpdateSettings(settings, category as any);
+          results[category] = success;
+        }
+      }
+      
+      const allSuccess = Object.values(results).every(success => success);
+      
+      if (allSuccess) {
+        res.json({ 
+          success: true, 
+          message: 'Settings updated successfully',
+          results 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: 'Some settings failed to update',
+          results 
+        });
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: 'Validation error', errors: error.errors });
+      } else {
+        console.error('Error updating settings:', error);
+        res.status(500).json({ message: 'An error occurred updating settings' });
+      }
+    }
+  });
+
+  app.put(`${apiPrefix}/settings/:key`, async (req: Request, res: Response) => {
+    try {
+      const key = req.params.key;
+      const { value } = req.body;
+      
+      if (value === undefined) {
+        return res.status(400).json({ message: 'value is required' });
+      }
+      
+      const setting = await storage.updateSystemSetting(key, value);
+      
+      if (!setting) {
+        return res.status(404).json({ message: 'Setting not found' });
+      }
+      
+      res.json(setting);
+    } catch (error) {
+      console.error('Error updating setting:', error);
+      res.status(500).json({ message: 'An error occurred updating the setting' });
+    }
+  });
+
+  app.delete(`${apiPrefix}/settings/:key`, async (req: Request, res: Response) => {
+    try {
+      const key = req.params.key;
+      const success = await storage.deleteSystemSetting(key);
+      
+      if (!success) {
+        return res.status(404).json({ message: 'Setting not found' });
+      }
+      
+      res.status(204).end();
+    } catch (error) {
+      console.error('Error deleting setting:', error);
+      res.status(500).json({ message: 'An error occurred deleting the setting' });
     }
   });
 

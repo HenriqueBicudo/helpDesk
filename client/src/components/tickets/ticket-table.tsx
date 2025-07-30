@@ -88,24 +88,24 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
   }, [tickets, sortField, sortDirection]);
   
   const renderSortIcon = (field: string) => (
-    <ArrowUpDown className="ml-1 h-4 w-4 text-gray-400" />
+    <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
   );
   
   if (isLoading) {
     return (
       <div className="flex justify-center items-center p-8">
-        <p>Carregando chamados...</p>
+        <p className="text-muted-foreground">Carregando chamados...</p>
       </div>
     );
   }
   
   return (
     <Table>
-      <TableHeader className="bg-gray-50">
+      <TableHeader className="bg-muted/30">
         <TableRow>
           <TableHead className="w-[100px]">
             <button 
-              className="flex items-center text-xs font-medium text-gray-500 uppercase"
+              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
               onClick={() => handleSort('id')}
             >
               ID {renderSortIcon('id')}
@@ -113,7 +113,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-gray-500 uppercase"
+              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
               onClick={() => handleSort('subject')}
             >
               Assunto {renderSortIcon('subject')}
@@ -121,7 +121,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-gray-500 uppercase"
+              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
               onClick={() => handleSort('requester')}
             >
               Solicitante {renderSortIcon('requester')}
@@ -129,7 +129,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-gray-500 uppercase"
+              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
               onClick={() => handleSort('status')}
             >
               Status {renderSortIcon('status')}
@@ -137,7 +137,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-gray-500 uppercase"
+              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
               onClick={() => handleSort('priority')}
             >
               Prioridade {renderSortIcon('priority')}
@@ -145,7 +145,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-gray-500 uppercase"
+              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
               onClick={() => handleSort('createdAt')}
             >
               Criado em {renderSortIcon('createdAt')}
@@ -153,13 +153,13 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-gray-500 uppercase"
+              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
               onClick={() => handleSort('assignee')}
             >
               Atribuído {renderSortIcon('assignee')}
             </button>
           </TableHead>
-          <TableHead className="text-right text-xs font-medium text-gray-500 uppercase">
+          <TableHead className="text-right text-xs font-medium text-muted-foreground uppercase">
             Ações
           </TableHead>
         </TableRow>
@@ -168,7 +168,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
       <TableBody>
         {sortedTickets.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
               Nenhum chamado encontrado
             </TableCell>
           </TableRow>
@@ -176,27 +176,27 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           sortedTickets.map((ticket) => (
             <TableRow
               key={ticket.id}
-              className="hover:bg-gray-50 cursor-pointer"
+              className="hover:bg-muted/50 cursor-pointer border-b border-border"
               onClick={() => setLocation(`/tickets/${ticket.id}`)}
             >
-              <TableCell className="font-medium">
+              <TableCell className="font-medium text-foreground">
                 #{ticket.id.toString().padStart(6, '0')}
               </TableCell>
-              <TableCell>
+              <TableCell className="text-foreground">
                 {ticket.subject}
               </TableCell>
               <TableCell>
                 <div className="flex items-center">
                   <Avatar className="h-8 w-8 mr-3">
-                    <AvatarFallback className="bg-gray-300 text-gray-700 text-xs">
+                    <AvatarFallback className="bg-muted text-muted-foreground text-xs">
                       {ticket.requester.avatarInitials}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <div className="text-sm font-medium text-gray-900">
+                    <div className="text-sm font-medium text-foreground">
                       {ticket.requester.fullName}
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                       {ticket.requester.email}
                     </div>
                   </div>
@@ -208,7 +208,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
               <TableCell>
                 <TicketPriorityBadge priority={ticket.priority} />
               </TableCell>
-              <TableCell className="text-sm text-gray-500">
+              <TableCell className="text-sm text-muted-foreground">
                 {formatDate(ticket.createdAt)}
               </TableCell>
               <TableCell>
@@ -219,18 +219,18 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
                         {ticket.assignee.avatarInitials}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="text-sm text-gray-900">
+                    <div className="text-sm text-foreground">
                       {ticket.assignee.fullName}
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center">
                     <Avatar className="h-7 w-7 mr-2">
-                      <AvatarFallback className="bg-gray-100 text-gray-500 text-xs">
+                      <AvatarFallback className="bg-muted text-muted-foreground text-xs">
                         --
                       </AvatarFallback>
                     </Avatar>
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-muted-foreground">
                       Não atribuído
                     </div>
                   </div>
@@ -239,21 +239,21 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
               <TableCell className="text-right">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="icon" className="text-primary">
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
                       <MoreHorizontal className="h-5 w-5" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="bg-card border-border">
                     <DropdownMenuItem onClick={(e) => {
                       e.stopPropagation();
                       setLocation(`/tickets/${ticket.id}`);
-                    }}>
+                    }} className="text-foreground hover:bg-muted">
                       Ver detalhes
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem onClick={(e) => e.stopPropagation()} className="text-foreground hover:bg-muted">
                       Atribuir
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem onClick={(e) => e.stopPropagation()} className="text-foreground hover:bg-muted">
                       Mudar status
                     </DropdownMenuItem>
                   </DropdownMenuContent>
