@@ -2,85 +2,131 @@
 
 Um sistema completo de gerenciamento de chamados (tickets) inspirado no Movidesk, com interface moderna e dashboard analítico.
 
-![HelpDesk Screenshot](./screenshot.png)
-
 ## 🚀 Como Iniciar o HelpDesk
 
-### Método 1: Usando o Botão "Run" do Replit
-1. No ambiente Replit, simplesmente clique no botão **Run** na parte superior
-2. O sistema iniciará automaticamente o fluxo de trabalho "Start application"
-3. Aguarde até que o servidor e o cliente estejam completamente carregados
-4. O sistema estará disponível no navegador integrado do Replit
+### Pré-requisitos
+- Node.js 18+ instalado
+- PostgreSQL (ou configure para usar outro banco de dados)
 
-### Método 2: Via Terminal
-1. Abra o terminal no ambiente Replit
-2. Execute o comando: `npm run dev`
-3. Aguarde até que o servidor e o cliente estejam completamente carregados
-4. O sistema estará disponível no navegador integrado do Replit
+### Instalação
+1. Clone o repositório
+2. Instale as dependências: `npm install`
+3. Configure as variáveis de ambiente (copie `.env.example` para `.env`)
+4. Execute as migrations: `npm run db:push`
+5. Inicie o servidor: `npm run dev`
 
-## 📱 Funcionalidades Principais
+### Docker (Alternativa)
+1. Use os arquivos na pasta `deploy/`:
+   - `docker-compose.yml` para desenvolvimento
+   - `Dockerfile` para produção
+2. Execute: `docker-compose up`
 
-### Dashboard
-- Visualização de métricas importantes:
-  - Total de chamados
-  - Chamados abertos
-  - Chamados resolvidos hoje
-  - Tempo médio de resposta
-- Gráficos de distribuição por categoria
-- Gráficos de volume de chamados ao longo do tempo
-
-### Gerenciamento de Chamados
-- Listagem completa de chamados com filtros
-- Visualização detalhada de cada chamado
-- Atualização de status dos chamados
-- Atribuição de chamados para agentes
-- Categorização e priorização de chamados
-
-### Interface Responsiva
-- Design moderno com Tailwind CSS e shadcn/ui
-- Compatível com dispositivos móveis, tablets e desktop
-- Navegação intuitiva e eficiente
-
-## 💻 Estrutura do Projeto
+## � Estrutura do Projeto
 
 ```
-├── client/             # Frontend React
+├── client/             # Frontend React + TypeScript
 │   ├── src/
-│   │   ├── components/ # Componentes de UI
+│   │   ├── components/ # Componentes de UI (shadcn/ui)
 │   │   ├── hooks/      # Hooks personalizados
-│   │   ├── lib/        # Utilitários
+│   │   ├── lib/        # Utilitários e configurações
 │   │   └── pages/      # Páginas da aplicação
-└── server/             # Backend Express
-    ├── index.ts        # Ponto de entrada
-    ├── routes.ts       # Rotas da API
-    └── storage.ts      # Camada de armazenamento
+│   └── package.json    # Dependências do cliente
+├── server/             # Backend Express + TypeScript
+│   ├── index.ts        # Ponto de entrada
+│   ├── routes.ts       # Rotas da API REST
+│   ├── auth.ts         # Autenticação e sessões
+│   ├── storage/        # Camadas de armazenamento
+│   └── db-*.ts         # Configurações de banco
+├── shared/             # Schemas e tipos compartilhados
+│   ├── schema.ts       # Schemas Zod
+│   └── drizzle-schema.ts # Schema do banco (Drizzle)
+├── migrations/         # Migrations do banco (Drizzle)
+├── scripts/           # Scripts SQL e utilitários
+├── deploy/            # Arquivos Docker e deploy
+├── docs/              # Documentação técnica
+└── uploads/           # Diretório de uploads
 ```
 
 ## 🛠️ Stack Tecnológica
 
-- **Frontend:** React, TypeScript, Tailwind CSS, shadcn/ui, TanStack Query
-- **Backend:** Node.js, Express
-- **Armazenamento:** Memória (pode ser expandido para banco de dados)
-- **Ferramentas:** Vite, ESBuild, TypeScript
+### Frontend
+- **React 18** com TypeScript
+- **Tailwind CSS** + **shadcn/ui** para componentes
+- **TanStack Query** para gerenciamento de estado
+- **Wouter** para roteamento
+- **Vite** como bundler
 
-## 👥 Guia de Usuário
+### Backend
+- **Node.js** + **Express** com TypeScript
+- **Drizzle ORM** para banco de dados
+- **PostgreSQL** como banco principal
+- **Passport.js** para autenticação
+- **Multer** para upload de arquivos
+- **Zod** para validação
 
-1. **Dashboard:** Página inicial com métricas e gráficos
-2. **Chamados:** Visualize, filtre e gerencie todos os chamados
-3. **Detalhes do Chamado:** Acesse informações completas e atualize o status
-4. **Configurações:** (Em desenvolvimento) Personalize o sistema
+### DevOps
+- **Docker** + **Docker Compose**
+- **ESBuild** para build de produção
+- **Drizzle Kit** para migrations
 
-## 🧩 Expandindo o Sistema
+## 📱 Funcionalidades
 
-Para adicionar novas funcionalidades ao sistema:
+### 🎯 Sistema de Chamados
+- ✅ Criação e gerenciamento de tickets
+- ✅ Sistema de status (aberto, em andamento, resolvido, fechado)
+- ✅ Prioridades e categorias
+- ✅ Atribuição para agentes
+- ✅ Timeline de interações
+- ✅ Anexos de arquivos
 
-1. **Novas Páginas:** Adicione arquivos em `client/src/pages/` e registre no roteador
-2. **Componentes UI:** Explore os componentes disponíveis em `client/src/components/ui/`
-3. **API:** Expanda as rotas em `server/routes.ts` e implemente novos métodos em `server/storage.ts`
+### 👥 Gerenciamento de Usuários
+- ✅ Agentes e solicitantes
+- ✅ Diferentes níveis de permissão
+- ✅ Autenticação com sessões
 
-## 📞 Suporte
+### 📊 Dashboard e Relatórios
+- ✅ Métricas em tempo real
+- ✅ Gráficos de volume e categorias
+- ✅ Estatísticas de performance
 
-Em caso de dúvidas ou problemas, por favor abra uma issue neste repositório ou entre em contato com o administrador do sistema.
+### 🎨 Interface
+- ✅ Design responsivo e moderno
+- ✅ Tema claro/escuro
+- ✅ Componentes acessíveis
+- ✅ Visualização em Kanban
+
+### ⚙️ Configurações
+- ✅ Sistema de configurações completo
+- ✅ Personalizações de tema
+- ✅ Configurações de notificações
+- ✅ Integrações (Slack, Discord, etc.)
+
+## 🚧 Roadmap
+
+- [ ] Base de conhecimento
+- [ ] Relatórios avançados
+- [ ] Notificações em tempo real (WebSocket)
+- [ ] API pública
+- [ ] Aplicativo móvel
+
+## 📚 Documentação
+
+Consulte a pasta `docs/` para documentação técnica detalhada:
+- `KANBAN_DRAG_DROP.md` - Sistema de arrastar e soltar
+- `THEME_SYSTEM.md` - Sistema de temas
+- `DOCKER-README.md` - Configuração Docker
+
+## 🤝 Contribuindo
+
+1. Faça um fork do projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
 
 ---
 
