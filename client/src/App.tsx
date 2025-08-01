@@ -19,6 +19,9 @@ import Reports from "@/pages/reports";
 import Knowledge from "@/pages/knowledge";
 import AuthPage from "@/pages/auth-page";
 import ProfilePage from "@/pages/profile-page";
+import SlaAgentDashboard from "@/pages/sla-agent-dashboard";
+import SlaManagerDashboard from "@/pages/sla-manager-dashboard";
+import SlaAdminDashboard from "@/pages/sla-admin-dashboard";
 
 function Router() {
   return (
@@ -34,6 +37,11 @@ function Router() {
       <ProtectedRoute path="/reports" component={Reports} />
       <ProtectedRoute path="/knowledge" component={Knowledge} />
       <ProtectedRoute path="/profile" component={ProfilePage} />
+      
+      {/* Rotas SLA */}
+      <ProtectedRoute path="/sla/agent" component={SlaAgentDashboard} />
+      <ProtectedRoute path="/sla/manager" component={SlaManagerDashboard} />
+      <ProtectedRoute path="/sla/admin" component={SlaAdminDashboard} />
       
       {/* Rota pública de autenticação */}
       <Route path="/auth" component={AuthPage} />

@@ -50,6 +50,9 @@ export const ticketSchema = z.object({
   category: ticketCategorySchema,
   requesterId: z.number(),
   assigneeId: z.number().optional().nullable(),
+  contractId: z.number().optional().nullable(), // Campo para vincular ao contrato
+  responseDueAt: z.date().optional().nullable(), // Prazo para primeira resposta
+  solutionDueAt: z.date().optional().nullable(), // Prazo para solução definitiva
   createdAt: z.date().optional(),
   updatedAt: z.date().optional()
 });
@@ -146,7 +149,7 @@ export const ticketInteractionSchema = z.object({
   type: interactionTypeSchema,
   content: z.string().min(1),
   isInternal: z.boolean().default(false),
-  timeSpent: z.number().min(0).default(0),
+  timeSpent: z.number().min(0).default(0), // Tempo gasto em horas (decimal)
   createdBy: z.number(),
   createdAt: z.date().optional(),
   updatedAt: z.date().optional()

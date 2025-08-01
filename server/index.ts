@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { startSlaMonitoring } from "./jobs/sla-monitor.job";
 
 const app = express();
 app.use(express.json());
@@ -62,5 +63,10 @@ app.use((req, res, next) => {
   const port = 5000;
   server.listen(port, "localhost", () => {
     log(`Servidor rodando em http://localhost:${port}`);
+    
+    // 🚀 Sprint 4: Iniciar monitoramento automático de SLA
+    log(`🤖 Iniciando sistema de monitoramento de SLA...`);
+    startSlaMonitoring();
+    log(`✅ Sistema de monitoramento SLA ativo (verifica a cada 5 minutos)`);
   });
 })();

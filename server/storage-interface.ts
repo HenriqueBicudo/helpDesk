@@ -9,6 +9,40 @@ import {
   type SystemSetting, type InsertSystemSetting, type SettingCategory
 } from "@shared/schema";
 
+// Tipos para Tags
+export interface Tag {
+  id: number;
+  name: string;
+  color: string;
+  createdAt: Date;
+}
+
+export interface InsertTag {
+  name: string;
+  color: string;
+}
+
+// Tipos para Links entre Tickets
+export interface TicketLink {
+  id: number;
+  sourceTicketId: number;
+  targetTicketId: number;
+  linkType: 'related' | 'duplicate' | 'blocks' | 'blocked_by' | 'child' | 'parent';
+  description?: string;
+  createdAt: Date;
+}
+
+export interface InsertTicketLink {
+  sourceTicketId: number;
+  targetTicketId: number;
+  linkType: 'related' | 'duplicate' | 'blocks' | 'blocked_by' | 'child' | 'parent';
+  description?: string;
+}
+
+export interface TicketLinkWithTicket extends TicketLink {
+  targetTicket: Ticket;
+}
+
 // Storage interface
 export interface IStorage {
   // User methods
@@ -81,6 +115,21 @@ export interface IStorage {
   upsertSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting>;
   deleteSystemSetting(key: string): Promise<boolean>;
   bulkUpdateSettings(settings: Record<string, any>, category: SettingCategory): Promise<boolean>;
+  
+  // Tags methods
+  getTags(): Promise<Tag[]>;
+  createTag(tag: InsertTag): Promise<Tag>;
+  deleteTag(id: number): Promise<boolean>;
+  
+  // Ticket Tags methods
+  getTicketTags(ticketId: number): Promise<Tag[]>;
+  addTicketTag(ticketId: number, tagId: number): Promise<void>;
+  removeTicketTag(ticketId: number, tagId: number): Promise<boolean>;
+  
+  // Ticket Links methods
+  getTicketLinks(ticketId: number): Promise<TicketLinkWithTicket[]>;
+  createTicketLink(link: InsertTicketLink): Promise<TicketLink>;
+  removeTicketLink(linkId: number, ticketId: number): Promise<boolean>;
 }
 
 // Import storage implementations

@@ -15,6 +15,9 @@ import {
 import { z } from "zod";
 import { setupAuth } from "./auth";
 import { emailService } from "./email-service";
+import { ContractService } from "./services/contract.service";
+import { contractRoutes } from "./http/routes/contract.routes";
+import { slaRoutes } from "./http/routes/sla.routes";
 
 // Configurar multer para upload de arquivos
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -64,6 +67,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
   app.get(`${apiPrefix}/health`, (req: Request, res: Response) => {
     res.json({ status: 'OK', timestamp: new Date() });
+  });
+
+  // Contract routes (modular)
+  app.use(`${apiPrefix}/contracts`, contractRoutes);
+  
+  // SLA routes (Sprint 4)
+  app.use(`${apiPrefix}/sla`, slaRoutes);
+
+  // Rota específica para contratos ativos de um solicitante (para uso no frontend)
+  app.get(`${apiPrefix}/requesters/:requesterId/contracts`, async (req: Request, res: Response) => {
+    try {
+      const requesterId = Number(req.params.requesterId);
+      
+      if (isNaN(requesterId)) {
+        return res.status(400).json({ message: 'ID do solicitante deve ser um número válido' });
+      }
+      
+      const contractService = new ContractService();
+      const contracts = await contractService.findActiveByRequesterId(requesterId);
+      
+      res.json(contracts);
+    } catch (error) {
+      console.error('Erro ao buscar contratos do solicitante:', error);
+      res.status(500).json({ message: 'Erro ao buscar contratos do solicitante' });
+    }
   });
 
   // User routes
@@ -150,6 +178,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(`${apiPrefix}/tickets`, async (req: Request, res: Response) => {
     try {
       const data = insertTicketSchema.parse(req.body);
+      
+      // Se um contrato foi especificado, validar se está ativo
+      if (data.contractId) {
+        const contractService = new ContractService();
+        const contract = await contractService.findById(data.contractId);
+        
+        if (!contract) {
+          return res.status(400).json({ 
+            message: 'Contrato não encontrado' 
+          });
+        }
+        
+        if (!contract.isActive) {
+          return res.status(400).json({ 
+            message: 'Contrato não está ativo' 
+          });
+        }
+        
+        // Verificar se o contrato pertence ao solicitante do ticket
+        if (contract.requesterId !== data.requesterId) {
+          return res.status(400).json({ 
+            message: 'Contrato não pertence ao solicitante informado' 
+          });
+        }
+      }
+      
       const ticket = await storage.createTicket(data);
       res.status(201).json(ticket);
     } catch (error) {
@@ -208,10 +262,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'status is required and must be a string' });
       }
       
+      // Buscar ticket atual para verificar se tem contrato associado
+      const currentTicket = await storage.getTicket(id);
+      if (!currentTicket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+      
       const ticket = await storage.changeTicketStatus(id, status);
       
       if (!ticket) {
         return res.status(404).json({ message: 'Ticket not found' });
+      }
+      
+      // Se o ticket foi resolvido e tem contrato associado, contabilizar horas
+      if (status === 'resolved' && currentTicket.contractId) {
+        try {
+          // Calcular total de horas gastas nas interações do ticket
+          const interactions = await storage.getTicketInteractions(id);
+          const totalHours = interactions.reduce((total, interaction) => 
+            total + (interaction.timeSpent || 0), 0);
+          
+          if (totalHours > 0) {
+            const contractService = new ContractService();
+            const contract = await contractService.findById(currentTicket.contractId);
+            
+            if (contract) {
+              // Atualizar horas usadas no contrato
+              const currentUsedHours = parseFloat(contract.usedHours || '0');
+              const newUsedHours = currentUsedHours + totalHours;
+              await contractService.update(currentTicket.contractId, {
+                usedHours: newUsedHours.toString()
+              });
+              
+              console.log(`Ticket ${id} resolvido: ${totalHours}h adicionadas ao contrato ${currentTicket.contractId}`);
+            }
+          }
+        } catch (contractError) {
+          // Log do erro mas não falhar a operação principal
+          console.error('Erro ao atualizar horas do contrato:', contractError);
+        }
       }
       
       res.json(ticket);
@@ -599,14 +688,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'status is required and must be a string' });
       }
       
+      // Buscar ticket atual para verificar se tem contrato associado
+      const currentTicket = await storage.getTicket(id);
+      if (!currentTicket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+      
       const ticket = await storage.changeTicketStatus(id, status);
       
       if (!ticket) {
         return res.status(404).json({ message: 'Ticket not found' });
       }
       
-      // Enviar email de notificação se o status for "resolved"
+      // Se o ticket foi resolvido
       if (status === 'resolved') {
+        // Contabilizar horas no contrato se associado
+        if (currentTicket.contractId) {
+          try {
+            // Calcular total de horas gastas nas interações do ticket
+            const interactions = await storage.getTicketInteractions(id);
+            const totalHours = interactions.reduce((total, interaction) => 
+              total + (interaction.timeSpent || 0), 0);
+            
+            if (totalHours > 0) {
+              const contractService = new ContractService();
+              const contract = await contractService.findById(currentTicket.contractId);
+              
+              if (contract) {
+                // Atualizar horas usadas no contrato
+                const currentUsedHours = parseFloat(contract.usedHours || '0');
+                const newUsedHours = currentUsedHours + totalHours;
+                await contractService.update(currentTicket.contractId, {
+                  usedHours: newUsedHours.toString()
+                });
+                
+                console.log(`Ticket ${id} resolvido: ${totalHours}h adicionadas ao contrato ${currentTicket.contractId}`);
+              }
+            }
+          } catch (contractError) {
+            // Log do erro mas não falhar a operação principal
+            console.error('Erro ao atualizar horas do contrato:', contractError);
+          }
+        }
+        
+        // Enviar email de notificação
         try {
           const requester = await storage.getRequester(ticket.requesterId);
           if (requester) {
@@ -750,6 +875,166 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error deleting setting:', error);
       res.status(500).json({ message: 'An error occurred deleting the setting' });
+    }
+  });
+
+  // Rotas para Tags
+  app.get(`${apiPrefix}/tags`, async (req: Request, res: Response) => {
+    try {
+      const tags = await storage.getTags();
+      res.json(tags);
+    } catch (error) {
+      console.error('Error getting tags:', error);
+      res.status(500).json({ message: 'An error occurred getting tags' });
+    }
+  });
+
+  app.post(`${apiPrefix}/tags`, async (req: Request, res: Response) => {
+    try {
+      const { name, color } = req.body;
+      
+      if (!name || !color) {
+        return res.status(400).json({ message: 'name and color are required' });
+      }
+      
+      const tag = await storage.createTag({ name, color });
+      res.status(201).json(tag);
+    } catch (error) {
+      console.error('Error creating tag:', error);
+      res.status(500).json({ message: 'An error occurred creating the tag' });
+    }
+  });
+
+  app.delete(`${apiPrefix}/tags/:id`, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      const success = await storage.deleteTag(id);
+      
+      if (!success) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+      
+      res.status(204).end();
+    } catch (error) {
+      console.error('Error deleting tag:', error);
+      res.status(500).json({ message: 'An error occurred deleting the tag' });
+    }
+  });
+
+  // Rotas para Tags de Tickets
+  app.get(`${apiPrefix}/tickets/:id/tags`, async (req: Request, res: Response) => {
+    try {
+      const ticketId = Number(req.params.id);
+      const tags = await storage.getTicketTags(ticketId);
+      res.json(tags);
+    } catch (error) {
+      console.error('Error getting ticket tags:', error);
+      res.status(500).json({ message: 'An error occurred getting ticket tags' });
+    }
+  });
+
+  app.post(`${apiPrefix}/tickets/:id/tags`, async (req: Request, res: Response) => {
+    try {
+      const ticketId = Number(req.params.id);
+      const { tagId } = req.body;
+      
+      if (!tagId) {
+        return res.status(400).json({ message: 'tagId is required' });
+      }
+      
+      await storage.addTicketTag(ticketId, tagId);
+      res.status(201).json({ message: 'Tag added to ticket' });
+    } catch (error) {
+      console.error('Error adding tag to ticket:', error);
+      res.status(500).json({ message: 'An error occurred adding tag to ticket' });
+    }
+  });
+
+  app.delete(`${apiPrefix}/tickets/:id/tags/:tagId`, async (req: Request, res: Response) => {
+    try {
+      const ticketId = Number(req.params.id);
+      const tagId = Number(req.params.tagId);
+      
+      const success = await storage.removeTicketTag(ticketId, tagId);
+      
+      if (!success) {
+        return res.status(404).json({ message: 'Tag not found on ticket' });
+      }
+      
+      res.status(204).end();
+    } catch (error) {
+      console.error('Error removing tag from ticket:', error);
+      res.status(500).json({ message: 'An error occurred removing tag from ticket' });
+    }
+  });
+
+  // Rotas para Links entre Tickets
+  app.get(`${apiPrefix}/tickets/:id/links`, async (req: Request, res: Response) => {
+    try {
+      const ticketId = Number(req.params.id);
+      const links = await storage.getTicketLinks(ticketId);
+      res.json(links);
+    } catch (error) {
+      console.error('Error getting ticket links:', error);
+      res.status(500).json({ message: 'An error occurred getting ticket links' });
+    }
+  });
+
+  app.post(`${apiPrefix}/tickets/:id/links`, async (req: Request, res: Response) => {
+    try {
+      const sourceTicketId = Number(req.params.id);
+      const { targetTicketId, linkType, description } = req.body;
+      
+      if (!targetTicketId || !linkType) {
+        return res.status(400).json({ message: 'targetTicketId and linkType are required' });
+      }
+      
+      // Verificar se os tickets existem
+      const sourceTicket = await storage.getTicket(sourceTicketId);
+      const targetTicket = await storage.getTicket(targetTicketId);
+      
+      if (!sourceTicket) {
+        return res.status(404).json({ message: 'Source ticket not found' });
+      }
+      
+      if (!targetTicket) {
+        return res.status(404).json({ message: 'Target ticket not found' });
+      }
+      
+      // Evitar auto-link
+      if (sourceTicketId === targetTicketId) {
+        return res.status(400).json({ message: 'Cannot link ticket to itself' });
+      }
+      
+      const link = await storage.createTicketLink({
+        sourceTicketId,
+        targetTicketId,
+        linkType,
+        description
+      });
+      
+      res.status(201).json(link);
+    } catch (error) {
+      console.error('Error creating ticket link:', error);
+      res.status(500).json({ message: 'An error occurred creating ticket link' });
+    }
+  });
+
+  app.delete(`${apiPrefix}/tickets/:id/links/:linkId`, async (req: Request, res: Response) => {
+    try {
+      const ticketId = Number(req.params.id);
+      const linkId = Number(req.params.linkId);
+      
+      const success = await storage.removeTicketLink(linkId, ticketId);
+      
+      if (!success) {
+        return res.status(404).json({ message: 'Link not found' });
+      }
+      
+      res.status(204).end();
+    } catch (error) {
+      console.error('Error removing ticket link:', error);
+      res.status(500).json({ message: 'An error occurred removing ticket link' });
     }
   });
 

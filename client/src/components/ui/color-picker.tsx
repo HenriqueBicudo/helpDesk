@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,18 +36,27 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   const [inputValue, setInputValue] = useState(color);
   const [isOpen, setIsOpen] = useState(false);
 
-  const handleInputChange = (value: string) => {
+  // Sincronizar inputValue com color prop apenas quando color muda externamente
+  useEffect(() => {
+    setInputValue(color);
+  }, [color]);
+
+  const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
     if (/^#[0-9A-F]{6}$/i.test(value)) {
       onChange(value);
     }
-  };
+  }, [onChange]);
 
-  const handlePresetClick = (presetColor: string) => {
+  const handlePresetClick = useCallback((presetColor: string) => {
     setInputValue(presetColor);
     onChange(presetColor);
     setIsOpen(false);
-  };
+  }, [onChange]);
+
+  const togglePopover = useCallback(() => {
+    setIsOpen(prev => !prev);
+  }, []);
 
   return (
     <div className="space-y-2">
@@ -57,7 +66,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
           <Button
             variant="outline"
             className="w-full justify-start bg-card text-foreground border-border hover:bg-muted"
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={togglePopover}
           >
             <div
               className="w-4 h-4 rounded mr-2 border border-border"
