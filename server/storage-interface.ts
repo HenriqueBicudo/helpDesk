@@ -43,13 +43,79 @@ export interface TicketLinkWithTicket extends TicketLink {
   targetTicket: Ticket;
 }
 
+// Tipos para Empresas (Companies)
+export interface Company {
+  id: number;
+  name: string;
+  cnpj?: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  isActive: boolean;
+  hasActiveContract?: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface InsertCompany {
+  name: string;
+  cnpj?: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  isActive?: boolean;
+}
+
+// Tipos para Equipes (Teams)
+export interface Team {
+  id: number;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  members?: User[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface InsertTeam {
+  name: string;
+  description?: string;
+  isActive?: boolean;
+}
+
 // Storage interface
 export interface IStorage {
   // User methods
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserById(id: number): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, updates: Partial<User>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
+  getUsersByCompany(company: string): Promise<User[]>;
+  getUsersByRole(role: string): Promise<User[]>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  deleteUser(id: number): Promise<boolean>;
+  
+  // Company methods
+  getAllCompanies(): Promise<Company[]>;
+  getCompany(id: number): Promise<Company | undefined>;
+  getCompanyById(id: number): Promise<Company | undefined>;
+  getCompanyByEmail(email: string): Promise<Company | undefined>;
+  createCompany(company: InsertCompany): Promise<Company>;
+  updateCompany(id: number, updates: Partial<Company>): Promise<Company | undefined>;
+  deleteCompany(id: number): Promise<boolean>;
+  
+  // Team methods
+  getAllTeams(): Promise<Team[]>;
+  getTeam(id: number): Promise<Team | undefined>;
+  createTeam(team: InsertTeam): Promise<Team>;
+  updateTeam(id: number, updates: Partial<Team>): Promise<Team | undefined>;
+  deleteTeam(id: number): Promise<boolean>;
+  getTeamMembers(teamId: number): Promise<User[]>;
+  addTeamMember(teamId: number, userId: number): Promise<void>;
+  removeTeamMember(teamId: number, userId: number): Promise<void>;
+  getAvailableAgents(): Promise<User[]>;
   
   // Requester methods
   getRequester(id: number): Promise<Requester | undefined>;
@@ -65,6 +131,8 @@ export interface IStorage {
   updateTicket(id: number, updates: Partial<Ticket>): Promise<Ticket | undefined>;
   getAllTickets(): Promise<Ticket[]>;
   getAllTicketsWithRelations(): Promise<TicketWithRelations[]>;
+  getTicketsByCompany(company: string): Promise<TicketWithRelations[]>;
+  getTicketsByUserCompany(userId: number): Promise<TicketWithRelations[]>;
   getTicketsByStatus(status: string): Promise<Ticket[]>;
   getTicketsByPriority(priority: string): Promise<Ticket[]>;
   getTicketsByCategory(category: string): Promise<Ticket[]>;

@@ -1,5 +1,6 @@
 import { db, testConnection, closeConnection } from './server/db-drizzle';
 import { users, tickets, requesters, systemSettings, emailTemplates } from './shared/drizzle-schema';
+import { sql } from 'drizzle-orm';
 
 async function testDatabase() {
   console.log('🔍 Testando conexão com o banco de dados...\n');
@@ -12,8 +13,21 @@ async function testDatabase() {
   }
 
   try {
+    // Adicionar coluna has_active_contract se não existir
+    console.log('🔧 Verificando estrutura da tabela companies...\n');
+    
+    try {
+      await db.execute(sql`
+        ALTER TABLE companies 
+        ADD COLUMN IF NOT EXISTS has_active_contract BOOLEAN NOT NULL DEFAULT false
+      `);
+      console.log('✅ Coluna has_active_contract adicionada/verificada');
+    } catch (err) {
+      console.log('ℹ️ Coluna has_active_contract já existe ou erro:', err.message);
+    }
+
     // Teste de consulta nas principais tabelas
-    console.log('📋 Testando consultas nas tabelas...\n');
+    console.log('\n📋 Testando consultas nas tabelas...\n');
 
     // Contar registros nas tabelas principais
     const userCount = await db.select().from(users).then(rows => rows.length);

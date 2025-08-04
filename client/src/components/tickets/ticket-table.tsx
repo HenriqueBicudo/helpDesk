@@ -14,6 +14,8 @@ import { ArrowUpDown, MoreHorizontal } from 'lucide-react';
 import { TicketWithRelations } from '@shared/schema';
 import { TicketStatusBadge } from './ticket-status-badge';
 import { TicketPriorityBadge } from './ticket-priority-badge';
+import { SlaStatusBadge } from './sla-status-badge';
+import { SlaDueWarning } from './sla-due-warning';
 import { formatDate } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -70,8 +72,8 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           bVal = b.priority;
           break;
         case 'createdAt':
-          aVal = new Date(a.createdAt).getTime();
-          bVal = new Date(b.createdAt).getTime();
+          aVal = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          bVal = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           break;
         case 'assignee':
           aVal = a.assignee?.fullName || '';
@@ -87,7 +89,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
     });
   }, [tickets, sortField, sortDirection]);
   
-  const renderSortIcon = (field: string) => (
+  const renderSortIcon = (_field: string) => (
     <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
   );
   
@@ -143,6 +145,9 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
               Prioridade {renderSortIcon('priority')}
             </button>
           </TableHead>
+          <TableHead className="text-xs font-medium text-muted-foreground uppercase">
+            SLA
+          </TableHead>
           <TableHead>
             <button 
               className="flex items-center text-xs font-medium text-muted-foreground uppercase"
@@ -168,7 +173,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
       <TableBody>
         {sortedTickets.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
               Nenhum chamado encontrado
             </TableCell>
           </TableRow>
@@ -180,7 +185,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
               onClick={() => setLocation(`/tickets/${ticket.id}`)}
             >
               <TableCell className="font-medium text-foreground">
-                #{ticket.id.toString().padStart(6, '0')}
+                #{ticket.id?.toString().padStart(6, '0') || 'N/A'}
               </TableCell>
               <TableCell className="text-foreground">
                 {ticket.subject}
@@ -208,8 +213,24 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
               <TableCell>
                 <TicketPriorityBadge priority={ticket.priority} />
               </TableCell>
+              <TableCell>
+                <div className="space-y-1">
+                  <SlaStatusBadge 
+                    responseDueAt={ticket.responseDueAt || undefined}
+                    solutionDueAt={ticket.solutionDueAt || undefined}
+                    status={ticket.status}
+                    hasFirstResponse={false} // TODO: buscar se há primeira resposta
+                  />
+                  <SlaDueWarning
+                    responseDueAt={ticket.responseDueAt || undefined}
+                    solutionDueAt={ticket.solutionDueAt || undefined}
+                    hasFirstResponse={false}
+                    compact={true}
+                  />
+                </div>
+              </TableCell>
               <TableCell className="text-sm text-muted-foreground">
-                {formatDate(ticket.createdAt)}
+                {ticket.createdAt ? formatDate(ticket.createdAt) : 'N/A'}
               </TableCell>
               <TableCell>
                 {ticket.assignee ? (

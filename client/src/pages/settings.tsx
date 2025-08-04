@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useTheme as useDarkTheme } from '@/hooks/use-dark-theme';
+import { useTheme as useDarkTheme } from 'next-themes';
 import { ThemeColorEditor } from '@/components/theme/theme-color-editor';
 import { Loader2, Save, Shield, Zap, Palette, Globe, Settings, Monitor, Sun, Moon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';

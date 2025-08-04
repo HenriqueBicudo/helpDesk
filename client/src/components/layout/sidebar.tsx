@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { cn, getInitials } from '@/lib/utils';
-import { MessageCircleCode, ChevronRight, LayoutDashboard, Ticket, Users, UserCog, Settings, FileBarChart, Database, User } from 'lucide-react';
+import { MessageCircleCode, ChevronRight, LayoutDashboard, Ticket, Users, UserCog, Settings, FileBarChart, Database, User, Shield } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/use-auth';
@@ -154,6 +154,17 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           </SidebarLink>
           
           <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Gerenciamento</div>
+          
+          {/* Acessos - apenas para administradores */}
+          {user?.role === 'admin' && (
+            <SidebarLink 
+              href="/access" 
+              icon={<Shield className="mr-3 h-5 w-5" />} 
+              active={location === '/access'}
+            >
+              Acessos
+            </SidebarLink>
+          )}
           
           <SidebarLink 
             href="/settings" 

@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+// import { registerRoutesSimple } from "./routes-simple";
 import { setupVite, serveStatic, log } from "./vite";
 import { startSlaMonitoring } from "./jobs/sla-monitor.job";
 
@@ -52,7 +53,8 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
-    await setupVite(app, server);
+    // await setupVite(app, server); // Temporariamente desabilitado devido a conflito com path-to-regexp
+    log('Frontend development mode: acesse http://localhost:3000 para o cliente Vite separado');
   } else {
     serveStatic(app);
   }

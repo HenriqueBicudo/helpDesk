@@ -14,6 +14,20 @@ export const ticketStatusSchema = z.enum(TICKET_STATUS);
 export const ticketPrioritySchema = z.enum(TICKET_PRIORITY);
 export const ticketCategorySchema = z.enum(TICKET_CATEGORY);
 
+// Tipos de roles do sistema
+export const USER_ROLES = [
+  'admin',           // Administrador total do sistema
+  'helpdesk_agent',  // Agente da empresa de helpdesk (acesso a todos os tickets)
+  'helpdesk_manager',// Gerente da empresa de helpdesk (acesso total + configurações)
+  'client_manager',  // Gestor da empresa cliente (acesso aos tickets da sua empresa)
+  'client_user'      // Usuário padrão da empresa cliente (acesso limitado aos seus tickets)
+] as const;
+
+export type UserRole = typeof USER_ROLES[number];
+
+// Validador para roles
+export const userRoleSchema = z.enum(USER_ROLES);
+
 // Esquema de usuário para validação com Zod
 export const userSchema = z.object({
   id: z.number().optional(),
@@ -21,8 +35,10 @@ export const userSchema = z.object({
   password: z.string().min(6),
   fullName: z.string().min(3),
   email: z.string().email(),
-  role: z.string().default('agent'),
+  role: userRoleSchema.default('client_user'),
+  company: z.string().nullable().optional(), // Empresa do usuário (para usuários clientes)
   avatarInitials: z.string().nullable().optional(),
+  isActive: z.boolean().default(true),
   createdAt: z.date().optional()
 });
 
@@ -50,7 +66,7 @@ export const ticketSchema = z.object({
   category: ticketCategorySchema,
   requesterId: z.number(),
   assigneeId: z.number().optional().nullable(),
-  contractId: z.number().optional().nullable(), // Campo para vincular ao contrato
+  contractId: z.string().optional().nullable(), // Campo para vincular ao contrato (UUID)
   responseDueAt: z.date().optional().nullable(), // Prazo para primeira resposta
   solutionDueAt: z.date().optional().nullable(), // Prazo para solução definitiva
   createdAt: z.date().optional(),

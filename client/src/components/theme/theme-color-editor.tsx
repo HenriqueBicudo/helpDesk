@@ -137,6 +137,36 @@ export const ThemeColorEditor: React.FC = () => {
     document.documentElement.style.setProperty(`--${name}`, hslValue);
   };
 
+  // Função para salvar tema no servidor
+  const saveThemeToServer = async (lightTheme: ThemeColors, darkTheme: ThemeColors, themeId: string) => {
+    try {
+      const themeData = {
+        general: {
+          themeId,
+          lightTheme: JSON.stringify(lightTheme),
+          darkTheme: JSON.stringify(darkTheme),
+          primaryColor: lightTheme.primary,
+          secondaryColor: lightTheme.secondary,
+          accentColor: lightTheme.accent,
+        }
+      };
+
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(themeData),
+      });
+
+      if (!response.ok) {
+        console.warn('Failed to save theme to server:', response.statusText);
+      }
+    } catch (error) {
+      console.warn('Error saving theme to server:', error);
+    }
+  };
+
   const handleColorChange = (theme: 'light' | 'dark', colorKey: keyof ThemeColors, value: string) => {
     const currentColors = theme === 'light' ? lightColors : darkColors;
     const newColors = { ...currentColors, [colorKey]: value };
@@ -161,6 +191,11 @@ export const ThemeColorEditor: React.FC = () => {
       // Marcar como tema personalizado
       setCurrentTheme('custom');
       localStorage.setItem('current-theme-id', 'custom');
+      
+      // Salvar no servidor também (usar as cores atualizadas)
+      const finalLightColors = theme === 'light' ? newColors : lightColors;
+      const finalDarkColors = theme === 'dark' ? newColors : darkColors;
+      saveThemeToServer(finalLightColors, finalDarkColors, 'custom');
     });
   };
 
@@ -184,6 +219,9 @@ export const ThemeColorEditor: React.FC = () => {
     if (themeId) {
       setCurrentTheme(themeId);
       localStorage.setItem('current-theme-id', themeId);
+      
+      // Salvar no servidor
+      saveThemeToServer(lightTheme, darkTheme, themeId);
     }
   };
 
@@ -209,6 +247,11 @@ export const ThemeColorEditor: React.FC = () => {
     // Resetar para tema padrão
     setCurrentTheme('default');
     localStorage.setItem('current-theme-id', 'default');
+    
+    // Salvar tema padrão no servidor
+    const finalLightColors = theme === 'light' ? defaultColors : lightColors;
+    const finalDarkColors = theme === 'dark' ? defaultColors : darkColors;
+    saveThemeToServer(finalLightColors, finalDarkColors, 'default');
   };
 
   const exportTheme = (theme: 'light' | 'dark') => {

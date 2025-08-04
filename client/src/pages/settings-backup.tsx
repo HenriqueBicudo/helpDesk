@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useTheme } from '@/hooks/use-theme-provider';
-import { useTheme as useDarkTheme } from '@/hooks/use-dark-theme';
+import { useTheme as useDarkTheme } from 'next-themes';
 import { Loader2, Save, Shield, Zap, Palette, Globe, Settings, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 

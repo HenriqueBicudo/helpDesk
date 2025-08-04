@@ -16,7 +16,7 @@ async function testApiTicketCreation() {
     
     console.log('Dados do ticket:', ticketData);
     
-    const response = await axios.post('http://localhost:5173/api/tickets', ticketData, {
+    const response = await axios.post('http://localhost:5000/api/tickets', ticketData, {
       headers: {
         'Content-Type': 'application/json'
       },

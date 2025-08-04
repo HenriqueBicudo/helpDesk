@@ -78,3 +78,27 @@ export function priorityToColor(priority: string): string {
   };
   return priorityColorMap[priority] || "gray";
 }
+
+export function formatTimeRemaining(milliseconds: number): string {
+  const absMs = Math.abs(milliseconds);
+  const seconds = Math.floor(absMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) {
+    const remainingHours = hours % 24;
+    return days === 1 
+      ? `${days} dia${remainingHours > 0 ? ` e ${remainingHours}h` : ''}` 
+      : `${days} dias${remainingHours > 0 ? ` e ${remainingHours}h` : ''}`;
+  } else if (hours > 0) {
+    const remainingMinutes = minutes % 60;
+    return hours === 1 
+      ? `${hours} hora${remainingMinutes > 0 ? ` e ${remainingMinutes}min` : ''}`
+      : `${hours} horas${remainingMinutes > 0 ? ` e ${remainingMinutes}min` : ''}`;
+  } else if (minutes > 0) {
+    return minutes === 1 ? `${minutes} minuto` : `${minutes} minutos`;
+  } else {
+    return seconds === 1 ? `${seconds} segundo` : `${seconds} segundos`;
+  }
+}

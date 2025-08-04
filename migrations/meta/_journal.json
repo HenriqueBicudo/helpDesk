@@ -29,6 +29,20 @@
       "when": 1754013868145,
       "tag": "0003_ordinary_vampiro",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1754186104574,
+      "tag": "0004_ambitious_the_anarchist",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1754282960138,
+      "tag": "0005_tan_rocket_racer",
+      "breakpoints": true
     }
   ]
 }

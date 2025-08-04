@@ -2,9 +2,10 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { config } from 'dotenv';
 import * as schema from '@shared/drizzle-schema';
+import path from 'path';
 
-// Carrega as variáveis de ambiente
-config();
+// Carrega as variáveis de ambiente do arquivo .env na raiz do projeto
+config({ path: path.resolve(__dirname, '../.env') });
 
 // URL de conexão PostgreSQL
 const DATABASE_URL = process.env.DATABASE_URL;

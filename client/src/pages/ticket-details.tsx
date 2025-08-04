@@ -9,6 +9,7 @@ import { TicketTimeline } from '@/components/tickets/ticket-timeline';
 import { TicketTags } from '@/components/tickets/ticket-tags';
 import { TicketLinks } from '@/components/tickets/ticket-links';
 import { TicketActions } from '@/components/tickets/ticket-actions';
+import { SlaIndicators } from '@/components/tickets/sla-indicators';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -284,6 +285,20 @@ export default function TicketDetails() {
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* Indicadores de SLA */}
+            <SlaIndicators 
+              ticket={{
+                id: ticket.id!,
+                status: ticket.status,
+                priority: ticket.priority,
+                createdAt: ticket.createdAt,
+                responseDueAt: ticket.responseDueAt || undefined,
+                solutionDueAt: ticket.solutionDueAt || undefined,
+                updatedAt: ticket.updatedAt
+              }}
+              hasFirstResponse={interactions.some(i => !i.isInternal && i.type === 'comment')}
+            />
+
             {/* Informações do Cliente */}
             <Card>
               <CardHeader>

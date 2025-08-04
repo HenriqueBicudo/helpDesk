@@ -27,6 +27,11 @@ export class PostgresStorage implements IStorage {
     return result[0];
   }
 
+  async getUserById(id: number): Promise<User | undefined> {
+    const result = await db.select().from(schema.users).where(eq(schema.users.id, id));
+    return result[0];
+  }
+
   async createUser(user: InsertUser): Promise<User> {
     const result = await db.insert(schema.users).values(user as any).returning();
     return result[0] as User;
@@ -34,6 +39,29 @@ export class PostgresStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(schema.users) as User[];
+  }
+
+  async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
+    const result = await db.update(schema.users)
+      .set(updates as any)
+      .where(eq(schema.users.id, id))
+      .returning();
+    return result[0] as User | undefined;
+  }
+
+  async getUsersByCompany(company: string): Promise<User[]> {
+    return await db.select().from(schema.users)
+      .where(eq(schema.users.company, company)) as User[];
+  }
+
+  async getUsersByRole(role: string): Promise<User[]> {
+    return await db.select().from(schema.users)
+      .where(eq(schema.users.role, role as any)) as User[];
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const result = await db.select().from(schema.users).where(eq(schema.users.email, email));
+    return result[0] as User | undefined;
   }
 
   // Requester methods
@@ -81,6 +109,8 @@ export class PostgresStorage implements IStorage {
         category: schema.tickets.category,
         requesterId: schema.tickets.requesterId,
         assigneeId: schema.tickets.assigneeId,
+        responseDueAt: schema.tickets.responseDueAt,
+        solutionDueAt: schema.tickets.solutionDueAt,
         createdAt: schema.tickets.createdAt,
         updatedAt: schema.tickets.updatedAt,
         requester: {
@@ -119,121 +149,89 @@ export class PostgresStorage implements IStorage {
     } as TicketWithRelations;
   }
 
-  /**
-   * Cria um novo ticket com vinculação automática de contrato e cálculo de SLA
-   * 
-   * Implementa a lógica de auto-vinculação de contratos:
-   * 1. Busca contratos ativos para o requesterId
-   * 2. Filtra por período de vigência (startDate <= hoje <= endDate)
-   * 3. Prioriza o contrato mais recente se houver múltiplos
-   * 4. Vincula automaticamente o contractId ao ticket
+    /**
+   * Cria um novo ticket no banco de dados com as seguintes funcionalidades:
+   * 1. Vincula automaticamente o ticket ao contrato especificado (se informado)
+   * 2. Mantém compatibilidade com tickets sem contrato
+   * 3. Registra timestamp de criação e atualização
+   * 4. Retorna o ticket criado com todas as informações
    * 5. Calcula e aplica os prazos de SLA automaticamente
    * 
    * @param ticket - Dados do ticket a ser criado
    * @returns Promise<Ticket> - Ticket criado com contractId vinculado e SLA calculado (se aplicável)
    */
-  async createTicket(ticket: InsertTicket): Promise<Ticket> {
-    return await db.transaction(async (tx) => {
-      let contractId: number | null = ticket.contractId || null;
-      
-      // Se contractId não foi especificado explicitamente, tenta vinculação automática
-      if (!contractId) {
-        try {
-          const today = new Date();
-          
-          // Busca contratos ativos para o solicitante dentro do período de vigência
-          const activeContracts = await tx
-            .select({
-              id: contracts.id,
-              startDate: contracts.startDate,
-              endDate: contracts.endDate,
-              createdAt: contracts.createdAt
-            })
-            .from(contracts)
-            .where(
-              and(
-                eq(contracts.requesterId, ticket.requesterId),
-                eq(contracts.isActive, true),
-                lte(contracts.startDate, today),
-                // Se endDate é null, contrato não tem data de fim
-                sql`(${contracts.endDate} IS NULL OR ${today} <= ${contracts.endDate})`
-              )
-            )
-            .orderBy(desc(contracts.createdAt)) // Mais recente primeiro
-            .limit(1);
-          
-          // Se encontrou um contrato ativo válido, vincula automaticamente
-          if (activeContracts.length > 0) {
-            contractId = activeContracts[0].id;
-            console.log(`🔗 Contrato ${contractId} vinculado automaticamente ao ticket do solicitante ${ticket.requesterId}`);
-          }
-        } catch (error) {
-          // Log do erro mas não falha a criação do ticket
-          console.error('Erro na vinculação automática de contrato:', error);
-        }
-      }
-      
-      // Cria o ticket com o contractId determinado (pode ser null)
+  async createTicket(data: InsertTicket): Promise<Ticket> {
+    const contractId = data.contractId;
+    
+    // 1. Criar o ticket na transação
+    const finalTicket = await db.transaction(async (tx) => {
       const ticketData = {
-        ...ticket,
-        contractId
+        subject: data.subject,
+        description: data.description,
+        status: data.status || 'open',
+        priority: data.priority || 'medium',
+        category: data.category,
+        requesterId: data.requesterId,
+        assigneeId: data.assigneeId || null,
+        contractId: contractId || null,
+        createdAt: new Date(),
+        updatedAt: new Date()
       };
       
       const result = await tx.insert(schema.tickets).values(ticketData as any).returning();
-      const createdTicket = result[0] as Ticket;
-      
-      // **NOVA FUNCIONALIDADE: Cálculo automático de SLA**
-      // Se o ticket foi vinculado a um contrato, calcular os prazos de SLA
-      if (contractId && createdTicket.id) {
-        try {
-          console.log(`🎯 Iniciando cálculo de SLA para ticket ${createdTicket.id} com contrato ${contractId}`);
-          
-          // Usar o serviço SLA Engine para calcular os prazos
-          const deadlines = await slaEngineService.calculateDeadlines(createdTicket.id);
-          
-          if (deadlines) {
-            // Atualizar o ticket com os prazos calculados
-            const updatedResult = await tx
-              .update(schema.tickets)
-              .set({
-                responseDueAt: deadlines.responseDueAt,
-                solutionDueAt: deadlines.solutionDueAt,
-                updatedAt: new Date()
-              })
-              .where(eq(schema.tickets.id, createdTicket.id))
-              .returning();
-            
-            if (updatedResult.length > 0) {
-              console.log(`✅ Prazos SLA aplicados ao ticket ${createdTicket.id}`);
-              console.log(`   📞 Resposta até: ${deadlines.responseDueAt.toLocaleString('pt-BR')}`);
-              console.log(`   🔧 Solução até: ${deadlines.solutionDueAt.toLocaleString('pt-BR')}`);
-              
-              // Retornar o ticket com os prazos atualizados
-              return {
-                ...createdTicket,
-                responseDueAt: deadlines.responseDueAt,
-                solutionDueAt: deadlines.solutionDueAt
-              };
-            }
-          } else {
-            console.log(`⚠️ Não foi possível calcular SLA para ticket ${createdTicket.id} (dados insuficientes)`);
-          }
-        } catch (slaError) {
-          // Log do erro de SLA mas não falha a criação do ticket
-          console.error(`❌ Erro no cálculo de SLA para ticket ${createdTicket.id}:`, slaError);
-          // Ticket é criado mesmo sem SLA
-        }
-      } else {
-        if (!contractId) {
-          console.log(`ℹ️ Ticket ${createdTicket.id} criado sem contrato - SLA não aplicável`);
-        }
-        if (!createdTicket.id) {
-          console.log(`⚠️ Ticket criado sem ID - não é possível calcular SLA`);
-        }
-      }
-      
-      return createdTicket;
+      return result[0] as Ticket;
     });
+
+    // 2. Calcular SLA APÓS o commit da transação
+    if (contractId && finalTicket.id) {
+      try {
+        console.log(`🎯 Iniciando cálculo de SLA para ticket ${finalTicket.id} com contrato ${contractId}`);
+        
+        // Usar o serviço SLA Engine para calcular os prazos
+        const deadlines = await slaEngineService.calculateDeadlines(finalTicket.id);
+        
+        if (deadlines) {
+          // Atualizar o ticket com os prazos calculados
+          const updatedResult = await db
+            .update(schema.tickets)
+            .set({
+              responseDueAt: deadlines.responseDueAt,
+              solutionDueAt: deadlines.solutionDueAt,
+              updatedAt: new Date()
+            })
+            .where(eq(schema.tickets.id, finalTicket.id))
+            .returning();
+          
+          if (updatedResult.length > 0) {
+            console.log(`✅ Prazos SLA aplicados ao ticket ${finalTicket.id}`);
+            console.log(`   📞 Resposta até: ${deadlines.responseDueAt.toLocaleString('pt-BR')}`);
+            console.log(`   🔧 Solução até: ${deadlines.solutionDueAt.toLocaleString('pt-BR')}`);
+            
+            // Retornar o ticket com os prazos atualizados
+            return {
+              ...finalTicket,
+              responseDueAt: deadlines.responseDueAt,
+              solutionDueAt: deadlines.solutionDueAt
+            };
+          }
+        } else {
+          console.log(`⚠️ Não foi possível calcular SLA para ticket ${finalTicket.id} (dados insuficientes)`);
+        }
+      } catch (slaError) {
+        // Log do erro de SLA mas não falha a criação do ticket
+        console.error(`❌ Erro no cálculo de SLA para ticket ${finalTicket.id}:`, slaError);
+        // Ticket é criado mesmo sem SLA
+      }
+    } else {
+      if (!contractId) {
+        console.log(`ℹ️ Ticket ${finalTicket.id} criado sem contrato - SLA não aplicável`);
+      }
+      if (!finalTicket.id) {
+        console.log(`⚠️ Ticket criado sem ID - não é possível calcular SLA`);
+      }
+    }
+    
+    return finalTicket;
   }
 
   async updateTicket(id: number, updates: Partial<Ticket>): Promise<Ticket | undefined> {
@@ -259,6 +257,8 @@ export class PostgresStorage implements IStorage {
         category: schema.tickets.category,
         requesterId: schema.tickets.requesterId,
         assigneeId: schema.tickets.assigneeId,
+        responseDueAt: schema.tickets.responseDueAt,
+        solutionDueAt: schema.tickets.solutionDueAt,
         createdAt: schema.tickets.createdAt,
         updatedAt: schema.tickets.updatedAt,
         requester: {
@@ -320,6 +320,68 @@ export class PostgresStorage implements IStorage {
       .orderBy(desc(schema.tickets.createdAt)) as Ticket[];
   }
 
+  async getTicketsByCompany(company: string): Promise<TicketWithRelations[]> {
+    const result = await db
+      .select({
+        id: schema.tickets.id,
+        subject: schema.tickets.subject,
+        description: schema.tickets.description,
+        status: schema.tickets.status,
+        priority: schema.tickets.priority,
+        category: schema.tickets.category,
+        requesterId: schema.tickets.requesterId,
+        assigneeId: schema.tickets.assigneeId,
+        responseDueAt: schema.tickets.responseDueAt,
+        solutionDueAt: schema.tickets.solutionDueAt,
+        createdAt: schema.tickets.createdAt,
+        updatedAt: schema.tickets.updatedAt,
+        requester: {
+          id: schema.requesters.id,
+          fullName: schema.requesters.fullName,
+          email: schema.requesters.email,
+          company: schema.requesters.company,
+          avatarInitials: schema.requesters.avatarInitials,
+          planType: schema.requesters.planType,
+          monthlyHours: schema.requesters.monthlyHours,
+          usedHours: schema.requesters.usedHours,
+          resetDate: schema.requesters.resetDate,
+          createdAt: schema.requesters.createdAt,
+        },
+        assignee: {
+          id: schema.users.id,
+          username: schema.users.username,
+          fullName: schema.users.fullName,
+          email: schema.users.email,
+          role: schema.users.role,
+          company: schema.users.company,
+          avatarInitials: schema.users.avatarInitials,
+          isActive: schema.users.isActive,
+          createdAt: schema.users.createdAt,
+        }
+      })
+      .from(schema.tickets)
+      .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
+      .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .where(eq(schema.requesters.company, company))
+      .orderBy(desc(schema.tickets.createdAt));
+
+    return result.map(ticket => ({
+      ...ticket,
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined
+    })) as TicketWithRelations[];
+  }
+
+  async getTicketsByUserCompany(userId: number): Promise<TicketWithRelations[]> {
+    // Primeiro buscar a empresa do usuário
+    const user = await this.getUser(userId);
+    if (!user?.company) {
+      return [];
+    }
+    
+    // Depois buscar tickets da empresa
+    return this.getTicketsByCompany(user.company);
+  }
+
   async assignTicket(ticketId: number, assigneeId: number): Promise<Ticket | undefined> {
     const result = await db.update(schema.tickets)
       .set({ assigneeId, updatedAt: new Date() })
@@ -343,29 +405,37 @@ export class PostgresStorage implements IStorage {
     resolvedToday: number;
     averageResponseTime: string;
   }> {
-    const totalTickets = await db.select({ count: count() }).from(schema.tickets);
-    
-    const openTickets = await db
-      .select({ count: count() })
-      .from(schema.tickets)
-      .where(eq(schema.tickets.status, 'open'));
+    try {
+      const totalTickets = await db.select({ count: count() }).from(schema.tickets);
+      
+      const openTickets = await db
+        .select({ count: count() })
+        .from(schema.tickets)
+        .where(eq(schema.tickets.status, 'open'));
 
-    // Tickets resolvidos hoje
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const resolvedToday = await db
-      .select({ count: count() })
-      .from(schema.tickets)
-      .where(
-        sql`${schema.tickets.status} = 'resolved' AND ${schema.tickets.updatedAt} >= ${today}`
-      );
+      // Tickets resolvidos hoje - usando comparação mais simples
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const resolvedToday = await db
+        .select({ count: count() })
+        .from(schema.tickets)
+        .where(
+          and(
+            eq(schema.tickets.status, 'resolved'),
+            gte(schema.tickets.updatedAt, today)
+          )
+        );
 
-    return {
-      totalTickets: totalTickets[0].count,
-      openTickets: openTickets[0].count,
-      resolvedToday: resolvedToday[0].count,
-      averageResponseTime: '2.5 horas' // Placeholder - calcular tempo real se necessário
-    };
+      return {
+        totalTickets: totalTickets[0].count,
+        openTickets: openTickets[0].count,
+        resolvedToday: resolvedToday[0].count,
+        averageResponseTime: '2.5 horas' // Placeholder - calcular tempo real se necessário
+      };
+    } catch (error) {
+      console.error('❌ Erro em getTicketStatistics:', error);
+      throw error;
+    }
   }
 
   async getTicketCategoriesCount(): Promise<{category: string; count: number}[]> {
@@ -855,6 +925,232 @@ export class PostgresStorage implements IStorage {
     } catch (error) {
       console.error('Error removing ticket link:', error);
       return false;
+    }
+  }
+
+  // Company methods
+  async getAllCompanies(): Promise<any[]> {
+    try {
+      return await db.select().from(schema.companies);
+    } catch (error) {
+      console.error('Error getting companies:', error);
+      return [];
+    }
+  }
+
+  async getCompany(id: number): Promise<any | undefined> {
+    try {
+      const result = await db.select().from(schema.companies).where(eq(schema.companies.id, id));
+      return result[0];
+    } catch (error) {
+      console.error('Error getting company:', error);
+      return undefined;
+    }
+  }
+
+  async getCompanyByEmail(email: string): Promise<any | undefined> {
+    try {
+      const result = await db.select().from(schema.companies).where(eq(schema.companies.email, email));
+      return result[0];
+    } catch (error) {
+      console.error('Error getting company by email:', error);
+      return undefined;
+    }
+  }
+
+  async createCompany(company: any): Promise<any> {
+    try {
+      const result = await db.insert(schema.companies).values(company).returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating company:', error);
+      throw error;
+    }
+  }
+
+  async updateCompany(id: number, updates: any): Promise<any | undefined> {
+    try {
+      const result = await db.update(schema.companies)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(schema.companies.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating company:', error);
+      return undefined;
+    }
+  }
+
+  // Team methods
+  async getAllTeams(): Promise<any[]> {
+    try {
+      // Buscar equipes
+      const teams = await db.select().from(schema.teams);
+      
+      // Para cada equipe, buscar seus membros
+      const teamsWithMembers = await Promise.all(
+        teams.map(async (team) => {
+          const members = await db
+            .select({
+              id: schema.users.id,
+              name: schema.users.fullName,
+              email: schema.users.email,
+              role: schema.users.role
+            })
+            .from(schema.users)
+            .where(eq(schema.users.teamId, team.id));
+          
+          return {
+            ...team,
+            members
+          };
+        })
+      );
+      
+      return teamsWithMembers;
+    } catch (error) {
+      console.error('Error getting teams:', error);
+      return [];
+    }
+  }
+
+  async getTeam(id: number): Promise<any | undefined> {
+    try {
+      const result = await db.select().from(schema.teams).where(eq(schema.teams.id, id));
+      return result[0];
+    } catch (error) {
+      console.error('Error getting team:', error);
+      return undefined;
+    }
+  }
+
+  async createTeam(team: any): Promise<any> {
+    try {
+      const result = await db.insert(schema.teams).values(team).returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating team:', error);
+      throw error;
+    }
+  }
+
+  async updateTeam(id: number, updates: any): Promise<any | undefined> {
+    try {
+      const result = await db.update(schema.teams)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(schema.teams.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating team:', error);
+      return undefined;
+    }
+  }
+
+  async deleteTeam(id: number): Promise<boolean> {
+    try {
+      // Primeiro, remover todos os membros da equipe (setar teamId para null)
+      await db.update(schema.users)
+        .set({ teamId: null })
+        .where(eq(schema.users.teamId, id));
+      
+      // Depois, excluir a equipe
+      const result = await db.delete(schema.teams)
+        .where(eq(schema.teams.id, id))
+        .returning();
+      
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting team:', error);
+      return false;
+    }
+  }
+
+  async getTeamMembers(teamId: number): Promise<User[]> {
+    try {
+      // Simulação - buscar usuários que têm teamId
+      return await db.select().from(schema.users)
+        .where(eq(schema.users.teamId, teamId)) as User[];
+    } catch (error) {
+      console.error('Error getting team members:', error);
+      return [];
+    }
+  }
+
+  async addTeamMember(teamId: number, userId: number): Promise<void> {
+    try {
+      // Atualizar o teamId do usuário
+      await db.update(schema.users)
+        .set({ teamId })
+        .where(eq(schema.users.id, userId));
+    } catch (error) {
+      console.error('Error adding team member:', error);
+      throw error;
+    }
+  }
+
+  async removeTeamMember(teamId: number, userId: number): Promise<void> {
+    try {
+      // Remover o teamId do usuário
+      await db.update(schema.users)
+        .set({ teamId: null })
+        .where(and(
+          eq(schema.users.id, userId),
+          eq(schema.users.teamId, teamId)
+        ));
+    } catch (error) {
+      console.error('Error removing team member:', error);
+      throw error;
+    }
+  }
+
+  async getAvailableAgents(): Promise<User[]> {
+    try {
+      // Buscar agentes que não estão em nenhuma equipe
+      return await db.select().from(schema.users)
+        .where(and(
+          eq(schema.users.role, 'helpdesk_agent'),
+          sql`${schema.users.teamId} IS NULL`
+        )) as User[];
+    } catch (error) {
+      console.error('Error getting available agents:', error);
+      return [];
+    }
+  }
+
+  // Métodos de exclusão
+  async deleteUser(id: number): Promise<boolean> {
+    try {
+      const result = await db.delete(schema.users)
+        .where(eq(schema.users.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      return false;
+    }
+  }
+
+  async deleteCompany(id: number): Promise<boolean> {
+    try {
+      const result = await db.delete(schema.companies)
+        .where(eq(schema.companies.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting company:', error);
+      return false;
+    }
+  }
+
+  async getCompanyById(id: number): Promise<any | undefined> {
+    try {
+      const result = await db.select().from(schema.companies)
+        .where(eq(schema.companies.id, id));
+      return result[0];
+    } catch (error) {
+      console.error('Error getting company by id:', error);
+      return undefined;
     }
   }
 }
