@@ -9,6 +9,9 @@ import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { TicketStatusBadge } from './ticket-status-badge';
 import { TicketPriorityBadge } from './ticket-priority-badge';
+import { useAuth } from '@/hooks/use-auth';
+import { useTeams } from '@/hooks/use-teams';
+import { apiRequest } from '@/lib/queryClient';
 
 interface Ticket {
   id: number;
@@ -41,6 +44,8 @@ export function TicketActions({ ticket, agents }: TicketActionsProps) {
   const [comment, setComment] = useState('');
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth(); // Usuário logado
+  const { data: teams = [] } = useTeams(); // Hook para buscar teams
 
   const statusOptions = [
     { value: 'open', label: 'Aberto' },
@@ -57,25 +62,84 @@ export function TicketActions({ ticket, agents }: TicketActionsProps) {
     { value: 'critical', label: 'Crítica' }
   ];
 
-  const categoryOptions = [
-    { value: 'technical_support', label: 'Suporte Técnico' },
-    { value: 'financial', label: 'Financeiro' },
-    { value: 'commercial', label: 'Comercial' },
-    { value: 'other', label: 'Outros' }
-  ];
+  // Obtém as categorias disponíveis baseadas nos teams
+  const getAvailableCategories = () => {
+    if (!teams || teams.length === 0) return [{ value: 'Geral', label: 'Geral' }]
+    
+    // Se é admin, pode ver todas as categorias dos teams
+    if (user?.role === 'admin') {
+      return teams.map(team => ({ 
+        value: team.name, 
+        label: team.name 
+      }))
+    }
+    
+    // Se o usuário tem uma equipe, mostrar apenas a categoria da sua equipe
+    if (user?.teamId) {
+      const userTeam = teams.find(team => team.id === user.teamId)
+      if (userTeam) {
+        return [{ value: userTeam.name, label: userTeam.name }]
+      }
+    }
+    
+    // Se não tem equipe específica, mostrar todas
+    return teams.map(team => ({ 
+      value: team.name, 
+      label: team.name 
+    }))
+  }
+
+  const availableCategories = getAvailableCategories();
 
   const updateTicketMutation = useMutation({
     mutationFn: async (updateData: any) => {
-      const response = await fetch(`/api/tickets/${ticket.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateData)
-      });
-      if (!response.ok) throw new Error('Erro ao atualizar ticket');
+      const response = await apiRequest('PATCH', `/api/tickets/${ticket.id}`, updateData);
       return response.json();
     },
+    onMutate: async (updateData) => {
+      // Cancelar queries pendentes para evitar conflitos
+      await queryClient.cancelQueries({ queryKey: ['ticket', ticket.id] });
+      await queryClient.cancelQueries({ queryKey: ['tickets'] });
+      
+      // Snapshot dos valores anteriores
+      const previousTicket = queryClient.getQueryData(['ticket', ticket.id]);
+      const previousTickets = queryClient.getQueryData(['tickets']);
+      
+      // Atualização otimista - ticket individual
+      queryClient.setQueryData(['ticket', ticket.id], (old: any) => ({
+        ...old,
+        ...updateData,
+        updatedAt: new Date().toISOString()
+      }));
+      
+      // Atualização otimista - lista de tickets
+      queryClient.setQueryData(['tickets'], (old: any) => {
+        if (!old) return old;
+        return old.map((t: any) => 
+          t.id === ticket.id 
+            ? { ...t, ...updateData, updatedAt: new Date().toISOString() }
+            : t
+        );
+      });
+      
+      // Retornar contexto com os valores anteriores
+      return { previousTicket, previousTickets };
+    },
+    onError: (err, updateData, context) => {
+      // Reverter para os valores anteriores em caso de erro
+      if (context?.previousTicket) {
+        queryClient.setQueryData(['ticket', ticket.id], context.previousTicket);
+      }
+      if (context?.previousTickets) {
+        queryClient.setQueryData(['tickets'], context.previousTickets);
+      }
+    },
     onSuccess: () => {
+      // Invalidar múltiplas queries relacionadas para garantir atualização
       queryClient.invalidateQueries({ queryKey: ['ticket', ticket.id] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
+      
       setIsEditing(false);
       setChanges({});
       setComment('');
@@ -126,6 +190,24 @@ export function TicketActions({ ticket, agents }: TicketActionsProps) {
     } else {
       // Adiciona/atualiza a mudança
       setChanges(prev => ({ ...prev, [property]: value }));
+    }
+  };
+
+  const handleAssigneeChange = (value: string) => {
+    const newAssigneeId = value === 'unassigned' ? null : parseInt(value);
+    
+    // Atualizar o assigneeId
+    handlePropertyChange('assigneeId', newAssigneeId);
+    
+    // Se foi atribuído a um agente, automaticamente atualizar a categoria baseada no team
+    if (newAssigneeId) {
+      const assignedAgent = agents.find(agent => agent.id === newAssigneeId);
+      if (assignedAgent) {
+        // Buscar o team do agente
+        // Nota: Assumindo que a estrutura de Agent terá teamId em futuras implementações
+        // Por enquanto, não alteramos automaticamente a categoria aqui
+        // Esta lógica será implementada no backend quando o ticket for atualizado
+      }
     }
   };
 
@@ -221,7 +303,7 @@ export function TicketActions({ ticket, agents }: TicketActionsProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {categoryOptions.map((option) => (
+                  {availableCategories.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -231,7 +313,7 @@ export function TicketActions({ ticket, agents }: TicketActionsProps) {
             ) : (
               <div className="mt-1">
                 <Badge variant="secondary">
-                  {categoryOptions.find(c => c.value === ticket.category)?.label || ticket.category}
+                  {ticket.category}
                 </Badge>
               </div>
             )}
@@ -243,7 +325,7 @@ export function TicketActions({ ticket, agents }: TicketActionsProps) {
             {isEditing ? (
               <Select 
                 value={getCurrentValue('assigneeId')?.toString() || 'unassigned'} 
-                onValueChange={(value) => handlePropertyChange('assigneeId', value === 'unassigned' ? null : parseInt(value))}
+                onValueChange={handleAssigneeChange}
               >
                 <SelectTrigger className="mt-1">
                   <SelectValue />

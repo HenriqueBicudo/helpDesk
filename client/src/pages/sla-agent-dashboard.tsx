@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import SlaStatusBadge from '@/components/sla/sla-status-badge';
 import SlaCountdown from '@/components/sla/sla-countdown';
+import { AppLayout } from '@/components/layout/app-layout';
 import { 
   Clock, 
   AlertTriangle, 
@@ -237,7 +238,8 @@ const SlaAgentDashboard: React.FC = () => {
   );
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <AppLayout title="Dashboard SLA - Agente">
+      <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -381,7 +383,8 @@ const SlaAgentDashboard: React.FC = () => {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </AppLayout>
   );
 };
 

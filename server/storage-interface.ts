@@ -9,6 +9,30 @@ import {
   type SystemSetting, type InsertSystemSetting, type SettingCategory
 } from "@shared/schema";
 
+// Interface para contratos compatível com a UI
+export interface ContractUI {
+  id: string;
+  contractNumber: string;
+  companyId?: number;
+  companyName?: string;
+  type: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  monthlyValue?: number;
+  hourlyRate?: number;
+  includedHours?: number;
+  usedHours: number;
+  resetDay?: number;
+  allowOverage?: boolean;
+  description?: string;
+  slaRuleId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type InsertContract = Omit<ContractUI, 'id' | 'createdAt' | 'updatedAt' | 'companyName' | 'usedHours'>;
+
 // Tipos para Tags
 export interface Tag {
   id: number;
@@ -102,6 +126,7 @@ export interface IStorage {
   getCompany(id: number): Promise<Company | undefined>;
   getCompanyById(id: number): Promise<Company | undefined>;
   getCompanyByEmail(email: string): Promise<Company | undefined>;
+  getCompanyByEmailDomain(domain: string): Promise<Company | undefined>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: number, updates: Partial<Company>): Promise<Company | undefined>;
   deleteCompany(id: number): Promise<boolean>;
@@ -198,6 +223,15 @@ export interface IStorage {
   getTicketLinks(ticketId: number): Promise<TicketLinkWithTicket[]>;
   createTicketLink(link: InsertTicketLink): Promise<TicketLink>;
   removeTicketLink(linkId: number, ticketId: number): Promise<boolean>;
+
+  // Contract methods
+  getAllContracts(): Promise<ContractUI[]>;
+  getContract(id: string): Promise<ContractUI | undefined>;
+  createContract(contract: InsertContract): Promise<ContractUI>;
+  updateContract(id: string, updates: Partial<ContractUI>): Promise<ContractUI | undefined>;
+  deleteContract(id: string): Promise<boolean>;
+  getContractsForTicket(ticketId: number): Promise<ContractUI[]>;
+  getContractsByCompany(companyId: number): Promise<ContractUI[]>;
 }
 
 // Import storage implementations

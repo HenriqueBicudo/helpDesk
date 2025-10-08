@@ -1,21 +1,31 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ContractService } from '../../services/contract.service';
+// import { ContractService } from '../../services/contract.service';
 import { 
   createContractSchema, 
-  updateContractSchema, 
-  contractFiltersSchema,
-  type CreateContract,
-  type UpdateContract,
-  type ContractFilters
+  updateContractSchema,
+  type Contract,
+  type InsertContract
 } from '../../../shared/schema/contracts';
+import { storage } from '../../storage';
+
+// Schema simplificado para filtros
+const contractFiltersSchema = z.object({
+  page: z.coerce.number().min(1).optional().default(1),
+  limit: z.coerce.number().min(1).max(100).optional().default(10),
+  companyId: z.coerce.number().optional(),
+  status: z.string().optional(),
+  type: z.string().optional(),
+});
+
+type ContractFilters = z.infer<typeof contractFiltersSchema>;
 
 /**
  * Router para operações CRUD de contratos
  * Implementa todas as operações básicas com validação Zod
  */
 export const contractRoutes = Router();
-const contractService = new ContractService();
+// const contractService = new ContractService();
 
 /**
  * Schema para validação de parâmetros de ID
@@ -40,7 +50,7 @@ const idParamSchema = z.object({
 contractRoutes.post('/', async (req, res) => {
   try {
     // Validação do corpo da requisição usando Zod
-    const validatedData: CreateContract = createContractSchema.parse(req.body);
+    const validatedData: InsertContract = createContractSchema.parse(req.body);
     
     // Criação do contrato através do service
     const contract = await contractService.create(validatedData);
@@ -179,7 +189,7 @@ contractRoutes.put('/:id', async (req, res) => {
     const { id } = idParamSchema.parse(req.params);
     
     // Validação do corpo da requisição
-    const validatedData: UpdateContract = updateContractSchema.parse(req.body);
+    const validatedData: Partial<Contract> = updateContractSchema.parse(req.body);
     
     // Verificar se o contrato existe
     const existingContract = await contractService.findById(id);

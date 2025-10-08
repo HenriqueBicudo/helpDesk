@@ -12,14 +12,13 @@ import Dashboard from "@/pages/dashboard";
 import Tickets from "@/pages/tickets";
 import TicketsKanban from "@/pages/tickets-kanban";
 import TicketDetails from "@/pages/ticket-details";
-import Customers from "@/pages/customers";
-import Agents from "@/pages/agents";
 import Settings from "@/pages/settings";
 import Reports from "@/pages/reports";
 import Knowledge from "@/pages/knowledge";
 import AuthPage from "@/pages/auth-page";
 import ProfilePage from "@/pages/profile-page";
 import AccessPage from "@/pages/access";
+import ContractsPage from "@/pages/contracts";
 import SlaAgentDashboard from "@/pages/sla-agent-dashboard";
 import SlaManagerDashboard from "@/pages/sla-manager-dashboard";
 import SlaAdminDashboard from "@/pages/sla-admin-dashboard";
@@ -32,9 +31,8 @@ function Router() {
       <ProtectedRoute path="/tickets" component={Tickets} />
       <ProtectedRoute path="/tickets/kanban" component={TicketsKanban} />
       <ProtectedRoute path="/tickets/:id" component={TicketDetails} />
-      <ProtectedRoute path="/customers" component={Customers} />
-      <ProtectedRoute path="/agents" component={Agents} />
       <ProtectedRoute path="/access" component={AccessPage} />
+      <ProtectedRoute path="/contracts" component={ContractsPage} />
       <ProtectedRoute path="/settings" component={Settings} />
       <ProtectedRoute path="/reports" component={Reports} />
       <ProtectedRoute path="/knowledge" component={Knowledge} />

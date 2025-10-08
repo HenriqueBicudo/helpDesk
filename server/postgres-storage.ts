@@ -1,4 +1,4 @@
-import { eq, desc, count, sql, and, gte, lte } from 'drizzle-orm';
+﻿import { eq, desc, count, sql, and, gte, lte, or } from 'drizzle-orm';
 import { db } from './db-drizzle';
 import * as schema from '../shared/drizzle-schema';
 import { contracts } from '../shared/schema/contracts';
@@ -14,6 +14,50 @@ import type {
   ResponseTemplate, InsertResponseTemplate,
   SystemSetting, InsertSystemSetting, SettingCategory
 } from '@shared/schema';
+import type { Contract, InsertContract } from '../shared/schema/contracts';
+
+// Interface para contratos compatível com a UI
+interface ContractUI {
+  id: string;
+  contractNumber: string;
+  companyId: number;
+  companyName?: string;
+  type: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  monthlyValue: number;
+  hourlyRate: number;
+  includedHours: number;
+  usedHours: number;
+  resetDay: number;
+  allowOverage: boolean;
+  description?: string;
+  slaRuleId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ContractUI {
+  id: string;
+  contractNumber: string;
+  companyId: number;
+  companyName?: string;
+  type: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  monthlyValue: number;
+  hourlyRate: number;
+  includedHours: number;
+  usedHours: number;
+  resetDay: number;
+  allowOverage: boolean;
+  description?: string;
+  slaRuleId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export class PostgresStorage implements IStorage {
   // User methods
@@ -109,6 +153,8 @@ export class PostgresStorage implements IStorage {
         category: schema.tickets.category,
         requesterId: schema.tickets.requesterId,
         assigneeId: schema.tickets.assigneeId,
+        companyId: schema.tickets.companyId,
+        contractId: schema.tickets.contractId,
         responseDueAt: schema.tickets.responseDueAt,
         solutionDueAt: schema.tickets.solutionDueAt,
         createdAt: schema.tickets.createdAt,
@@ -133,11 +179,43 @@ export class PostgresStorage implements IStorage {
           role: schema.users.role,
           avatarInitials: schema.users.avatarInitials,
           createdAt: schema.users.createdAt,
+        },
+        company: {
+          id: schema.companies.id,
+          name: schema.companies.name,
+          email: schema.companies.email,
+          isActive: schema.companies.isActive,
+        },
+        contract: {
+          id: contracts.id,
+          contractNumber: contracts.contractNumber,
+          includedHours: contracts.includedHours,
+          usedHours: contracts.usedHours,
+          monthlyValue: contracts.monthlyValue,
+          hourlyRate: contracts.hourlyRate,
+          resetDay: contracts.resetDay,
+          status: contracts.status,
         }
       })
       .from(schema.tickets)
       .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
       .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .leftJoin(schema.companies, eq(schema.tickets.companyId, schema.companies.id))
+      .leftJoin(contracts, 
+        // Se o ticket tem contractId, usar esse contrato específico
+        // Caso contrário, pegar o primeiro contrato ativo da empresa
+        or(
+          and(
+            eq(contracts.id, schema.tickets.contractId),
+            eq(contracts.status, 'active')
+          ),
+          and(
+            eq(contracts.companyId, schema.companies.id),
+            eq(contracts.status, 'active'),
+            sql`${schema.tickets.contractId} IS NULL`
+          )
+        )
+      )
       .where(eq(schema.tickets.id, id));
 
     if (result.length === 0) return undefined;
@@ -145,7 +223,8 @@ export class PostgresStorage implements IStorage {
     const ticket = result[0];
     return {
       ...ticket,
-      assignee: ticket.assignee?.id ? ticket.assignee : undefined
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined,
+      company: ticket.company?.id ? ticket.company : undefined
     } as TicketWithRelations;
   }
 
@@ -257,6 +336,8 @@ export class PostgresStorage implements IStorage {
         category: schema.tickets.category,
         requesterId: schema.tickets.requesterId,
         assigneeId: schema.tickets.assigneeId,
+        companyId: schema.tickets.companyId,
+        contractId: schema.tickets.contractId,
         responseDueAt: schema.tickets.responseDueAt,
         solutionDueAt: schema.tickets.solutionDueAt,
         createdAt: schema.tickets.createdAt,
@@ -277,16 +358,24 @@ export class PostgresStorage implements IStorage {
           role: schema.users.role,
           avatarInitials: schema.users.avatarInitials,
           createdAt: schema.users.createdAt,
+        },
+        company: {
+          id: schema.companies.id,
+          name: schema.companies.name,
+          email: schema.companies.email,
+          isActive: schema.companies.isActive,
         }
       })
       .from(schema.tickets)
       .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
       .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .leftJoin(schema.companies, eq(schema.tickets.companyId, schema.companies.id))
       .orderBy(desc(schema.tickets.createdAt));
 
     return result.map(ticket => ({
       ...ticket,
-      assignee: ticket.assignee?.id ? ticket.assignee : undefined
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined,
+      company: ticket.company?.id ? ticket.company : undefined
     })) as TicketWithRelations[];
   }
 
@@ -331,6 +420,8 @@ export class PostgresStorage implements IStorage {
         category: schema.tickets.category,
         requesterId: schema.tickets.requesterId,
         assigneeId: schema.tickets.assigneeId,
+        companyId: schema.tickets.companyId,
+        contractId: schema.tickets.contractId,
         responseDueAt: schema.tickets.responseDueAt,
         solutionDueAt: schema.tickets.solutionDueAt,
         createdAt: schema.tickets.createdAt,
@@ -357,17 +448,25 @@ export class PostgresStorage implements IStorage {
           avatarInitials: schema.users.avatarInitials,
           isActive: schema.users.isActive,
           createdAt: schema.users.createdAt,
+        },
+        company: {
+          id: schema.companies.id,
+          name: schema.companies.name,
+          email: schema.companies.email,
+          isActive: schema.companies.isActive,
         }
       })
       .from(schema.tickets)
       .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
       .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .leftJoin(schema.companies, eq(schema.tickets.companyId, schema.companies.id))
       .where(eq(schema.requesters.company, company))
       .orderBy(desc(schema.tickets.createdAt));
 
     return result.map(ticket => ({
       ...ticket,
-      assignee: ticket.assignee?.id ? ticket.assignee : undefined
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined,
+      company: ticket.company?.id ? ticket.company : undefined
     })) as TicketWithRelations[];
   }
 
@@ -551,9 +650,10 @@ export class PostgresStorage implements IStorage {
    * Cria uma interação de ticket com apontamento automático de horas no contrato
    * 
    * Implementa a lógica de débito de horas do contrato:
-   * 1. Verifica se o ticket possui contractId vinculado
-   * 2. Se sim, incrementa o campo usedHours do contrato com time_spent
-   * 3. Operação atômica: criação da interação + atualização do contrato ou nada
+   * 1. Se contractId especificado na interação, usa esse contrato
+   * 2. Senão, verifica se o ticket possui contractId vinculado
+   * 3. Se sim, incrementa o campo usedHours do contrato com time_spent
+   * 4. Operação atômica: criação da interação + atualização do contrato ou nada
    * 
    * @param interaction - Dados da interação a ser criada
    * @returns Promise<TicketInteraction> - Interação criada
@@ -568,6 +668,7 @@ export class PostgresStorage implements IStorage {
         content: interaction.content,
         isInternal: interaction.isInternal,
         timeSpent: interaction.timeSpent.toString(),
+        contractId: interaction.contractId,
       }).returning();
       
       const createdInteraction = {
@@ -577,26 +678,34 @@ export class PostgresStorage implements IStorage {
         content: result[0].content || '',
         isInternal: result[0].isInternal,
         timeSpent: parseFloat(result[0].timeSpent || '0'),
+        contractId: interaction.contractId,
         createdBy: result[0].userId!,
         createdAt: result[0].createdAt,
         updatedAt: result[0].createdAt
       } as TicketInteraction;
       
-      // Se há tempo apontado, verifica se deve debitar do contrato
+      // Se há tempo apontado, verifica qual contrato usar para débito
       if (interaction.timeSpent > 0) {
         try {
-          // Busca o ticket para verificar se tem contrato vinculado
-          const ticketWithContract = await tx
-            .select({
-              contractId: schema.tickets.contractId
-            })
-            .from(schema.tickets)
-            .where(eq(schema.tickets.id, interaction.ticketId))
-            .limit(1);
+          let contractId = interaction.contractId; // Prioridade: contractId da interação
           
-          // Se o ticket tem contrato vinculado, debita as horas
-          if (ticketWithContract.length > 0 && ticketWithContract[0].contractId) {
-            const contractId = ticketWithContract[0].contractId;
+          // Se não há contractId específico, busca no ticket
+          if (!contractId) {
+            const ticketWithContract = await tx
+              .select({
+                contractId: schema.tickets.contractId
+              })
+              .from(schema.tickets)
+              .where(eq(schema.tickets.id, interaction.ticketId))
+              .limit(1);
+            
+            if (ticketWithContract.length > 0 && ticketWithContract[0].contractId) {
+              contractId = ticketWithContract[0].contractId;
+            }
+          }
+          
+          // Se tem contrato para debitar, atualiza as horas
+          if (contractId) {
             
             // Atualiza o campo usedHours do contrato de forma atômica
             const updateResult = await tx
@@ -958,6 +1067,25 @@ export class PostgresStorage implements IStorage {
     }
   }
 
+  async getCompanyByEmailDomain(domain: string): Promise<any | undefined> {
+    try {
+      // Buscar empresa onde o domínio do email corresponde
+      const result = await db.select().from(schema.companies);
+      
+      // Filtrar por domínio do email
+      const company = result.find(company => {
+        if (!company.email) return false;
+        const companyDomain = company.email.split('@')[1];
+        return companyDomain === domain;
+      });
+      
+      return company;
+    } catch (error) {
+      console.error('Error getting company by email domain:', error);
+      return undefined;
+    }
+  }
+
   async createCompany(company: any): Promise<any> {
     try {
       const result = await db.insert(schema.companies).values(company).returning();
@@ -1151,6 +1279,306 @@ export class PostgresStorage implements IStorage {
     } catch (error) {
       console.error('Error getting company by id:', error);
       return undefined;
+    }
+  }
+
+  // ============ CONTRACT METHODS ============
+
+  async getAllContracts(): Promise<ContractUI[]> {
+    try {
+      const result = await db
+        .select({
+          id: contracts.id,
+          contractNumber: contracts.contractNumber,
+          companyId: contracts.companyId,
+          companyName: schema.companies.name,
+          type: contracts.type,
+          status: contracts.status,
+          startDate: contracts.startDate,
+          endDate: contracts.endDate,
+          monthlyValue: contracts.monthlyValue,
+          hourlyRate: contracts.hourlyRate,
+          includedHours: contracts.includedHours,
+          usedHours: contracts.usedHours,
+          resetDay: contracts.resetDay,
+          allowOverage: contracts.allowOverage,
+          description: contracts.description,
+          slaRuleId: contracts.servicePackageId,
+          createdAt: contracts.createdAt,
+          updatedAt: contracts.updatedAt,
+        })
+        .from(contracts)
+        .leftJoin(schema.companies, eq(contracts.companyId, schema.companies.id))
+        .orderBy(desc(contracts.createdAt));
+
+      return result.map(row => ({
+        id: row.id,
+        contractNumber: row.contractNumber,
+        companyId: row.companyId,
+        companyName: row.companyName || undefined,
+        type: row.type,
+        status: row.status,
+        startDate: row.startDate!.toISOString(),
+        endDate: row.endDate!.toISOString(),
+        monthlyValue: parseFloat(row.monthlyValue?.toString() || '0'),
+        hourlyRate: parseFloat(row.hourlyRate?.toString() || '0'),
+        includedHours: row.includedHours || 0,
+        usedHours: parseFloat(row.usedHours?.toString() || '0'),
+        resetDay: row.resetDay || 1,
+        allowOverage: row.allowOverage || false,
+        description: row.description || undefined,
+        slaRuleId: row.slaRuleId || undefined,
+        createdAt: row.createdAt!.toISOString(),
+        updatedAt: row.updatedAt!.toISOString(),
+      }));
+    } catch (error) {
+      console.error('Error getting all contracts:', error);
+      return [];
+    }
+  }
+
+  async getContract(id: string): Promise<ContractUI | undefined> {
+    try {
+      const result = await db
+        .select({
+          id: contracts.id,
+          contractNumber: contracts.contractNumber,
+          companyId: contracts.companyId,
+          companyName: schema.companies.name,
+          type: contracts.type,
+          status: contracts.status,
+          startDate: contracts.startDate,
+          endDate: contracts.endDate,
+          monthlyValue: contracts.monthlyValue,
+          hourlyRate: contracts.hourlyRate,
+          includedHours: contracts.includedHours,
+          usedHours: contracts.usedHours,
+          resetDay: contracts.resetDay,
+          allowOverage: contracts.allowOverage,
+          description: contracts.description,
+          slaRuleId: contracts.servicePackageId,
+          createdAt: contracts.createdAt,
+          updatedAt: contracts.updatedAt,
+        })
+        .from(contracts)
+        .leftJoin(schema.companies, eq(contracts.companyId, schema.companies.id))
+        .where(eq(contracts.id, id))
+        .limit(1);
+
+      if (result.length === 0) return undefined;
+
+      const row = result[0];
+      return {
+        id: row.id,
+        contractNumber: row.contractNumber,
+        companyId: row.companyId,
+        companyName: row.companyName || undefined,
+        type: row.type,
+        status: row.status,
+        startDate: row.startDate!.toISOString(),
+        endDate: row.endDate!.toISOString(),
+        monthlyValue: parseFloat(row.monthlyValue?.toString() || '0'),
+        hourlyRate: parseFloat(row.hourlyRate?.toString() || '0'),
+        includedHours: row.includedHours || 0,
+        usedHours: parseFloat(row.usedHours?.toString() || '0'),
+        resetDay: row.resetDay || 1,
+        allowOverage: row.allowOverage || false,
+        description: row.description || undefined,
+        slaRuleId: row.slaRuleId || undefined,
+        createdAt: row.createdAt!.toISOString(),
+        updatedAt: row.updatedAt!.toISOString(),
+      };
+    } catch (error) {
+      console.error('Error getting contract:', error);
+      return undefined;
+    }
+  }
+
+  async createContract(contract: Omit<ContractUI, 'id' | 'createdAt' | 'updatedAt' | 'companyName' | 'usedHours'>): Promise<ContractUI> {
+    try {
+      const contractId = `CONTRACT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      const result = await db.insert(contracts).values({
+        id: contractId,
+        contractNumber: contract.contractNumber,
+        companyId: contract.companyId || null,
+        servicePackageId: contract.slaRuleId || null,
+        type: contract.type,
+        status: contract.status,
+        startDate: new Date(contract.startDate),
+        endDate: new Date(contract.endDate),
+        renewalDate: null,
+        monthlyValue: contract.monthlyValue ? contract.monthlyValue.toString() : '0',
+        setupValue: null,
+        hourlyRate: contract.hourlyRate ? contract.hourlyRate.toString() : '0',
+        includedHours: contract.includedHours || 0,
+        usedHours: '0',
+        resetDay: contract.resetDay || 1,
+        lastReset: new Date(),
+        allowOverage: contract.allowOverage || false,
+        autoRenewal: false,
+        notifyThreshold: null,
+        description: contract.description || null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        calendarId: null,
+      }).returning();
+
+      const created = result[0];
+      return {
+        id: created.id,
+        contractNumber: created.contractNumber,
+        companyId: created.companyId,
+        type: created.type,
+        status: created.status,
+        startDate: created.startDate!.toISOString(),
+        endDate: created.endDate!.toISOString(),
+        monthlyValue: parseFloat(created.monthlyValue!.toString()),
+        hourlyRate: parseFloat(created.hourlyRate!.toString()),
+        includedHours: created.includedHours!,
+        usedHours: parseFloat(created.usedHours!.toString()),
+        resetDay: created.resetDay!,
+        allowOverage: created.allowOverage!,
+        description: created.description || undefined,
+        slaRuleId: created.servicePackageId || undefined,
+        createdAt: created.createdAt!.toISOString(),
+        updatedAt: created.updatedAt!.toISOString(),
+      } as ContractUI;
+    } catch (error) {
+      console.error('Error creating contract:', error);
+      throw new Error('Failed to create contract');
+    }
+  }
+
+  async updateContract(id: string, updates: Partial<ContractUI>): Promise<ContractUI | undefined> {
+    try {
+      const updateData: any = {
+        ...updates,
+        updatedAt: new Date(),
+      };
+
+      // Converter campos que precisam de transformação
+      if (updates.startDate) updateData.startDate = new Date(updates.startDate);
+      if (updates.endDate) updateData.endDate = new Date(updates.endDate);
+      if (updates.monthlyValue !== undefined) updateData.monthlyValue = updates.monthlyValue?.toString() || '0';
+      if (updates.hourlyRate !== undefined) updateData.hourlyRate = updates.hourlyRate?.toString() || '0';
+      if (updates.usedHours !== undefined) updateData.usedHours = updates.usedHours.toString();
+      if (updates.slaRuleId !== undefined) updateData.servicePackageId = updates.slaRuleId;
+
+      // Remover campos que não existem na tabela
+      delete updateData.slaRuleId;
+      delete updateData.companyName;
+
+      console.log(`📝 [Storage] Atualizando contrato ${id} com dados:`, updateData);
+
+      const result = await db
+        .update(contracts)
+        .set(updateData)
+        .where(eq(contracts.id, id))
+        .returning();
+
+      if (result.length === 0) {
+        console.log(`❌ [Storage] Contrato ${id} não encontrado para atualização`);
+        return undefined;
+      }
+
+      console.log(`✅ [Storage] Contrato ${id} atualizado com sucesso`);
+      return await this.getContract(id);
+    } catch (error) {
+      console.error('Error updating contract:', error);
+      return undefined;
+    }
+  }
+
+  async deleteContract(id: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(contracts)
+        .where(eq(contracts.id, id))
+        .returning();
+      
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting contract:', error);
+      return false;
+    }
+  }
+
+  async getContractsForTicket(ticketId: number): Promise<ContractUI[]> {
+    try {
+      // Primeiro buscar o ticket para pegar a empresa
+      const ticket = await this.getTicket(ticketId);
+      if (!ticket || !ticket.companyId) {
+        return [];
+      }
+
+      // Buscar contratos ativos da empresa
+      const result = await db
+        .select({
+          id: contracts.id,
+          contractNumber: contracts.contractNumber,
+          companyId: contracts.companyId,
+          type: contracts.type,
+          status: contracts.status,
+          includedHours: contracts.includedHours,
+          usedHours: contracts.usedHours,
+          allowOverage: contracts.allowOverage,
+        })
+        .from(contracts)
+        .where(
+          and(
+            eq(contracts.companyId, ticket.companyId),
+            eq(contracts.status, 'active')
+          )
+        )
+        .orderBy(desc(contracts.createdAt));
+
+      return result.map(row => ({
+        id: row.id,
+        contractNumber: row.contractNumber,
+        companyId: row.companyId,
+        type: row.type,
+        status: row.status,
+        includedHours: row.includedHours!,
+        usedHours: parseFloat(row.usedHours!.toString()),
+        allowOverage: row.allowOverage!,
+      })) as ContractUI[];
+    } catch (error) {
+      console.error('Error getting contracts for ticket:', error);
+      return [];
+    }
+  }
+
+  async getContractsByCompany(companyId: number): Promise<ContractUI[]> {
+    try {
+      const result = await db
+        .select()
+        .from(contracts)
+        .where(eq(contracts.companyId, companyId))
+        .orderBy(desc(contracts.createdAt));
+
+      return result.map(row => ({
+        id: row.id,
+        contractNumber: row.contractNumber,
+        companyId: row.companyId,
+        type: row.type,
+        status: row.status,
+        startDate: row.startDate!.toISOString(),
+        endDate: row.endDate!.toISOString(),
+        monthlyValue: parseFloat(row.monthlyValue?.toString() || '0'),
+        hourlyRate: parseFloat(row.hourlyRate?.toString() || '0'),
+        includedHours: row.includedHours || 0,
+        usedHours: parseFloat(row.usedHours?.toString() || '0'),
+        resetDay: row.resetDay || 1,
+        allowOverage: row.allowOverage || false,
+        description: row.description || undefined,
+        slaRuleId: row.servicePackageId || undefined,
+        createdAt: row.createdAt!.toISOString(),
+        updatedAt: row.updatedAt!.toISOString(),
+      })) as ContractUI[];
+    } catch (error) {
+      console.error('Error getting contracts by company:', error);
+      return [];
     }
   }
 }

@@ -94,6 +94,7 @@ export const tickets = pgTable('tickets', {
   category: categoryEnum('category').notNull(),
   requesterId: integer('requester_id').notNull().references(() => requesters.id),
   assigneeId: integer('assignee_id').references(() => users.id),
+  companyId: integer('company_id').references(() => companies.id), // Referência para empresa solicitante
   contractId: varchar('contract_id', { length: 255 }), // Referência nullable ao contrato UUID
   // Campos de prazos SLA calculados pelo motor de SLA
   responseDueAt: timestamp('response_due_at'), // Prazo para primeira resposta
@@ -124,6 +125,7 @@ export const ticketInteractions = pgTable('ticket_interactions', {
   content: text('content'),
   isInternal: boolean('is_internal').notNull().default(false),
   timeSpent: numeric('time_spent', { precision: 5, scale: 2 }), // Horas apontadas
+  contractId: varchar('contract_id', { length: 255 }), // Contrato específico para débito
   metadata: json('metadata'), // JSON para dados extras (ex: anexos, mudanças de status)
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });

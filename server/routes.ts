@@ -24,7 +24,7 @@ import {
 } from "./middleware/auth";
 import { emailService } from "./email-service";
 import { ContractService } from "./services/contract-simple.service";
-import { contractRoutes } from "./http/routes/contract.routes";
+import { contractSimpleRoutes } from "./http/routes/contract-simple.routes";
 import { slaRoutes } from "./http/routes/sla.routes";
 import { accessRoutes } from "./http/routes/access.routes";
 
@@ -79,7 +79,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Contract routes (modular) 
-  app.use(`${apiPrefix}/contracts`, contractRoutes);
+  app.use(`${apiPrefix}/contracts`, contractSimpleRoutes);
   
   // SLA routes (Sprint 4)
   app.use(`${apiPrefix}/sla`, slaRoutes);
@@ -230,6 +230,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Teams routes
+  app.get(`${apiPrefix}/teams`, async (req: Request, res: Response) => {
+    try {
+      const teams = await storage.getAllTeams();
+      res.json(teams);
+    } catch (error) {
+      console.error('Error fetching teams:', error);
+      res.status(500).json({ message: 'An error occurred fetching teams' });
+    }
+  });
+
   // Ticket routes
   app.get(`${apiPrefix}/tickets`, requireAuthAndPermission('tickets:view_all'), async (req: Request, res: Response) => {
     try {
@@ -264,6 +275,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching tickets:', error);
       res.status(500).json({ message: 'An error occurred fetching tickets' });
+    }
+  });
+
+  // Endpoint para buscar tickets do usuário logado (para dashboards de agente)
+  app.get(`${apiPrefix}/tickets/my-tickets`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const user = req.user as any;
+      console.log(`🎯 [API] Buscando tickets do usuário ${user.id} (${user.fullName})`);
+      
+      // Buscar tickets atribuídos ao usuário logado
+      const myTickets = await storage.getTicketsByAssignee(user.id);
+      
+      console.log(`🎯 [API] Encontrados ${myTickets.length} tickets para o usuário ${user.fullName}`);
+      
+      res.json({
+        success: true,
+        data: myTickets,
+        meta: {
+          total: myTickets.length,
+          message: `Tickets do usuário ${user.fullName}`,
+          timestamp: new Date().toISOString(),
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching my tickets:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Erro ao buscar meus tickets',
+        error: error instanceof Error ? error.message : 'Erro desconhecido'
+      });
     }
   });
 
@@ -337,6 +378,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = Number(req.params.id);
       const updates = req.body;
       
+      // Se está tentando atualizar assigneeId, validar se é usuário do helpdesk
+      if (updates.assigneeId !== undefined) {
+        const assignee = await storage.getUserById(updates.assigneeId);
+        if (!assignee) {
+          return res.status(404).json({ message: 'Assignee not found' });
+        }
+        
+        if (!['admin', 'helpdesk_manager', 'helpdesk_agent'].includes(assignee.role)) {
+          return res.status(400).json({ message: 'Tickets can only be assigned to helpdesk users' });
+        }
+        
+        // Se o usuário tem um teamId, atualizar a categoria automaticamente
+        if (assignee.teamId) {
+          const { getCategoryByTeamId } = await import('../shared/team-category-mapping');
+          const newCategory = getCategoryByTeamId(assignee.teamId);
+          
+          if (newCategory && ['technical_support', 'financial', 'commercial', 'other'].includes(newCategory)) {
+            updates.category = newCategory as 'technical_support' | 'financial' | 'commercial' | 'other';
+            console.log(`Ticket #${id} category will be updated to ${newCategory} based on team ${assignee.teamId}`);
+          }
+        }
+      }
+
+      // Se está tentando atualizar contractId, validar se o contrato existe e está ativo
+      if (updates.contractId !== undefined) {
+        if (updates.contractId) {
+          const contract = await storage.getContract(updates.contractId);
+          if (!contract) {
+            return res.status(404).json({ message: 'Contract not found' });
+          }
+          if (contract.status !== 'active') {
+            return res.status(400).json({ message: 'Contract is not active' });
+          }
+        }
+      }
+      
       const ticket = await storage.updateTicket(id, updates);
       
       if (!ticket) {
@@ -345,6 +422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(ticket);
     } catch (error) {
+      console.error('Error updating ticket:', error);
       res.status(500).json({ message: 'An error occurred updating the ticket' });
     }
   });
@@ -358,14 +436,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'assigneeId is required and must be a number' });
       }
       
+      // Verificar se o usuário é do helpdesk e obter seus dados completos
+      const assignee = await storage.getUserById(assigneeId);
+      if (!assignee) {
+        return res.status(404).json({ message: 'Assignee not found' });
+      }
+      
+      if (!['admin', 'helpdesk_manager', 'helpdesk_agent'].includes(assignee.role)) {
+        return res.status(400).json({ message: 'Tickets can only be assigned to helpdesk users' });
+      }
+      
+      // Atribuir o ticket
       const ticket = await storage.assignTicket(id, assigneeId);
       
       if (!ticket) {
         return res.status(404).json({ message: 'Ticket not found' });
       }
       
-      res.json(ticket);
+      // Se o usuário tem um teamId, atualizar a categoria automaticamente
+      if (assignee.teamId) {
+        const { getCategoryByTeamId } = await import('../shared/team-category-mapping');
+        const newCategory = getCategoryByTeamId(assignee.teamId);
+        
+        if (newCategory && ['technical_support', 'financial', 'commercial', 'other'].includes(newCategory)) {
+          await storage.updateTicket(id, { category: newCategory as 'technical_support' | 'financial' | 'commercial' | 'other' });
+          console.log(`Ticket #${id} category updated to ${newCategory} based on team ${assignee.teamId}`);
+        }
+      }
+      
+      // Buscar o ticket atualizado com todas as relações
+      const updatedTicket = await storage.getTicketWithRelations(id);
+      
+      res.json(updatedTicket || ticket);
     } catch (error) {
+      console.error('Error assigning ticket:', error);
       res.status(500).json({ message: 'An error occurred assigning the ticket' });
     }
   });
@@ -577,7 +681,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(`${apiPrefix}/tickets/:id/interactions`, upload.array('attachments', 5), async (req: Request, res: Response) => {
     try {
       const ticketId = Number(req.params.id);
-      const { type, content, isInternal = 'false', timeSpent = 0 } = req.body;
+      const { type, content, isInternal = 'false', timeSpent = 0, contractId } = req.body;
       
       if (!type || !content) {
         return res.status(400).json({ message: 'type and content are required' });
@@ -593,6 +697,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         content,
         isInternal: isInternalBool,
         timeSpent: timeSpent ? parseFloat(timeSpent.toString()) : 0,
+        contractId: contractId || null,
         createdBy: (req as any).user?.id || 1, // TODO: get from auth
       });
       
@@ -1018,6 +1123,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: 'An error occurred removing ticket link' });
     }
   });
+
+  // ============ CONTRACTS ROUTES ============
+  
+  // Listar todos os contratos
+  app.get(`${apiPrefix}/contracts`, async (req: Request, res: Response) => {
+    try {
+      const contracts = await storage.getAllContracts();
+      res.json(contracts);
+    } catch (error) {
+      console.error('Error fetching contracts:', error);
+      res.status(500).json({ message: 'An error occurred fetching contracts' });
+    }
+  });
+
+  // Criar novo contrato
+  app.post(`${apiPrefix}/contracts`, async (req: Request, res: Response) => {
+    try {
+      const contractData = req.body;
+      const contract = await storage.createContract(contractData);
+      res.status(201).json(contract);
+    } catch (error) {
+      console.error('Error creating contract:', error);
+      res.status(500).json({ message: 'An error occurred creating contract' });
+    }
+  });
+
+  // Atualizar contrato
+  app.put(`${apiPrefix}/contracts/:id`, async (req: Request, res: Response) => {
+    try {
+      const contractId = req.params.id;
+      const updateData = req.body;
+      const contract = await storage.updateContract(contractId, updateData);
+      
+      if (!contract) {
+        return res.status(404).json({ message: 'Contract not found' });
+      }
+      
+      res.json(contract);
+    } catch (error) {
+      console.error('Error updating contract:', error);
+      res.status(500).json({ message: 'An error occurred updating contract' });
+    }
+  });
+
+  // Deletar contrato
+  app.delete(`${apiPrefix}/contracts/:id`, async (req: Request, res: Response) => {
+    try {
+      const contractId = req.params.id;
+      const success = await storage.deleteContract(contractId);
+      
+      if (!success) {
+        return res.status(404).json({ message: 'Contract not found' });
+      }
+      
+      res.status(204).end();
+    } catch (error) {
+      console.error('Error deleting contract:', error);
+      res.status(500).json({ message: 'An error occurred deleting contract' });
+    }
+  });
+
+  // Buscar contratos disponíveis para um ticket (baseado na empresa)
+  app.get(`${apiPrefix}/tickets/:id/contracts`, async (req: Request, res: Response) => {
+    try {
+      const ticketId = Number(req.params.id);
+      const contracts = await storage.getContractsForTicket(ticketId);
+      res.json(contracts);
+    } catch (error) {
+      console.error('Error fetching contracts for ticket:', error);
+      res.status(500).json({ message: 'An error occurred fetching contracts' });
+    }
+  });
+
+  // Buscar empresas (para dropdown nos contratos)
+  app.get(`${apiPrefix}/companies`, async (req: Request, res: Response) => {
+    try {
+      const companies = await storage.getAllCompanies();
+      res.json(companies);
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+      res.status(500).json({ message: 'An error occurred fetching companies' });
+    }
+  });
+
+  // ============ END CONTRACTS ROUTES ============
 
   const httpServer = createServer(app);
   return httpServer;

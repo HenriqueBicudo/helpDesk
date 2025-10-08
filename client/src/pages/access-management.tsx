@@ -8,6 +8,7 @@ import { CompanyManagement } from "@/components/access/company-management";
 import { UserManagement } from "@/components/access/user-management";
 import { TeamManagement } from "@/components/access/team-management";
 import { AccessOverview } from "@/components/access/access-overview";
+import { AppLayout } from '@/components/layout/app-layout';
 
 export default function AccessManagement() {
   const { user } = useAuth();
@@ -16,19 +17,22 @@ export default function AccessManagement() {
   // Verificar se é admin
   if (!user || user.role !== 'admin') {
     return (
-      <div className="container mx-auto p-6">
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            Acesso negado. Esta área é restrita apenas para Administradores.
-          </AlertDescription>
-        </Alert>
-      </div>
+      <AppLayout title="Acesso Negado">
+        <div className="container mx-auto p-6">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Acesso negado. Esta área é restrita apenas para Administradores.
+            </AlertDescription>
+          </Alert>
+        </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <AppLayout title="Gerenciamento de Acessos">
+      <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="space-y-2">
         <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -124,6 +128,7 @@ export default function AccessManagement() {
           <TeamManagement />
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

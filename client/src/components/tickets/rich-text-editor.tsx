@@ -24,6 +24,8 @@ import {
   Send
 } from 'lucide-react'
 import { useState, useCallback, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { apiRequest } from '@/lib/queryClient'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -35,6 +37,7 @@ interface RichTextEditorProps {
   placeholder?: string
   showTemplates?: boolean
   showTimeTracking?: boolean
+  ticketId?: number // Adicionar para buscar contratos da empresa do ticket
   customerHours?: {
     monthly: number
     used: number
@@ -52,6 +55,7 @@ interface InteractionData {
   content: string
   isInternal: boolean
   timeSpent?: number
+  contractId?: string // Adicionar contrato selecionado
   attachments: File[]
 }
 
@@ -79,18 +83,34 @@ export function RichTextEditor({
   placeholder = 'Escreva sua resposta...',
   showTemplates = true,
   showTimeTracking = true,
+  ticketId,
   customerHours,
   templates = []
 }: RichTextEditorProps) {
   const [isInternal, setIsInternal] = useState(false) // Padrão: comentário público
   const [timeSpent, setTimeSpent] = useState<string>('00:00') // Mudança: formato HH:MM
+  const [selectedContractId, setSelectedContractId] = useState<string>('')
   const [attachments, setAttachments] = useState<File[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Buscar contratos disponíveis para o ticket (baseado na empresa do ticket)
+  const { data: availableContracts = [] } = useQuery({
+    queryKey: ['ticket-contracts', ticketId],
+    queryFn: async () => {
+      if (!ticketId) return []
+      const response = await apiRequest('GET', `/api/tickets/${ticketId}/contracts`)
+      return response.json()
+    },
+    enabled: !!ticketId && showTimeTracking
+  })
+
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        // Desabilitar link do StarterKit para usar nossa configuração customizada
+        link: false,
+      }),
       Image.configure({
         HTMLAttributes: {
           class: 'max-w-full h-auto rounded-lg',
@@ -194,6 +214,7 @@ export function RichTextEditor({
       content: editor.getHTML(),
       isInternal,
       timeSpent: timeDecimal > 0 ? timeDecimal : undefined,
+      contractId: selectedContractId || undefined,
       attachments
     }
     
@@ -202,6 +223,7 @@ export function RichTextEditor({
     // Limpar formulário
     editor.commands.clearContent()
     setTimeSpent('00:00')
+    setSelectedContractId('')
     setAttachments([])
     setIsInternal(false) // Resetar para público por padrão
   }
@@ -231,7 +253,7 @@ export function RichTextEditor({
           {customerHours && (
             <div className="flex items-center gap-2 text-sm">
               <Clock className="h-4 w-4" />
-              <span>Horas restantes: </span>
+              <span>Horas sobrantes: </span>
               <Badge variant={customerHours.remaining < 2 ? "destructive" : customerHours.remaining < 5 ? "secondary" : "default"}>
                 {customerHours.remaining.toFixed(1)}h / {customerHours.monthly}h
               </Badge>
@@ -416,16 +438,42 @@ export function RichTextEditor({
             </div>
             
             {showTimeTracking && (
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                <Input
-                  type="time"
-                  value={timeSpent}
-                  onChange={(e) => setTimeSpent(e.target.value || '00:00')}
-                  className="w-24"
-                  step="900" // 15 minutos em segundos
-                />
-                <Label className="text-sm">horas</Label>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  <Input
+                    type="time"
+                    value={timeSpent}
+                    onChange={(e) => setTimeSpent(e.target.value || '00:00')}
+                    className="w-24"
+                    step="900" // 15 minutos em segundos
+                  />
+                  <Label className="text-sm">horas</Label>
+                </div>
+                
+                {/* Seletor de Contrato */}
+                {availableContracts.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    <Select
+                      value={selectedContractId}
+                      onValueChange={setSelectedContractId}
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Selecionar contrato" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem contrato específico</SelectItem>
+                        {availableContracts.map((contract: any) => (
+                          <SelectItem key={contract.id} value={contract.id}>
+                            {contract.contractNumber} - {contract.type} 
+                            ({contract.usedHours}h/{contract.includedHours}h)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             )}
           </div>

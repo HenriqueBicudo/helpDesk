@@ -14,6 +14,7 @@ import { Loader2, User, Lock, Mail } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { getInitials } from "@/lib/utils";
+import { AppLayout } from "@/components/layout/app-layout";
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -125,7 +126,8 @@ export default function ProfilePage() {
   }
   
   return (
-    <div className="container mx-auto py-10 space-y-6">
+    <AppLayout title="Minha Conta">
+      <div className="container mx-auto py-10 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Minha Conta</h1>
@@ -320,6 +322,7 @@ export default function ProfilePage() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

@@ -225,7 +225,13 @@ export default function TicketDetails() {
   }
 
   // Calcular horas do cliente
-  const customerHours = ticket.requester ? {
+  // Calcular horas do cliente baseado no contrato ativo, não no requester
+  const customerHours = ticket.contract ? {
+    monthly: ticket.contract.includedHours,
+    used: parseFloat(ticket.contract.usedHours || '0'),
+    remaining: ticket.contract.includedHours - parseFloat(ticket.contract.usedHours || '0')
+  } : ticket.requester ? {
+    // Fallback para os dados antigos do requester se não houver contrato
     monthly: ticket.requester.monthlyHours || 10,
     used: parseFloat(ticket.requester.usedHours || '0'),
     remaining: (ticket.requester.monthlyHours || 10) - parseFloat(ticket.requester.usedHours || '0')

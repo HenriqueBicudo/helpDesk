@@ -58,8 +58,7 @@ import { SlaAlert } from "@/components/tickets/sla-alert";
 import { SlaWarningFlag } from "@/components/tickets/sla-warning-flag";
 import { SlaInfoCapsule } from "@/components/tickets/sla-info-capsule";
 import { SlaDueWarning } from "@/components/tickets/sla-due-warning";
-import { Header } from "@/components/layout/header";
-import { Sidebar } from "@/components/layout/sidebar";
+import { AppLayout } from "@/components/layout/app-layout";
 
 type TicketWithRelations = Ticket & {
   requester: Requester;
@@ -258,7 +257,6 @@ function TicketCard({ ticket, groupId }: { ticket: TicketWithRelations; groupId:
 }
 
 export default function TicketsKanban() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const queryClient = useQueryClient();
 
   // Estados para controle
@@ -316,6 +314,13 @@ export default function TicketsKanban() {
     if (tickets && users) {
       const agentGroups: KanbanGroup[] = [];
       
+      // Filtra apenas usuários do helpdesk
+      const helpdeskUsers = users.filter(user => 
+        user.role === 'admin' || 
+        user.role === 'helpdesk_manager' || 
+        user.role === 'helpdesk_agent'
+      );
+      
       // Filtra os tickets ativos (excluindo resolvidos e fechados)
       const activeTickets = tickets.filter(ticket => 
         ticket.status !== "resolved" && ticket.status !== "closed"
@@ -336,7 +341,7 @@ export default function TicketsKanban() {
       }
       
       // Agrupar por responsável
-      users.forEach(agent => {
+      helpdeskUsers.forEach(agent => {
         const agentTickets = activeTickets.filter(ticket => ticket.assigneeId === agent.id);
         
         if (agentTickets.length > 0) {
@@ -494,15 +499,8 @@ function DroppableColumn({
 }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
-        <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-        
-        <div className="container mx-auto py-6">
+    <AppLayout title="Tickets Kanban">
+      <div className="container mx-auto py-6">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h1 className="text-2xl font-bold">Tickets Kanban</h1>
@@ -645,7 +643,6 @@ function DroppableColumn({
             </DndContext>
           )}
         </div>
-      </div>
-    </div>
+      </AppLayout>
   );
 }

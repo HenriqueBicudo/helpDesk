@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DatePickerWithRange } from '@/components/ui/date-picker-with-range';
 import SlaMetricsCard, { SlaMetricsGrid, sampleSlaMetrics } from '@/components/sla/sla-metrics-card';
 import SlaComplianceChart, { sampleComplianceData } from '@/components/sla/sla-compliance-chart';
+import { AppLayout } from '@/components/layout/app-layout';
 import { 
   BarChart3, 
   TrendingUp, 
@@ -279,7 +280,8 @@ const SlaManagerDashboard: React.FC = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <AppLayout title="Dashboard SLA - Gerente">
+      <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
@@ -437,7 +439,8 @@ const SlaManagerDashboard: React.FC = () => {
           <AlertsPanel />
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </AppLayout>
   );
 };
 

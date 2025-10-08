@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   ArrowLeft, 
   AlertTriangle,
@@ -108,6 +109,19 @@ export default function TicketDetails() {
     queryKey: ['/api/users'],
   });
 
+  // Fetch available contracts for this ticket
+  const { data: availableContracts = [] } = useQuery({
+    queryKey: [`/api/tickets/${ticketId}/contracts`],
+    enabled: ticketId > 0,
+  });
+
+  // Filtrar apenas usuários internos do helpdesk para atribuição
+  const helpdeskUsers = users.filter((user: UserType) => 
+    user.role === 'admin' || 
+    user.role === 'helpdesk_manager' || 
+    user.role === 'helpdesk_agent'
+  );
+
   // Mutation to create ticket interaction
   const createInteractionMutation = useMutation({
     mutationFn: async (data: InteractionData) => {
@@ -117,6 +131,9 @@ export default function TicketDetails() {
       formData.append('isInternal', data.isInternal.toString());
       if (data.timeSpent) {
         formData.append('timeSpent', data.timeSpent.toString());
+      }
+      if (data.contractId) {
+        formData.append('contractId', data.contractId);
       }
       
       // Adicionar anexos
@@ -147,6 +164,39 @@ export default function TicketDetails() {
       toast({
         title: "Erro",
         description: "Erro ao adicionar interação",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mutation to update ticket contract
+  const updateContractMutation = useMutation({
+    mutationFn: async (contractId: string) => {
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ contractId }),
+      });
+      
+      if (!res.ok) {
+        throw new Error('Erro ao atualizar contrato');
+      }
+      
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
+      toast({
+        title: "Sucesso",
+        description: "Contrato atualizado com sucesso",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar contrato",
         variant: "destructive",
       });
     },
@@ -192,11 +242,11 @@ export default function TicketDetails() {
     );
   }
 
-  // Calcular horas do cliente
-  const customerHours = ticket.requester ? {
-    monthly: ticket.requester.monthlyHours || 10,
-    used: parseFloat(ticket.requester.usedHours || '0'),
-    remaining: (ticket.requester.monthlyHours || 10) - parseFloat(ticket.requester.usedHours || '0')
+  // Calcular horas do cliente baseado no contrato específico do ticket
+  const customerHours = ticket.contract ? {
+    monthly: ticket.contract.includedHours,
+    used: parseFloat(ticket.contract.usedHours || '0'),
+    remaining: ticket.contract.includedHours - parseFloat(ticket.contract.usedHours || '0')
   } : undefined;
 
   return (
@@ -277,6 +327,7 @@ export default function TicketDetails() {
               onSubmit={handleCreateInteraction}
               showTemplates={true}
               showTimeTracking={true}
+              ticketId={ticket.id}
               customerHours={customerHours}
               templates={templates as any}
               placeholder="Escreva sua resposta para o cliente..."
@@ -320,10 +371,34 @@ export default function TicketDetails() {
                   </div>
                 </div>
 
-                {customerHours && (
-                  <div className="space-y-2">
+                {customerHours ? (
+                  <div className="space-y-3">
+                    {/* Seletor de Contrato */}
+                    {availableContracts.length > 1 && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                          Contrato vinculado:
+                        </label>
+                        <Select
+                          value={ticket.contract?.id || ''}
+                          onValueChange={(value) => updateContractMutation.mutate(value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Selecionar contrato" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableContracts.map((contract: any) => (
+                              <SelectItem key={contract.id} value={contract.id}>
+                                {contract.contractNumber} - {contract.type} ({contract.usedHours}h/{contract.includedHours}h)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
                     <div className="flex items-center justify-between text-sm">
-                      <span>Plano: {ticket.requester?.planType || 'basic'}</span>
+                      <span>Contrato: {ticket.contract?.contractNumber}</span>
                       <Badge variant={customerHours.remaining < 2 ? "destructive" : "default"}>
                         {customerHours.remaining.toFixed(1)}h restantes
                       </Badge>
@@ -333,8 +408,38 @@ export default function TicketDetails() {
                       className="h-2"
                     />
                     <div className="text-xs text-muted-foreground">
-                      {customerHours.used.toFixed(1)}h / {customerHours.monthly}h utilizadas este mês
+                      {customerHours.used.toFixed(1)}h / {customerHours.monthly}h utilizadas
                     </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">
+                      Sem contrato vinculado
+                    </div>
+                    
+                    {/* Permitir vincular um contrato se houver contratos disponíveis */}
+                    {availableContracts.length > 0 && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                          Vincular contrato:
+                        </label>
+                        <Select
+                          value=""
+                          onValueChange={(value) => updateContractMutation.mutate(value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Selecionar contrato" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableContracts.map((contract: any) => (
+                              <SelectItem key={contract.id} value={contract.id}>
+                                {contract.contractNumber} - {contract.type} ({contract.usedHours}h/{contract.includedHours}h)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -355,7 +460,7 @@ export default function TicketDetails() {
                   email: ticket.assignee.email
                 } : undefined
               }}
-              agents={users.map(user => ({
+              agents={helpdeskUsers.map(user => ({
                 id: user.id!,
                 name: user.fullName,
                 email: user.email

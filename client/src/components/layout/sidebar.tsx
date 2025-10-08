@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { cn, getInitials } from '@/lib/utils';
-import { MessageCircleCode, ChevronRight, LayoutDashboard, Ticket, Users, UserCog, Settings, FileBarChart, Database, User, Shield } from 'lucide-react';
+import { MessageCircleCode, ChevronRight, LayoutDashboard, Ticket, Settings, FileBarChart, Database, User, Shield, FileText, Target, Activity, BarChart3 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/use-auth';
@@ -137,22 +137,6 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             </div>
           </div>
           
-          <SidebarLink 
-            href="/customers" 
-            icon={<Users className="mr-3 h-5 w-5" />} 
-            active={location === '/customers'}
-          >
-            Clientes
-          </SidebarLink>
-          
-          <SidebarLink 
-            href="/agents" 
-            icon={<UserCog className="mr-3 h-5 w-5" />} 
-            active={location === '/agents'}
-          >
-            Agentes
-          </SidebarLink>
-          
           <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Gerenciamento</div>
           
           {/* Acessos - apenas para administradores */}
@@ -165,6 +149,52 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               Acessos
             </SidebarLink>
           )}
+
+          {/* Contratos - para administradores e gerentes */}
+          {(user?.role === 'admin' || user?.role === 'helpdesk_manager') && (
+            <SidebarLink 
+              href="/contracts" 
+              icon={<FileText className="mr-3 h-5 w-5" />} 
+              active={location === '/contracts'}
+            >
+              Contratos
+            </SidebarLink>
+          )}
+
+          {/* SLA - para administradores e gerentes */}
+          {(user?.role === 'admin' || user?.role === 'helpdesk_manager') && (
+            <div>
+              <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">SLA</div>
+              
+              {user?.role === 'admin' && (
+                <SidebarLink 
+                  href="/sla/admin" 
+                  icon={<Settings className="mr-3 h-5 w-5" />} 
+                  active={location === '/sla/admin'}
+                >
+                  Administração
+                </SidebarLink>
+              )}
+              
+              <SidebarLink 
+                href="/sla/manager" 
+                icon={<BarChart3 className="mr-3 h-5 w-5" />} 
+                active={location === '/sla/manager'}
+              >
+                Dashboard Gerencial
+              </SidebarLink>
+              
+              <SidebarLink 
+                href="/sla/agent" 
+                icon={<Target className="mr-3 h-5 w-5" />} 
+                active={location === '/sla/agent'}
+              >
+                Dashboard do Agente
+              </SidebarLink>
+            </div>
+          )}
+          
+          <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Sistema</div>
           
           <SidebarLink 
             href="/settings" 
