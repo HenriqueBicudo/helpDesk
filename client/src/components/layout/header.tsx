@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
 import { Search, Menu, Bell, User, LogOut, Settings as SettingsIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { SlaNotifications } from '@/components/notifications/sla-notifications';
+import { SlaNotificationBadge } from '@/components/notifications/sla-notification-badge';
 import { useAuth } from '@/hooks/use-auth';
 import { Link, useLocation } from 'wouter';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -34,37 +35,39 @@ export function Header({ onMenuClick }: HeaderProps) {
   };
   
   return (
-    <header className="bg-background border-b border-border">
-      <div className="flex justify-between items-center h-16 px-4 sm:px-6">
-        <div className="flex">
-          <Button 
-            variant="ghost"
-            size="icon"
-            className="md:hidden text-muted-foreground"
-            onClick={onMenuClick}
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
-          
-          <div className="relative ml-4 md:ml-0">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-muted-foreground" />
+    <>
+      <header className="bg-background border-b border-border">
+        <div className="flex justify-between items-center h-16 px-4 sm:px-6">
+          <div className="flex">
+            <Button 
+              variant="ghost"
+              size="icon"
+              className="md:hidden text-muted-foreground"
+              onClick={onMenuClick}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            
+            <div className="relative ml-4 md:ml-0">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <Input 
+                className="pl-10 w-full md:w-64 focus:ring-primary focus:border-primary"
+                placeholder="Buscar chamados..."
+              />
             </div>
-            <Input 
-              className="pl-10 w-full md:w-64 focus:ring-primary focus:border-primary"
-              placeholder="Buscar chamados..."
-            />
           </div>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <ThemeToggle />
           
-          <Button variant="ghost" size="icon" className="text-muted-foreground">
-            <Bell className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center space-x-2">
+            <ThemeToggle />
+            
+            <div className="relative">
+              <Bell className="h-5 w-5 text-muted-foreground" />
+              <SlaNotificationBadge />
+            </div>
           
-          <DropdownMenu>
+            <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {isLoading ? (
                 <Button variant="ghost" size="icon" className="text-muted-foreground">
@@ -119,8 +122,12 @@ export function Header({ onMenuClick }: HeaderProps) {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+      
+      {/* Notificações SLA - controladas internamente */}
+      <SlaNotifications />
+    </>
   );
 }

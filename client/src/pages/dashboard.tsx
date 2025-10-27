@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/use-auth';
 import { AppLayout } from '@/components/layout/app-layout';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ChartCategory } from '@/components/dashboard/chart-category';
@@ -15,7 +16,12 @@ import {
   Clock, 
   CheckCircle, 
   Timer,
-  Plus
+  Plus,
+  Target,
+  BarChart3,
+  Settings,
+  Shield,
+  TrendingUp
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -30,6 +36,8 @@ export default function Dashboard() {
     assignee: '',
   });
 
+  const { user } = useAuth();
+
   // Fetch statistics
   const { data: stats, isLoading: isLoadingStats } = useQuery({
     queryKey: ['/api/statistics'],
@@ -42,15 +50,87 @@ export default function Dashboard() {
 
   // Get only the most recent 5 tickets
   const recentTickets = React.useMemo(() => {
-    if (!tickets) return [];
+    if (!tickets || !Array.isArray(tickets)) return [];
     
     return [...tickets]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 5);
   }, [tickets]);
 
   const handleFilterChange = (type: string, value: string) => {
     setFilters(prev => ({ ...prev, [type]: value }));
+  };
+
+  // Componente para Cards de Acesso SLA
+  const SlaAccessCards = () => {
+    if (!user) return null;
+    
+    const userRole = user.role || 'agent';
+    
+    const slaCards = [
+      {
+        title: 'SLA Agente',
+        description: 'Gerencie seus tickets e prazos SLA',
+        icon: <Target className="h-6 w-6" />,
+        path: '/sla/agent',
+        roles: ['agent', 'manager', 'admin'],
+        color: 'bg-blue-100 text-blue-600',
+        bgHover: 'hover:bg-blue-50'
+      },
+      {
+        title: 'SLA Gerente',
+        description: 'Analytics e performance da equipe',
+        icon: <BarChart3 className="h-6 w-6" />,
+        path: '/sla/manager',
+        roles: ['manager', 'admin'],
+        color: 'bg-green-100 text-green-600',
+        bgHover: 'hover:bg-green-50'
+      },
+      {
+        title: 'SLA Admin',
+        description: 'Configuração e monitoramento do sistema',
+        icon: <Settings className="h-6 w-6" />,
+        path: '/sla/admin',
+        roles: ['admin'],
+        color: 'bg-purple-100 text-purple-600',
+        bgHover: 'hover:bg-purple-50'
+      }
+    ];
+
+    const availableCards = slaCards.filter(card => 
+      card.roles.includes(userRole)
+    );
+
+    if (availableCards.length === 0) return null;
+
+    return (
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold text-foreground">Sistema SLA</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {availableCards.map((card) => (
+            <Card 
+              key={card.path}
+              className={`p-4 cursor-pointer transition-all duration-200 ${card.bgHover} border-border hover:shadow-md`}
+              onClick={() => setLocation(card.path)}
+            >
+              <div className="flex items-start gap-3">
+                <div className={`p-2 rounded-lg ${card.color}`}>
+                  {card.icon}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-medium text-foreground mb-1">{card.title}</h3>
+                  <p className="text-sm text-muted-foreground">{card.description}</p>
+                </div>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   // Dashboard Header Actions
@@ -93,7 +173,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <MetricCard
           title="Total de Chamados"
-          value={isLoadingStats ? '...' : stats?.totalTickets || 0}
+          value={isLoadingStats ? '...' : (stats as any)?.totalTickets || 0}
           icon={<TicketCheck className="h-5 w-5" />}
           change={{
             value: 12,
@@ -104,7 +184,7 @@ export default function Dashboard() {
         
         <MetricCard
           title="Chamados Abertos"
-          value={isLoadingStats ? '...' : stats?.openTickets || 0}
+          value={isLoadingStats ? '...' : (stats as any)?.openTickets || 0}
           icon={<Clock className="h-5 w-5" />}
           change={{
             value: 8,
@@ -117,7 +197,7 @@ export default function Dashboard() {
         
         <MetricCard
           title="Resolvidos Hoje"
-          value={isLoadingStats ? '...' : stats?.resolvedToday || 0}
+          value={isLoadingStats ? '...' : (stats as any)?.resolvedToday || 0}
           icon={<CheckCircle className="h-5 w-5" />}
           change={{
             value: 24,
@@ -130,7 +210,7 @@ export default function Dashboard() {
         
         <MetricCard
           title="Tempo de Resposta"
-          value={isLoadingStats ? '...' : stats?.averageResponseTime || '0min'}
+          value={isLoadingStats ? '...' : (stats as any)?.averageResponseTime || '0min'}
           icon={<Timer className="h-5 w-5" />}
           change={{
             value: 15,
@@ -141,6 +221,9 @@ export default function Dashboard() {
           iconColor="text-yellow-600"
         />
       </div>
+      
+      {/* SLA Access Cards */}
+      <SlaAccessCards />
       
       {/* Dashboard Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

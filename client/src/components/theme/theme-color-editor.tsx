@@ -5,7 +5,6 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ColorPicker } from '@/components/ui/color-picker';
 import { PredefinedThemes } from '@/components/theme/predefined-themes';
-import { useTheme as useDarkTheme } from '@/hooks/use-dark-theme';
 import { Palette, RotateCcw, Download, Upload, Sun, Moon, Sparkles } from 'lucide-react';
 
 interface ThemeColors {
@@ -48,14 +47,13 @@ const defaultDarkTheme: ThemeColors = {
 };
 
 export const ThemeColorEditor: React.FC = () => {
-  const { actualTheme } = useDarkTheme();
   const [lightColors, setLightColors] = useState<ThemeColors>(defaultLightTheme);
   const [darkColors, setDarkColors] = useState<ThemeColors>(defaultDarkTheme);
   const [activeTab, setActiveTab] = useState('predefined');
   const [currentTheme, setCurrentTheme] = useState<string>('default');
 
+  // Efeito para carregar cores salvas (só executa uma vez)
   useEffect(() => {
-    // Carregar cores salvas
     const savedLight = localStorage.getItem('theme-colors-light');
     const savedDark = localStorage.getItem('theme-colors-dark');
     const savedCurrentTheme = localStorage.getItem('current-theme-id');
@@ -69,18 +67,30 @@ export const ThemeColorEditor: React.FC = () => {
     if (savedCurrentTheme) {
       setCurrentTheme(savedCurrentTheme);
     }
+  }, []); // Executa apenas uma vez
+
+  // Efeito separado para observar mudanças no tema
+  useEffect(() => {
+    let observer: MutationObserver;
+    
+    // Função para aplicar cores baseada no tema atual
+    const applyCurrentThemeColors = () => {
+      const isDark = document.documentElement.classList.contains('dark');
+      const colorsToApply = isDark ? darkColors : lightColors;
+      
+      Object.entries(colorsToApply).forEach(([key, value]) => {
+        updateCSSVariable(key, value);
+      });
+    };
+
+    // Aplicar cores inicialmente
+    applyCurrentThemeColors();
 
     // Observar mudanças no tema claro/escuro
-    const observer = new MutationObserver((mutations) => {
+    observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-          const isDark = document.documentElement.classList.contains('dark');
-          const colorsToApply = isDark ? darkColors : lightColors;
-          
-          // Aplicar cores do tema correspondente
-          Object.entries(colorsToApply).forEach(([key, value]) => {
-            updateCSSVariable(key, value);
-          });
+          applyCurrentThemeColors();
         }
       });
     });
@@ -90,8 +100,12 @@ export const ThemeColorEditor: React.FC = () => {
       attributeFilter: ['class']
     });
 
-    return () => observer.disconnect();
-  }, [lightColors, darkColors]);
+    return () => {
+      if (observer) {
+        observer.disconnect();
+      }
+    };
+  }, [lightColors, darkColors]); // Agora pode depender das cores sem problemas
 
   const hexToHsl = (hex: string) => {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -123,10 +137,41 @@ export const ThemeColorEditor: React.FC = () => {
     document.documentElement.style.setProperty(`--${name}`, hslValue);
   };
 
+  // Função para salvar tema no servidor
+  const saveThemeToServer = async (lightTheme: ThemeColors, darkTheme: ThemeColors, themeId: string) => {
+    try {
+      const themeData = {
+        general: {
+          themeId,
+          lightTheme: JSON.stringify(lightTheme),
+          darkTheme: JSON.stringify(darkTheme),
+          primaryColor: lightTheme.primary,
+          secondaryColor: lightTheme.secondary,
+          accentColor: lightTheme.accent,
+        }
+      };
+
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(themeData),
+      });
+
+      if (!response.ok) {
+        console.warn('Failed to save theme to server:', response.statusText);
+      }
+    } catch (error) {
+      console.warn('Error saving theme to server:', error);
+    }
+  };
+
   const handleColorChange = (theme: 'light' | 'dark', colorKey: keyof ThemeColors, value: string) => {
     const currentColors = theme === 'light' ? lightColors : darkColors;
     const newColors = { ...currentColors, [colorKey]: value };
     
+    // Atualizar estado
     if (theme === 'light') {
       setLightColors(newColors);
     } else {
@@ -139,12 +184,19 @@ export const ThemeColorEditor: React.FC = () => {
       updateCSSVariable(colorKey, value);
     }
 
-    // Salvar no localStorage
-    localStorage.setItem(`theme-colors-${theme}`, JSON.stringify(newColors));
-    
-    // Marcar como tema personalizado
-    setCurrentTheme('custom');
-    localStorage.setItem('current-theme-id', 'custom');
+    // Salvar no localStorage de forma assíncrona
+    requestAnimationFrame(() => {
+      localStorage.setItem(`theme-colors-${theme}`, JSON.stringify(newColors));
+      
+      // Marcar como tema personalizado
+      setCurrentTheme('custom');
+      localStorage.setItem('current-theme-id', 'custom');
+      
+      // Salvar no servidor também (usar as cores atualizadas)
+      const finalLightColors = theme === 'light' ? newColors : lightColors;
+      const finalDarkColors = theme === 'dark' ? newColors : darkColors;
+      saveThemeToServer(finalLightColors, finalDarkColors, 'custom');
+    });
   };
 
   const applyPredefinedTheme = (lightTheme: ThemeColors, darkTheme: ThemeColors, themeId?: string) => {
@@ -167,6 +219,9 @@ export const ThemeColorEditor: React.FC = () => {
     if (themeId) {
       setCurrentTheme(themeId);
       localStorage.setItem('current-theme-id', themeId);
+      
+      // Salvar no servidor
+      saveThemeToServer(lightTheme, darkTheme, themeId);
     }
   };
 
@@ -192,6 +247,11 @@ export const ThemeColorEditor: React.FC = () => {
     // Resetar para tema padrão
     setCurrentTheme('default');
     localStorage.setItem('current-theme-id', 'default');
+    
+    // Salvar tema padrão no servidor
+    const finalLightColors = theme === 'light' ? defaultColors : lightColors;
+    const finalDarkColors = theme === 'dark' ? defaultColors : darkColors;
+    saveThemeToServer(finalLightColors, finalDarkColors, 'default');
   };
 
   const exportTheme = (theme: 'light' | 'dark') => {

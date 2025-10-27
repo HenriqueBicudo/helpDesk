@@ -31,7 +31,7 @@ export async function setupVite(app: Express, server: Server) {
   };
 
   const vite = await createViteServer({
-    configFile: false,
+    configFile: path.resolve(__dirname, "..", "client", "vite.config.ts"),
     root: path.resolve(__dirname, "..", "client"),
     customLogger: {
       ...viteLogger,
@@ -47,6 +47,11 @@ export async function setupVite(app: Express, server: Server) {
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
+
+    // Skip API routes - let them be handled by the API handlers
+    if (url.startsWith('/api')) {
+      return next();
+    }
 
     try {
       const clientTemplate = path.resolve(

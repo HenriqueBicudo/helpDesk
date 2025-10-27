@@ -1,6 +1,9 @@
+import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+// import { registerRoutesSimple } from "./routes-simple";
 import { setupVite, serveStatic, log } from "./vite";
+import { startSlaMonitoring } from "./jobs/sla-monitor.job";
 
 const app = express();
 app.use(express.json());
@@ -51,7 +54,8 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
-    await setupVite(app, server);
+    // await setupVite(app, server); // Temporariamente desabilitado devido a conflito com path-to-regexp
+    log('Frontend development mode: acesse http://localhost:3000 para o cliente Vite separado');
   } else {
     serveStatic(app);
   }
@@ -62,5 +66,10 @@ app.use((req, res, next) => {
   const port = 5000;
   server.listen(port, "localhost", () => {
     log(`Servidor rodando em http://localhost:${port}`);
+    
+    // 🚀 Sprint 4: Iniciar monitoramento automático de SLA
+    log(`🤖 Iniciando sistema de monitoramento de SLA...`);
+    startSlaMonitoring();
+    log(`✅ Sistema de monitoramento SLA ativo (verifica a cada 5 minutos)`);
   });
 })();

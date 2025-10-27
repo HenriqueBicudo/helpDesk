@@ -14,6 +14,20 @@ export const ticketStatusSchema = z.enum(TICKET_STATUS);
 export const ticketPrioritySchema = z.enum(TICKET_PRIORITY);
 export const ticketCategorySchema = z.enum(TICKET_CATEGORY);
 
+// Tipos de roles do sistema
+export const USER_ROLES = [
+  'admin',           // Administrador total do sistema
+  'helpdesk_agent',  // Agente da empresa de helpdesk (acesso a todos os tickets)
+  'helpdesk_manager',// Gerente da empresa de helpdesk (acesso total + configurações)
+  'client_manager',  // Gestor da empresa cliente (acesso aos tickets da sua empresa)
+  'client_user'      // Usuário padrão da empresa cliente (acesso limitado aos seus tickets)
+] as const;
+
+export type UserRole = typeof USER_ROLES[number];
+
+// Validador para roles
+export const userRoleSchema = z.enum(USER_ROLES);
+
 // Esquema de usuário para validação com Zod
 export const userSchema = z.object({
   id: z.number().optional(),
@@ -21,8 +35,11 @@ export const userSchema = z.object({
   password: z.string().min(6),
   fullName: z.string().min(3),
   email: z.string().email(),
-  role: z.string().default('agent'),
+  role: userRoleSchema.default('client_user'),
+  company: z.string().nullable().optional(), // Empresa do usuário (para usuários clientes)
+  teamId: z.number().nullable().optional(), // ID do team do usuário
   avatarInitials: z.string().nullable().optional(),
+  isActive: z.boolean().default(true),
   createdAt: z.date().optional()
 });
 
@@ -40,6 +57,26 @@ export const requesterSchema = z.object({
   createdAt: z.date().optional()
 });
 
+// Esquema de empresa para validação com Zod
+export const companySchema = z.object({
+  id: z.number().optional(),
+  name: z.string().min(1),
+  cnpj: z.string().optional(),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  isActive: z.boolean().default(true),
+  hasActiveContract: z.boolean().default(false),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
+});
+
+export const insertCompanySchema = companySchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
 // Esquema de ticket para validação com Zod
 export const ticketSchema = z.object({
   id: z.number().optional(),
@@ -47,9 +84,13 @@ export const ticketSchema = z.object({
   description: z.string().min(10),
   status: ticketStatusSchema.default('open'),
   priority: ticketPrioritySchema.default('medium'),
-  category: ticketCategorySchema,
+  category: z.string().min(1), // Agora permite qualquer string (nomes dos teams)
   requesterId: z.number(),
   assigneeId: z.number().optional().nullable(),
+  companyId: z.number().optional().nullable(), // Campo para empresa solicitante
+  contractId: z.string().optional().nullable(), // Campo para vincular ao contrato (UUID)
+  responseDueAt: z.date().optional().nullable(), // Prazo para primeira resposta
+  solutionDueAt: z.date().optional().nullable(), // Prazo para solução definitiva
   createdAt: z.date().optional(),
   updatedAt: z.date().optional()
 });
@@ -80,6 +121,9 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Requester = z.infer<typeof requesterSchema>;
 export type InsertRequester = z.infer<typeof insertRequesterSchema>;
 
+export type Company = z.infer<typeof companySchema>;
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+
 export type Ticket = z.infer<typeof ticketSchema>;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
 
@@ -87,6 +131,17 @@ export type InsertTicket = z.infer<typeof insertTicketSchema>;
 export type TicketWithRelations = Ticket & {
   requester: Requester;
   assignee?: User;
+  company?: Company;
+  contract?: {
+    id: string;
+    contractNumber: string;
+    includedHours: number;
+    usedHours: string;
+    monthlyValue: string;
+    hourlyRate: string;
+    resetDay: number;
+    status: string;
+  };
 };
 
 // Email template types
@@ -146,7 +201,8 @@ export const ticketInteractionSchema = z.object({
   type: interactionTypeSchema,
   content: z.string().min(1),
   isInternal: z.boolean().default(false),
-  timeSpent: z.number().min(0).default(0),
+  timeSpent: z.number().min(0).default(0), // Tempo gasto em horas (decimal)
+  contractId: z.string().optional().nullable(), // Contrato específico para débito de horas
   createdBy: z.number(),
   createdAt: z.date().optional(),
   updatedAt: z.date().optional()
@@ -232,6 +288,17 @@ export const updateSystemSettingsSchema = z.object({
   integrations: z.record(z.any()).optional(),
 });
 
+// Esquema de Team
+export const teamSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().min(3),
+  description: z.string().nullable().optional(),
+  isActive: z.boolean().default(true),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional(),
+});
+
 export type SystemSetting = z.infer<typeof systemSettingSchema>;
 export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
 export type UpdateSystemSettings = z.infer<typeof updateSystemSettingsSchema>;
+export type Team = z.infer<typeof teamSchema>;

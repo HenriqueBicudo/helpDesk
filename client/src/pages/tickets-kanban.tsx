@@ -8,9 +8,7 @@ import {
   Search, 
   Filter, 
   MoreVertical, 
-  CalendarDays, 
-  Clock,
-  Plus
+  CalendarDays
 } from "lucide-react";
 import {
   DndContext,
@@ -24,7 +22,6 @@ import {
   DragStartEvent,
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -57,9 +54,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, getInitials } from "@/lib/utils";
 import { TicketStatusBadge } from "@/components/tickets/ticket-status-badge";
 import { TicketPriorityBadge } from "@/components/tickets/ticket-priority-badge";
-import { useAuth } from "@/hooks/use-auth";
-import { Header } from "@/components/layout/header";
-import { Sidebar } from "@/components/layout/sidebar";
+import { SlaAlert } from "@/components/tickets/sla-alert";
+import { SlaWarningFlag } from "@/components/tickets/sla-warning-flag";
+import { SlaInfoCapsule } from "@/components/tickets/sla-info-capsule";
+import { SlaDueWarning } from "@/components/tickets/sla-due-warning";
+import { AppLayout } from "@/components/layout/app-layout";
 
 type TicketWithRelations = Ticket & {
   requester: Requester;
@@ -82,6 +81,7 @@ type KanbanGroup = {
 // Componente do card de ticket com drag and drop
 function TicketCard({ ticket, groupId }: { ticket: TicketWithRelations; groupId: string }) {
   const [, setLocation] = useLocation();
+  const [showSlaInfo, setShowSlaInfo] = useState(false);
   
   const {
     attributes,
@@ -119,9 +119,20 @@ function TicketCard({ ticket, groupId }: { ticket: TicketWithRelations; groupId:
       {...listeners}
     >
       <Card 
-        className="shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer select-none"
+        className={`shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer select-none relative group ${
+          ticket.priority === 'critical' ? 'ring-2 ring-red-500 ring-opacity-50' : ''
+        }`}
         onClick={() => navigateToTicket(ticket.id || 0)}
       >
+        {/* Flag de alerta SLA */}
+        <SlaWarningFlag
+          responseDueAt={ticket.responseDueAt || undefined}
+          solutionDueAt={ticket.solutionDueAt || undefined}
+          status={ticket.status}
+          priority={ticket.priority}
+          hasFirstResponse={false} // TODO: verificar se há primeira resposta
+        />
+        
         <CardHeader className="p-3 pb-0">
           <div className="flex justify-between items-start">
             <CardTitle className="text-sm font-medium line-clamp-2">
@@ -154,15 +165,66 @@ function TicketCard({ ticket, groupId }: { ticket: TicketWithRelations; groupId:
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <div className="flex gap-1 mt-2">
+          
+          {/* Aviso de vencimento SLA */}
+          <SlaDueWarning
+            responseDueAt={ticket.responseDueAt || undefined}
+            solutionDueAt={ticket.solutionDueAt || undefined}
+            hasFirstResponse={false} // TODO: verificar se há primeira resposta
+            compact={true}
+            className="mt-2"
+          />
+          
+          <div className="flex gap-1 mt-2 flex-wrap">
             <TicketStatusBadge status={ticket.status} />
             <Badge variant="outline" className="bg-muted/30 border-border text-muted-foreground">
               #{ticket.id}
             </Badge>
+            {/* Alerta de SLA inline */}
+            <SlaAlert
+              responseDueAt={ticket.responseDueAt || undefined}
+              solutionDueAt={ticket.solutionDueAt || undefined}
+              status={ticket.status}
+              priority={ticket.priority}
+              hasFirstResponse={false} // TODO: verificar se há primeira resposta
+              showLabel={false}
+            />
           </div>
         </CardHeader>
         
         <CardContent className="p-3 pt-2">
+          {/* Cápsula de informações SLA */}
+          {(ticket.responseDueAt || ticket.solutionDueAt) && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground">Informações SLA</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowSlaInfo(!showSlaInfo);
+                  }}
+                >
+                  {showSlaInfo ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </Button>
+              </div>
+              
+              {showSlaInfo && (
+                <SlaInfoCapsule
+                  responseDueAt={ticket.responseDueAt || undefined}
+                  solutionDueAt={ticket.solutionDueAt || undefined}
+                  status={ticket.status}
+                  priority={ticket.priority}
+                  hasFirstResponse={false} // TODO: verificar se há primeira resposta
+                  createdAt={ticket.createdAt || new Date()}
+                  className="mb-3"
+                />
+              )}
+            </div>
+          )}
+          
           <p className="text-xs text-muted-foreground line-clamp-2">
             {ticket.description}
           </p>
@@ -195,9 +257,6 @@ function TicketCard({ ticket, groupId }: { ticket: TicketWithRelations; groupId:
 }
 
 export default function TicketsKanban() {
-  const { user } = useAuth();
-  const [, setLocation] = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const queryClient = useQueryClient();
 
   // Estados para controle
@@ -255,6 +314,13 @@ export default function TicketsKanban() {
     if (tickets && users) {
       const agentGroups: KanbanGroup[] = [];
       
+      // Filtra apenas usuários do helpdesk
+      const helpdeskUsers = users.filter(user => 
+        user.role === 'admin' || 
+        user.role === 'helpdesk_manager' || 
+        user.role === 'helpdesk_agent'
+      );
+      
       // Filtra os tickets ativos (excluindo resolvidos e fechados)
       const activeTickets = tickets.filter(ticket => 
         ticket.status !== "resolved" && ticket.status !== "closed"
@@ -275,7 +341,7 @@ export default function TicketsKanban() {
       }
       
       // Agrupar por responsável
-      users.forEach(agent => {
+      helpdeskUsers.forEach(agent => {
         const agentTickets = activeTickets.filter(ticket => ticket.assigneeId === agent.id);
         
         if (agentTickets.length > 0) {
@@ -432,23 +498,9 @@ function DroppableColumn({
   );
 }
 
-  // Função para navegar para a página de detalhes do ticket
-  const navigateToTicket = (ticketId: number) => {
-    if (ticketId) {
-      setLocation(`/tickets/${ticketId}`);
-    }
-  };
-
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
-        <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-        
-        <div className="container mx-auto py-6">
+    <AppLayout title="Tickets Kanban">
+      <div className="container mx-auto py-6">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h1 className="text-2xl font-bold">Tickets Kanban</h1>
@@ -591,7 +643,6 @@ function DroppableColumn({
             </DndContext>
           )}
         </div>
-      </div>
-    </div>
+      </AppLayout>
   );
 }

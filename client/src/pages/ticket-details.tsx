@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
 import { AppLayout } from '@/components/layout/app-layout';
 import { TicketStatusBadge } from '@/components/tickets/ticket-status-badge';
 import { TicketPriorityBadge } from '@/components/tickets/ticket-priority-badge';
 import { RichTextEditor } from '@/components/tickets/rich-text-editor';
 import { TicketTimeline } from '@/components/tickets/ticket-timeline';
+import { TicketTags } from '@/components/tickets/ticket-tags';
+import { TicketLinks } from '@/components/tickets/ticket-links';
+import { TicketActions } from '@/components/tickets/ticket-actions';
+import { SlaIndicators } from '@/components/tickets/sla-indicators';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -14,34 +17,58 @@ import {
   CardHeader,
   CardTitle,
   CardContent,
-  CardFooter,
 } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   ArrowLeft, 
-  MessageCircle, 
-  Paperclip, 
   AlertTriangle,
   Clock,
   Calendar,
   Tag,
-  User,
-  UserCheck,
-  Eye,
-  EyeOff
 } from 'lucide-react';
-import { translateCategory, translateStatus, translatePriority, formatDate, getInitials } from '@/lib/utils';
+import { translateCategory, formatDate, getInitials } from '@/lib/utils';
+import type { TicketWithRelations, User as UserType } from '@shared/schema';
+
+interface Interaction {
+  id: number;
+  type: string;
+  content: string;
+  isInternal: boolean;
+  timeSpent?: number;
+  createdAt: Date;
+  user?: UserType;
+}
+
+interface Tag {
+  id: number;
+  name: string;
+  color: string;
+}
+
+interface TicketLink {
+  id: number;
+  sourceTicketId: number;
+  targetTicketId: number;
+  linkType: string;
+  description?: string;
+  targetTicket: {
+    id: number;
+    subject: string;
+    status: string;
+    priority: string;
+  };
+}
+
+interface ExtendedTicket extends TicketWithRelations {
+  id: number;
+  createdAt: Date;
+  tags?: Tag[];
+  linkedTickets?: TicketLink[];
+}
 
 interface InteractionData {
   content: string;
@@ -58,19 +85,16 @@ export default function TicketDetails() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   
-  // States for status and assignee changes
-  const [newStatus, setNewStatus] = useState<string>('');
-  const [newAssignee, setNewAssignee] = useState<number | undefined>(undefined);
   const [showInternalNotes, setShowInternalNotes] = useState(false);
   
   // Fetch ticket details
-  const { data: ticket, isLoading, error } = useQuery({
+  const { data: ticket, isLoading, error } = useQuery<ExtendedTicket>({
     queryKey: [`/api/tickets/${ticketId}`],
     enabled: ticketId > 0,
   });
   
   // Fetch ticket interactions
-  const { data: interactions = [] } = useQuery({
+  const { data: interactions = [] } = useQuery<Interaction[]>({
     queryKey: [`/api/tickets/${ticketId}/interactions`],
     enabled: ticketId > 0,
   });
@@ -81,9 +105,22 @@ export default function TicketDetails() {
   });
   
   // Fetch users (for assignee dropdown)
-  const { data: users = [] } = useQuery({
+  const { data: users = [] } = useQuery<UserType[]>({
     queryKey: ['/api/users'],
   });
+
+  // Fetch available contracts for this ticket
+  const { data: availableContracts = [] } = useQuery({
+    queryKey: [`/api/tickets/${ticketId}/contracts`],
+    enabled: ticketId > 0,
+  });
+
+  // Filtrar apenas usuários internos do helpdesk para atribuição
+  const helpdeskUsers = users.filter((user: UserType) => 
+    user.role === 'admin' || 
+    user.role === 'helpdesk_manager' || 
+    user.role === 'helpdesk_agent'
+  );
 
   // Mutation to create ticket interaction
   const createInteractionMutation = useMutation({
@@ -94,6 +131,9 @@ export default function TicketDetails() {
       formData.append('isInternal', data.isInternal.toString());
       if (data.timeSpent) {
         formData.append('timeSpent', data.timeSpent.toString());
+      }
+      if (data.contractId) {
+        formData.append('contractId', data.contractId);
       }
       
       // Adicionar anexos
@@ -129,67 +169,38 @@ export default function TicketDetails() {
     },
   });
 
-  // Mutation to update ticket status
-  const updateStatusMutation = useMutation({
-    mutationFn: async (status: string) => {
-      const res = await apiRequest('POST', `/api/tickets/${ticketId}/status`, { status });
+  // Mutation to update ticket contract
+  const updateContractMutation = useMutation({
+    mutationFn: async (contractId: string) => {
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ contractId }),
+      });
+      
+      if (!res.ok) {
+        throw new Error('Erro ao atualizar contrato');
+      }
+      
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
-      queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
       toast({
         title: "Sucesso",
-        description: "Status do ticket atualizado",
+        description: "Contrato atualizado com sucesso",
       });
     },
     onError: () => {
       toast({
         title: "Erro",
-        description: "Erro ao atualizar status",
+        description: "Erro ao atualizar contrato",
         variant: "destructive",
       });
     },
   });
-
-  // Mutation to assign ticket
-  const assignTicketMutation = useMutation({
-    mutationFn: async (assigneeId: number) => {
-      const res = await apiRequest('POST', `/api/tickets/${ticketId}/assign`, { assigneeId });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
-      queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
-      toast({
-        title: "Sucesso",
-        description: "Ticket atribuído com sucesso",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Erro",
-        description: "Erro ao atribuir ticket",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleStatusChange = (status: string) => {
-    setNewStatus(status);
-    updateStatusMutation.mutate(status);
-  };
-
-  const handleAssigneeChange = (value: string) => {
-    if (value === "no_assignee") {
-      setNewAssignee(undefined);
-      // TODO: Implement unassign mutation
-    } else {
-      const id = parseInt(value);
-      setNewAssignee(id);
-      assignTicketMutation.mutate(id);
-    }
-  };
 
   const handleCreateInteraction = (data: InteractionData) => {
     createInteractionMutation.mutate(data);
@@ -197,11 +208,13 @@ export default function TicketDetails() {
 
   if (isLoading) {
     return (
-      <AppLayout>
-        <div className="flex items-center justify-center min-h-[50vh]">
+      <AppLayout title="Carregando...">
+        <div className="flex justify-center items-center min-h-screen">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Carregando ticket...</p>
+            <div className="spinner-border" role="status">
+              <span className="sr-only">Carregando...</span>
+            </div>
+            <p className="mt-2">Carregando detalhes do ticket...</p>
           </div>
         </div>
       </AppLayout>
@@ -210,7 +223,7 @@ export default function TicketDetails() {
 
   if (error || !ticket) {
     return (
-      <AppLayout>
+      <AppLayout title="Erro">
         <div className="container mx-auto py-6">
           <Card className="text-center">
             <CardContent className="p-6">
@@ -229,15 +242,15 @@ export default function TicketDetails() {
     );
   }
 
-  // Calcular horas do cliente
-  const customerHours = ticket.requester ? {
-    monthly: ticket.requester.monthlyHours || 10,
-    used: parseFloat(ticket.requester.usedHours || '0'),
-    remaining: (ticket.requester.monthlyHours || 10) - parseFloat(ticket.requester.usedHours || '0')
+  // Calcular horas do cliente baseado no contrato específico do ticket
+  const customerHours = ticket.contract ? {
+    monthly: ticket.contract.includedHours,
+    used: parseFloat(ticket.contract.usedHours || '0'),
+    remaining: ticket.contract.includedHours - parseFloat(ticket.contract.usedHours || '0')
   } : undefined;
 
   return (
-    <AppLayout>
+    <AppLayout title={`Ticket #${ticket.id?.toString().padStart(6, '0')} - ${ticket.subject}`}>
       <div className="container mx-auto py-6 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
@@ -276,7 +289,7 @@ export default function TicketDetails() {
                     </div>
                   </div>
                   <div className="text-right text-sm text-muted-foreground">
-                    {formatDate(ticket.createdAt)}
+                    {ticket?.createdAt ? formatDate(ticket.createdAt) : 'N/A'}
                   </div>
                 </div>
               </CardHeader>
@@ -290,7 +303,20 @@ export default function TicketDetails() {
 
             {/* Timeline de Interações */}
             <TicketTimeline 
-              interactions={interactions}
+              interactions={interactions.map(interaction => ({
+                id: interaction.id,
+                type: interaction.type as 'comment' | 'internal_note' | 'status_change' | 'assignment' | 'time_log',
+                content: interaction.content,
+                isInternal: interaction.isInternal,
+                timeSpent: interaction.timeSpent,
+                createdAt: typeof interaction.createdAt === 'string' ? interaction.createdAt : interaction.createdAt.toISOString(),
+                user: interaction.user ? {
+                  id: interaction.user.id!,
+                  fullName: interaction.user.fullName,
+                  role: interaction.user.role,
+                  avatarInitials: interaction.user.avatarInitials || undefined
+                } : undefined
+              }))}
               showInternalNotes={showInternalNotes}
               onToggleInternalNotes={() => setShowInternalNotes(!showInternalNotes)}
               currentUserRole={user?.role}
@@ -301,14 +327,29 @@ export default function TicketDetails() {
               onSubmit={handleCreateInteraction}
               showTemplates={true}
               showTimeTracking={true}
+              ticketId={ticket.id}
               customerHours={customerHours}
-              templates={templates}
+              templates={templates as any}
               placeholder="Escreva sua resposta para o cliente..."
             />
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* Indicadores de SLA */}
+            <SlaIndicators 
+              ticket={{
+                id: ticket.id!,
+                status: ticket.status,
+                priority: ticket.priority,
+                createdAt: ticket.createdAt,
+                responseDueAt: ticket.responseDueAt || undefined,
+                solutionDueAt: ticket.solutionDueAt || undefined,
+                updatedAt: ticket.updatedAt
+              }}
+              hasFirstResponse={interactions.some(i => !i.isInternal && i.type === 'comment')}
+            />
+
             {/* Informações do Cliente */}
             <Card>
               <CardHeader>
@@ -330,10 +371,34 @@ export default function TicketDetails() {
                   </div>
                 </div>
 
-                {customerHours && (
-                  <div className="space-y-2">
+                {customerHours ? (
+                  <div className="space-y-3">
+                    {/* Seletor de Contrato */}
+                    {availableContracts.length > 1 && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                          Contrato vinculado:
+                        </label>
+                        <Select
+                          value={ticket.contract?.id || ''}
+                          onValueChange={(value) => updateContractMutation.mutate(value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Selecionar contrato" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableContracts.map((contract: any) => (
+                              <SelectItem key={contract.id} value={contract.id}>
+                                {contract.contractNumber} - {contract.type} ({contract.usedHours}h/{contract.includedHours}h)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
                     <div className="flex items-center justify-between text-sm">
-                      <span>Plano: {ticket.requester?.planType || 'basic'}</span>
+                      <span>Contrato: {ticket.contract?.contractNumber}</span>
                       <Badge variant={customerHours.remaining < 2 ? "destructive" : "default"}>
                         {customerHours.remaining.toFixed(1)}h restantes
                       </Badge>
@@ -343,65 +408,84 @@ export default function TicketDetails() {
                       className="h-2"
                     />
                     <div className="text-xs text-muted-foreground">
-                      {customerHours.used.toFixed(1)}h / {customerHours.monthly}h utilizadas este mês
+                      {customerHours.used.toFixed(1)}h / {customerHours.monthly}h utilizadas
                     </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-sm text-muted-foreground">
+                      Sem contrato vinculado
+                    </div>
+                    
+                    {/* Permitir vincular um contrato se houver contratos disponíveis */}
+                    {availableContracts.length > 0 && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                          Vincular contrato:
+                        </label>
+                        <Select
+                          value=""
+                          onValueChange={(value) => updateContractMutation.mutate(value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Selecionar contrato" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableContracts.map((contract: any) => (
+                              <SelectItem key={contract.id} value={contract.id}>
+                                {contract.contractNumber} - {contract.type} ({contract.usedHours}h/{contract.includedHours}h)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
 
             {/* Ações do Ticket */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Ações</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Status */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Status</label>
-                  <Select
-                    value={newStatus || ticket.status}
-                    onValueChange={handleStatusChange}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={translateStatus(ticket.status)} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="open">Aberto</SelectItem>
-                      <SelectItem value="in_progress">Em Andamento</SelectItem>
-                      <SelectItem value="pending">Pendente</SelectItem>
-                      <SelectItem value="resolved">Resolvido</SelectItem>
-                      <SelectItem value="closed">Fechado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Responsável */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Responsável</label>
-                  <Select
-                    value={newAssignee?.toString() || ticket.assigneeId?.toString() || "no_assignee"}
-                    onValueChange={handleAssigneeChange}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={
-                        ticket.assignee ? ticket.assignee.fullName : "Não atribuído"
-                      } />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="no_assignee">Não atribuído</SelectItem>
-                      {users.map((user: any) => (
-                        <SelectItem key={user.id} value={user.id.toString()}>
-                          {user.fullName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Informações Adicionais */}
+            <TicketActions 
+              ticket={{
+                id: ticket.id!,
+                subject: ticket.subject,
+                status: ticket.status,
+                priority: ticket.priority,
+                category: ticket.category,
+                assigneeId: ticket.assigneeId || undefined,
+                assignee: ticket.assignee ? {
+                  id: ticket.assignee.id!,
+                  name: ticket.assignee.fullName,
+                  email: ticket.assignee.email
+                } : undefined
+              }}
+              agents={helpdeskUsers.map(user => ({
+                id: user.id!,
+                name: user.fullName,
+                email: user.email
+              }))}
+            />            {/* Tags do Ticket */}
+            <TicketTags 
+              ticketId={ticket.id!}
+              tags={ticket.tags || []}
+            />            {/* Tickets Vinculados */}
+            <TicketLinks 
+              ticketId={ticket.id!}
+              linkedTickets={(ticket.linkedTickets || []).map(link => ({
+                id: link.id,
+                ticketId: link.sourceTicketId,
+                linkedTicketId: link.targetTicketId,
+                linkType: link.linkType,
+                description: link.description,
+                linkedTicket: {
+                  id: link.targetTicket.id,
+                  subject: link.targetTicket.subject,
+                  status: link.targetTicket.status,
+                  priority: link.targetTicket.priority
+                }
+              }))}
+            />            {/* Informações Adicionais */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Detalhes</CardTitle>
@@ -422,7 +506,7 @@ export default function TicketDetails() {
                 <div className="flex items-center gap-2 text-sm">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Criado em:</span>
-                  <span>{formatDate(ticket.createdAt)}</span>
+                  <span>{ticket?.createdAt ? formatDate(ticket.createdAt) : 'N/A'}</span>
                 </div>
                 
                 {ticket.updatedAt && ticket.updatedAt !== ticket.createdAt && (

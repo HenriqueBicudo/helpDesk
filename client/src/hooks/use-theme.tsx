@@ -63,7 +63,57 @@ export interface ThemeColors {
 }
 
 export function useTheme() {
-  // Função para aplicar as cores no CSS
+  console.log('🚀 Hook use-theme foi carregado!');
+  
+  // Função para converter HEX para HSL
+  const hexToHsl = (hex: string): string => {
+    // Remove o # se presente
+    hex = hex.replace('#', '');
+    
+    // Converte para RGB
+    const r = parseInt(hex.substr(0, 2), 16) / 255;
+    const g = parseInt(hex.substr(2, 2), 16) / 255;
+    const b = parseInt(hex.substr(4, 2), 16) / 255;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+
+    if (max === min) {
+      h = s = 0; // achromatic
+    } else {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+        default: h = 0;
+      }
+      h /= 6;
+    }
+
+    return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+  };
+
+  // Função para aplicar tema completo (light/dark)
+  const applyFullTheme = (lightColors: Record<string, string>, darkColors: Record<string, string>) => {
+    console.log('🎨 Aplicando tema completo:', { lightColors, darkColors });
+    
+    // Determinar se estamos no modo escuro
+    const isDark = document.documentElement.classList.contains('dark');
+    const colorsToApply = isDark ? darkColors : lightColors;
+    
+    console.log('🎨 Modo atual:', isDark ? 'escuro' : 'claro');
+    console.log('🎨 Cores a aplicar:', colorsToApply);
+    
+    // Aplicar todas as cores do tema
+    Object.entries(colorsToApply).forEach(([key, value]) => {
+      const hslValue = hexToHsl(value as string);
+      document.documentElement.style.setProperty(`--${key}`, hslValue);
+      console.log(`🎨 Aplicando --${key}: ${hslValue}`);
+    });
+  };
   const applyTheme = (colors: ThemeColors) => {
     const root = document.documentElement;
     
@@ -106,16 +156,43 @@ export function useTheme() {
   // Função para carregar o tema salvo
   const loadSavedTheme = async () => {
     try {
+      console.log('🎨 Carregando tema do servidor...');
       const response = await fetch('/api/settings');
       if (response.ok) {
         const data = await response.json();
-        if (data.general && data.general.primaryColor) {
-          applyTheme({
-            primaryColor: data.general.primaryColor,
-            secondaryColor: data.general.secondaryColor,
-            accentColor: data.general.accentColor,
-          });
+        console.log('🎨 Dados recebidos do servidor:', data);
+        
+        if (data.general) {
+          const { lightTheme, darkTheme, themeId } = data.general;
+          
+          // Se houver temas completos salvos no servidor, aplicar eles
+          if (lightTheme && darkTheme && typeof lightTheme === 'object' && typeof darkTheme === 'object') {
+            console.log('🎨 Aplicando tema completo do servidor:', { themeId, lightTheme, darkTheme });
+            
+            // Salvar no localStorage também
+            localStorage.setItem('theme-colors-light', JSON.stringify(lightTheme));
+            localStorage.setItem('theme-colors-dark', JSON.stringify(darkTheme));
+            localStorage.setItem('current-theme-id', themeId || 'custom');
+            
+            // Aplicar tema completo
+            applyFullTheme(lightTheme, darkTheme);
+            return;
+          }
+          
+          // Fallback para cores individuais (compatibilidade)
+          if (data.general.primaryColor) {
+            console.log('🎨 Aplicando tema individual (fallback):', data.general);
+            applyTheme({
+              primaryColor: data.general.primaryColor,
+              secondaryColor: data.general.secondaryColor,
+              accentColor: data.general.accentColor,
+            });
+          } else {
+            console.log('🎨 Nenhum tema encontrado no servidor');
+          }
         }
+      } else {
+        console.warn('🎨 Falha ao carregar configurações do servidor:', response.status);
       }
     } catch (error) {
       console.warn('Could not load saved theme:', error);
@@ -147,18 +224,43 @@ export function useTheme() {
 
   // Carrega o tema na inicialização
   useEffect(() => {
+    console.log('🔧 Inicializando sistema de temas...');
+    
     // Primeiro tenta carregar do localStorage (mais rápido)
     const savedColors = localStorage.getItem('theme-colors');
-    if (savedColors) {
+    const savedLightTheme = localStorage.getItem('theme-colors-light');
+    const savedDarkTheme = localStorage.getItem('theme-colors-dark');
+    
+    console.log('🔧 LocalStorage check:', { 
+      savedColors: !!savedColors, 
+      savedLightTheme: !!savedLightTheme, 
+      savedDarkTheme: !!savedDarkTheme 
+    });
+    
+    // Priorizar o sistema novo de temas (light/dark)
+    if (savedLightTheme && savedDarkTheme) {
+      console.log('🔧 Aplicando tema completo do localStorage');
+      try {
+        const lightColors = JSON.parse(savedLightTheme);
+        const darkColors = JSON.parse(savedDarkTheme);
+        applyFullTheme(lightColors, darkColors);
+      } catch (error) {
+        console.warn('Erro ao aplicar tema completo do localStorage:', error);
+      }
+    } else if (savedColors) {
+      console.log('🔧 Aplicando tema individual do localStorage (fallback)');
       try {
         const colors = JSON.parse(savedColors);
         applyTheme(colors);
       } catch (error) {
         console.warn('Invalid theme colors in localStorage:', error);
       }
+    } else {
+      console.log('🔧 Nenhum tema no localStorage');
     }
     
     // Depois carrega do servidor (mais atualizado)
+    console.log('🔧 Carregando tema do servidor...');
     loadSavedTheme();
   }, []);
 
