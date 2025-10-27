@@ -125,15 +125,6 @@ export function TicketActions({ ticket, agents }: TicketActionsProps) {
       // Retornar contexto com os valores anteriores
       return { previousTicket, previousTickets };
     },
-    onError: (err, updateData, context) => {
-      // Reverter para os valores anteriores em caso de erro
-      if (context?.previousTicket) {
-        queryClient.setQueryData(['ticket', ticket.id], context.previousTicket);
-      }
-      if (context?.previousTickets) {
-        queryClient.setQueryData(['tickets'], context.previousTickets);
-      }
-    },
     onSuccess: () => {
       // Invalidar múltiplas queries relacionadas para garantir atualização
       queryClient.invalidateQueries({ queryKey: ['ticket', ticket.id] });

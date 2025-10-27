@@ -1,5 +1,5 @@
 import { eq, and, gte, lte, sql, count } from 'drizzle-orm';
-import { db } from '../db-drizzle';
+import { db } from '../db-postgres';
 import { 
   contracts,
   type Contract,

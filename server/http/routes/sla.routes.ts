@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { getSlaMonitorJob } from '../../jobs/sla-monitor.job';
 import { SlaMonitorService } from '../../services/slaMonitor.service';
 import { slaService } from '../../services/sla.service';
-import { db } from '../../db-drizzle';
+import { db } from '../../db-postgres';
 import { slaRules } from '../../../shared/schema/sla_rules';
 import { eq } from 'drizzle-orm';
 

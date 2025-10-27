@@ -1,5 +1,5 @@
 ﻿import { eq, desc, count, sql, and, gte, lte, or } from 'drizzle-orm';
-import { db } from './db-drizzle';
+import { db } from './db-postgres';
 import * as schema from '../shared/drizzle-schema';
 import { contracts } from '../shared/schema/contracts';
 import { slaEngineService } from './services/slaEngine.service';

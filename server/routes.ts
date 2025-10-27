@@ -23,7 +23,7 @@ import {
   canUserEditTicket 
 } from "./middleware/auth";
 import { emailService } from "./email-service";
-import { ContractService } from "./services/contract-simple.service";
+import { ContractService } from "./services/contract.service";
 import { contractSimpleRoutes } from "./http/routes/contract-simple.routes";
 import { slaRoutes } from "./http/routes/sla.routes";
 import { accessRoutes } from "./http/routes/access.routes";

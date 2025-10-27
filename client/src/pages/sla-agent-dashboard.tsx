@@ -65,7 +65,7 @@ const SlaAgentDashboard: React.FC = () => {
 
   // Filtrar tickets baseado nos filtros ativos
   const filteredTickets = React.useMemo(() => {
-    if (!myTickets) return [];
+    if (!myTickets || !Array.isArray(myTickets)) return [];
 
     return myTickets.filter(ticket => {
       const matchesSearch = !searchQuery || 
@@ -100,7 +100,7 @@ const SlaAgentDashboard: React.FC = () => {
 
   // Calcular estatísticas rápidas
   const stats = React.useMemo(() => {
-    if (!myTickets) return { total: 0, breached: 0, approaching: 0, ok: 0 };
+    if (!myTickets || !Array.isArray(myTickets)) return { total: 0, breached: 0, approaching: 0, ok: 0 };
 
     const breached = myTickets.filter(t => 
       slaUtils.isBreached(t.responseDueAt || null) || 

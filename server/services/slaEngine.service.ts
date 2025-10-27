@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { db } from '../db-drizzle';
+import { db } from '../db-postgres';
 import { tickets } from '../../shared/drizzle-schema';
 import { contracts } from '../../shared/schema/contracts';
 import { calendars } from '../../shared/schema/calendars';
