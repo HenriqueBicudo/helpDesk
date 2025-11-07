@@ -8,17 +8,41 @@ Um sistema completo de gerenciamento de chamados (tickets) inspirado no Movidesk
 
 ## 🚀 Como Iniciar o HelpDesk
 
-### Método 1: Usando o Botão "Run" do Replit
-1. No ambiente Replit, simplesmente clique no botão **Run** na parte superior
-2. O sistema iniciará automaticamente o fluxo de trabalho "Start application"
-3. Aguarde até que o servidor e o cliente estejam completamente carregados
-4. O sistema estará disponível no navegador integrado do Replit
+## 🚀 Como executar em desenvolvimento
 
-### Método 2: Via Terminal
-1. Abra o terminal no ambiente Replit
-2. Execute o comando: `npm run dev`
-3. Aguarde até que o servidor e o cliente estejam completamente carregados
-4. O sistema estará disponível no navegador integrado do Replit
+Pré-requisitos:
+- Node.js (>= 18 recomendado)
+- PostgreSQL acessível (uma instância local ou de desenvolvimento)
+- Variável de ambiente `DATABASE_URL` apontando para o banco (ex.: postgresql://user:pass@host:5432/dbname)
+- (Opcional) `SESSION_SECRET` para sessões em desenvolvimento/produção
+
+1) Instalar dependências (na raiz do projeto):
+
+```powershell
+npm install
+```
+
+2) Preparar o banco de dados:
+
+- Se preferir resetar e popular com dados de exemplo (dev), use:
+
+```powershell
+# reset via SQL (destrutivo):
+psql "${env:DATABASE_URL}" -f .\scripts\reset_db.sql
+
+# ou (recomendado) usar o seed via Drizzle/TS para criar users com senha hasheada:
+npx tsx .\scripts\seed.ts
+```
+
+Observação: as migrations Drizzle estão em `migrations/` e o schema fonte em `drizzle.config.ts` -> `shared/drizzle-schema.ts`. Use `drizzle-kit` para gerar/aplicar migrations quando precisar sincronizar o schema.
+
+3) Iniciar aplicação (client + server):
+
+```powershell
+npm run dev
+```
+
+Isso inicia o backend e o frontend em modo de desenvolvimento. O frontend (Vite) normalmente abre em `http://localhost:5173` e o backend em `http://localhost:3000` (ou porta configurada).
 
 ## 📱 Funcionalidades Principais
 
