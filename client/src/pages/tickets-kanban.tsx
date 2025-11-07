@@ -59,6 +59,7 @@ import { SlaWarningFlag } from "@/components/tickets/sla-warning-flag";
 import { SlaInfoCapsule } from "@/components/tickets/sla-info-capsule";
 import { SlaDueWarning } from "@/components/tickets/sla-due-warning";
 import { AppLayout } from "@/components/layout/app-layout";
+import { useClientRestrictions } from '@/hooks/use-client-restrictions';
 
 type TicketWithRelations = Ticket & {
   requester: Requester;
@@ -79,7 +80,7 @@ type KanbanGroup = {
 }
 
 // Componente do card de ticket com drag and drop
-function TicketCard({ ticket, groupId }: { ticket: TicketWithRelations; groupId: string }) {
+function TicketCard({ ticket, groupId, disableDrag }: { ticket: TicketWithRelations; groupId: string; disableDrag?: boolean }) {
   const [, setLocation] = useLocation();
   const [showSlaInfo, setShowSlaInfo] = useState(false);
   
@@ -97,6 +98,7 @@ function TicketCard({ ticket, groupId }: { ticket: TicketWithRelations; groupId:
       ticket,
       groupId,
     },
+    disabled: disableDrag,
   });
 
   const style = {
@@ -258,6 +260,7 @@ function TicketCard({ ticket, groupId }: { ticket: TicketWithRelations; groupId:
 
 export default function TicketsKanban() {
   const queryClient = useQueryClient();
+  const clientRestrictions = useClientRestrictions();
 
   // Estados para controle
   const [searchQuery, setSearchQuery] = useState("");
@@ -482,6 +485,7 @@ function DroppableColumn({
               key={ticket.id} 
               ticket={ticket} 
               groupId={groupId}
+              disableDrag={clientRestrictions.isClient}
             />
           ))}
           
@@ -570,6 +574,60 @@ function DroppableColumn({
                       <Skeleton key={j} className="h-[200px] w-full" />
                     ))}
                   </div>
+                </div>
+              ))}
+            </div>
+          ) : clientRestrictions.isClient ? (
+            // Versão sem drag and drop para clientes
+            <div className="space-y-6">
+              {filteredGroups.map((group, groupIndex) => (
+                <div key={groupIndex} className="border rounded-lg overflow-hidden">
+                  {/* Cabeçalho do Grupo */}
+                  <div 
+                    className="flex justify-between items-center p-3 bg-muted cursor-pointer"
+                    onClick={() => toggleGroupCollapse(groupIndex)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium">{group.title}</h3>
+                      <Badge variant="secondary" className="text-xs">
+                        {group.columns.reduce((acc, col) => acc + col.tickets.length, 0)}
+                      </Badge>
+                    </div>
+                    {group.isCollapsed ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronUp className="h-4 w-4" />
+                    )}
+                  </div>
+
+                  {/* Conteúdo do Grupo */}
+                  {!group.isCollapsed && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
+                      {group.columns.map((column) => (
+                        <div key={column.status} className="space-y-3">
+                          {/* Cabeçalho da Coluna */}
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium text-sm">{column.title}</h4>
+                            <Badge variant="outline" className="text-xs">
+                              {column.tickets.length}
+                            </Badge>
+                          </div>
+
+                          {/* Cards dos Tickets */}
+                          <div className="space-y-3 min-h-[100px]">
+                            {column.tickets.map((ticket) => (
+                              <TicketCard 
+                                key={ticket.id} 
+                                ticket={ticket} 
+                                groupId={`${groupIndex}-${column.status}`}
+                                disableDrag={true}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

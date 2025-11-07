@@ -36,6 +36,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Building2, AlertCircle, Users } from 'lucide-react';
 import { useTeams, getTeamName } from '@/hooks/use-teams';
 import { useAuth } from '@/hooks/use-auth';
+import { useClientRestrictions } from '@/hooks/use-client-restrictions';
 
 const formSchema = z.object({
   subject: z.string().min(3),
@@ -46,6 +47,7 @@ const formSchema = z.object({
   assigneeId: z.number().optional(),
   requesterEmail: z.string().min(1, 'Campo obrigatório'),
   companyId: z.number().optional(),
+  contractId: z.string().optional(),
 });
 
 type NewTicketFormValues = z.infer<typeof formSchema>;
@@ -100,7 +102,36 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
       requesterEmail: '',
       assigneeId: undefined,
       companyId: undefined,
+      contractId: undefined,
     },
+  });
+
+  const { user } = useAuth();
+  const { isClientUser } = useClientRestrictions();
+
+  // If the current user is a client, prefill requesterEmail so the client cannot
+  // choose another requester. This provides defense-in-depth in the UI while
+  // the backend also enforces the requester override.
+  useEffect(() => {
+    if (isClientUser && user?.email) {
+      form.setValue('requesterEmail', user.email);
+    }
+  }, [isClientUser, user?.email]);
+
+  const [contractSearch, setContractSearch] = useState('');
+
+  // Buscar contratos (filtraremos no cliente pelo companyId selecionado)
+  const { data: contracts = [] } = useQuery<any[]>({
+    queryKey: ['/api/contracts'],
+    queryFn: async () => {
+      const res = await apiRequest('GET', '/api/contracts');
+      const json = await res.json();
+      // Normalizar formatos diferentes de resposta do backend
+      if (Array.isArray(json)) return json;
+      if (Array.isArray(json?.data)) return json.data;
+      if (Array.isArray(json?.contracts)) return json.contracts;
+      return [];
+    }
   });
 
   // Função para detectar empresa pelo domínio do email ou encontrar cliente por nome
@@ -253,12 +284,14 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
       
       // Remove the requesterEmail as it's not part of the ticket schema
       const { requesterEmail: _, ...ticketData } = data;
-      
+
+  // Build payload and include optional contractId (preserve string IDs)
+  const payload: any = { ...ticketData, requesterId };
+  // Contracts in the backend use string keys like "CONTRACT_...". Do not convert to number.
+  if ((ticketData as any).contractId) payload.contractId = (ticketData as any).contractId;
+
       // Create ticket
-      const res = await apiRequest('POST', '/api/tickets', {
-        ...ticketData,
-        requesterId
-      });
+      const res = await apiRequest('POST', '/api/tickets', payload);
       
       return res.json();
     },
@@ -299,22 +332,83 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
         
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="requesterEmail"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cliente (Email ou Nome)</FormLabel>
-                  <FormControl>
-                    <Input 
-                      placeholder="Digite email ou nome do cliente..." 
-                      {...field} 
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {!isClientUser ? (
+              <FormField
+                control={form.control}
+                name="requesterEmail"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cliente (Email ou Nome)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Digite email ou nome do cliente..." 
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <Alert>
+                <Users className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Solicitante:</strong> {user?.fullName ?? 'Você'} ({user?.email ?? 'sem-email'})
+                  <div className="text-xs text-muted-foreground">O solicitante será automaticamente definido como o seu usuário.</div>
+                </AlertDescription>
+              </Alert>
+            )}
+            {/* Se houver contratos ativos para a empresa selecionada, permitir escolher um contrato */}
+            {(() => {
+              const companyId = form.watch('companyId') || detectedCompany?.id;
+              // Mostrar todos os contratos da empresa (inclui inativos) para evitar esconder opções
+              // anteriormente filtrávamos apenas status === 'active', o que podia ocultar contratos
+              // mesmo quando existiam. Mantemos a informação do status visível no rótulo.
+              const filteredContracts = companyId ? (contracts || []).filter(c => c.companyId === companyId) : [];
+              const searchedContracts = contractSearch.trim() === '' ? filteredContracts : filteredContracts.filter(c => {
+                const q = contractSearch.toLowerCase();
+                return (c.contractNumber || '').toString().toLowerCase().includes(q)
+                  || (c.type || '').toLowerCase().includes(q)
+                  || (c.description || '').toLowerCase().includes(q);
+              });
+              if (!filteredContracts || filteredContracts.length === 0) return null;
+
+              return (
+                <FormField
+                  control={form.control}
+                  name="contractId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contrato</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value?.toString() || ''}>
+                        <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecionar contrato (opcional)" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <div className="p-2">
+                              <Input
+                                placeholder="Buscar contrato por número, tipo ou descrição..."
+                                value={contractSearch}
+                                onChange={(e) => setContractSearch(e.target.value)}
+                                className="text-sm"
+                              />
+                            </div>
+                            {searchedContracts.map((contract) => (
+                              <SelectItem key={contract.id} value={contract.id?.toString?.() ?? String(contract.id)}>
+                                {contract.contractNumber} - {contract.type} ({contract.usedHours}h/{contract.includedHours}h)
+                                {contract.status && contract.status !== 'active' ? ` — ${contract.status}` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              );
+            })()}
 
             {/* Sugestões de clientes */}
             {searchSuggestions.length > 0 && !foundRequester && (

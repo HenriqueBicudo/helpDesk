@@ -5,13 +5,16 @@ import { AppLayout } from '@/components/layout/app-layout';
 import { TicketStatusBadge } from '@/components/tickets/ticket-status-badge';
 import { TicketPriorityBadge } from '@/components/tickets/ticket-priority-badge';
 import { RichTextEditor } from '@/components/tickets/rich-text-editor';
+import { ClientRichTextEditor } from '@/components/tickets/client-rich-text-editor';
 import { TicketTimeline } from '@/components/tickets/ticket-timeline';
+import { ClientTicketTimeline } from '@/components/tickets/client-ticket-timeline';
 import { TicketTags } from '@/components/tickets/ticket-tags';
 import { TicketLinks } from '@/components/tickets/ticket-links';
 import { TicketActions } from '@/components/tickets/ticket-actions';
 import { SlaIndicators } from '@/components/tickets/sla-indicators';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
+import { useClientRestrictions } from '@/hooks/use-client-restrictions';
 import {
   Card,
   CardHeader,
@@ -23,6 +26,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { 
   ArrowLeft, 
   AlertTriangle,
@@ -75,6 +79,8 @@ interface InteractionData {
   isInternal: boolean;
   timeSpent?: number;
   attachments: File[];
+  contractId?: string;
+  status?: string;
 }
 
 export default function TicketDetails() {
@@ -84,6 +90,7 @@ export default function TicketDetails() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const clientRestrictions = useClientRestrictions();
   
   const [showInternalNotes, setShowInternalNotes] = useState(false);
   
@@ -99,6 +106,33 @@ export default function TicketDetails() {
     enabled: ticketId > 0,
   });
 
+  // Fetch linked tickets for this ticket
+  const { data: linkedTickets = [] } = useQuery<TicketLink[]>({
+    queryKey: [`/api/tickets/${ticketId}/links`],
+    queryFn: async () => {
+      if (!ticketId) return [];
+      const res = await fetch(`/api/tickets/${ticketId}/links`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: ticketId > 0,
+  });
+
+  // map server shape -> component expected shape (linkedTicket)
+  const mappedLinkedTickets = (linkedTickets || []).map((ln) => ({
+    id: ln.id,
+    ticketId: ln.sourceTicketId,
+    linkedTicketId: ln.targetTicketId,
+    linkType: ln.linkType,
+    description: ln.description,
+    linkedTicket: ln.targetTicket ? {
+      id: ln.targetTicket.id,
+      subject: ln.targetTicket.subject,
+      status: ln.targetTicket.status,
+      priority: ln.targetTicket.priority,
+    } : { id: ln.targetTicketId, subject: '', status: 'open', priority: 'low' }
+  }));
+
   // Fetch response templates
   const { data: templates = [] } = useQuery({
     queryKey: ['/api/response-templates'],
@@ -110,9 +144,25 @@ export default function TicketDetails() {
   });
 
   // Fetch available contracts for this ticket
-  const { data: availableContracts = [] } = useQuery({
-    queryKey: [`/api/tickets/${ticketId}/contracts`],
+  const { data: allContracts = [] } = useQuery<any[]>({
+    queryKey: ['/api/contracts'],
+    queryFn: async () => {
+      const res = await fetch('/api/contracts');
+      if (!res.ok) return [];
+      const json = await res.json();
+      // Normalizar diferentes formatos de resposta
+      if (Array.isArray(json)) return json;
+      if (Array.isArray(json?.data)) return json.data;
+      if (Array.isArray(json?.contracts)) return json.contracts;
+      return [];
+    },
     enabled: ticketId > 0,
+  });
+
+  // Filtrar contratos no frontend pela companyId do ticket (permitindo inativos)
+  const availableContracts = (allContracts || []).filter((c: any) => {
+    if (!ticket || !ticket.companyId) return false;
+    return c.companyId === ticket.companyId;
   });
 
   // Filtrar apenas usuários internos do helpdesk para atribuição
@@ -122,12 +172,60 @@ export default function TicketDetails() {
     user.role === 'helpdesk_agent'
   );
 
+  const [contractSearch, setContractSearch] = useState('');
+
+  const CLOSED_STATUSES = ['resolved', 'closed'];
+  const isClosed = ticket?.status ? CLOSED_STATUSES.includes(ticket.status) : false;
+
   // Mutation to create ticket interaction
   const createInteractionMutation = useMutation({
     mutationFn: async (data: InteractionData) => {
+      // 1) Detectar imagens em data URLs dentro do HTML e enviá-las primeiro para /api/uploads
+      let content = data.content;
+
+      const dataUrlRegex = /<img[^>]+src\s*=\s*"(data:[^"]+)"[^>]*>/g;
+      const dataUrls: string[] = [];
+      let match: RegExpExecArray | null;
+      while ((match = dataUrlRegex.exec(content)) !== null) {
+        dataUrls.push(match[1]);
+      }
+
+      if (dataUrls.length > 0) {
+        // Converter cada dataURL para File
+        const filesToUpload: File[] = dataUrls.map((d, i) => {
+          const arr = d.split(',');
+          const mimeMatch = arr[0].match(/data:([^;]+);/);
+          const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const ext = mime.split('/')[1] || 'png';
+          const filename = `inline-${Date.now()}-${i}.${ext}`;
+          return new File([u8arr], filename, { type: mime });
+        });
+
+        // Enviar para /api/uploads
+        const fd = new FormData();
+        filesToUpload.forEach(f => fd.append('files', f));
+        const upRes = await fetch('/api/uploads', { method: 'POST', body: fd });
+        if (!upRes.ok) throw new Error('Erro ao enviar imagens embutidas');
+        const uploaded = await upRes.json(); // array na mesma ordem
+
+        // Substituir cada data URL no conteúdo pelo URL retornado
+        for (let i = 0; i < dataUrls.length; i++) {
+          const original = dataUrls[i];
+          const replacement = uploaded[i]?.url || uploaded[i]?.fileName || '';
+          content = content.split(original).join(replacement);
+        }
+      }
+
+      // 2) Agora criar FormData incluindo conteúdo atualizado e anexos (files normais)
       const formData = new FormData();
       formData.append('type', data.isInternal ? 'internal_note' : 'comment');
-      formData.append('content', data.content);
+      formData.append('content', content);
       formData.append('isInternal', data.isInternal.toString());
       if (data.timeSpent) {
         formData.append('timeSpent', data.timeSpent.toString());
@@ -135,8 +233,11 @@ export default function TicketDetails() {
       if (data.contractId) {
         formData.append('contractId', data.contractId);
       }
-      
-      // Adicionar anexos
+      if ((data as any).status) {
+        formData.append('status', (data as any).status);
+      }
+
+      // Adicionar anexos enviados pelo usuário (não incluir as imagens que já foram enviadas)
       data.attachments.forEach((file: File) => {
         formData.append(`attachments`, file);
       });
@@ -145,11 +246,11 @@ export default function TicketDetails() {
         method: 'POST',
         body: formData,
       });
-      
+
       if (!res.ok) {
         throw new Error('Erro ao criar interação');
       }
-      
+
       return res.json();
     },
     onSuccess: () => {
@@ -200,6 +301,27 @@ export default function TicketDetails() {
         variant: "destructive",
       });
     },
+  });
+
+  // Mutation to change ticket status (reopen)
+  const reopenMutation = useMutation({
+    mutationFn: async (newStatus: string) => {
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!res.ok) throw new Error('Erro ao alterar status do ticket');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}/interactions`] });
+      toast({ title: 'Chamado reaberto', description: 'O chamado foi reaberto com sucesso.' });
+    },
+    onError: () => {
+      toast({ title: 'Erro', description: 'Não foi possível reabrir o chamado.', variant: 'destructive' });
+    }
   });
 
   const handleCreateInteraction = (data: InteractionData) => {
@@ -302,53 +424,113 @@ export default function TicketDetails() {
             </Card>
 
             {/* Timeline de Interações */}
-            <TicketTimeline 
-              interactions={interactions.map(interaction => ({
-                id: interaction.id,
-                type: interaction.type as 'comment' | 'internal_note' | 'status_change' | 'assignment' | 'time_log',
-                content: interaction.content,
-                isInternal: interaction.isInternal,
-                timeSpent: interaction.timeSpent,
-                createdAt: typeof interaction.createdAt === 'string' ? interaction.createdAt : interaction.createdAt.toISOString(),
-                user: interaction.user ? {
-                  id: interaction.user.id!,
-                  fullName: interaction.user.fullName,
-                  role: interaction.user.role,
-                  avatarInitials: interaction.user.avatarInitials || undefined
-                } : undefined
-              }))}
-              showInternalNotes={showInternalNotes}
-              onToggleInternalNotes={() => setShowInternalNotes(!showInternalNotes)}
-              currentUserRole={user?.role}
-            />
+            {clientRestrictions.isClient ? (
+              <ClientTicketTimeline 
+                interactions={interactions.map(interaction => ({
+                  id: interaction.id,
+                  type: interaction.type as 'comment' | 'internal_note' | 'status_change' | 'assignment' | 'time_log',
+                  content: interaction.content,
+                  isInternal: interaction.isInternal,
+                  createdAt: typeof interaction.createdAt === 'string' ? interaction.createdAt : interaction.createdAt.toISOString(),
+                  user: interaction.user ? {
+                    id: interaction.user.id!,
+                    fullName: interaction.user.fullName,
+                    role: interaction.user.role,
+                    avatarInitials: interaction.user.avatarInitials || undefined
+                  } : undefined
+                }))}
+              />
+            ) : (
+              <TicketTimeline 
+                interactions={interactions.map(interaction => ({
+                  id: interaction.id,
+                  type: interaction.type as 'comment' | 'internal_note' | 'status_change' | 'assignment' | 'time_log',
+                  content: interaction.content,
+                  isInternal: interaction.isInternal,
+                  timeSpent: interaction.timeSpent,
+                  createdAt: typeof interaction.createdAt === 'string' ? interaction.createdAt : interaction.createdAt.toISOString(),
+                  user: interaction.user ? {
+                    id: interaction.user.id!,
+                    fullName: interaction.user.fullName,
+                    role: interaction.user.role,
+                    avatarInitials: interaction.user.avatarInitials || undefined
+                  } : undefined
+                }))}
+                showInternalNotes={showInternalNotes}
+                onToggleInternalNotes={() => setShowInternalNotes(!showInternalNotes)}
+                currentUserRole={user?.role}
+              />
+            )}
 
             {/* Editor de Nova Interação */}
-            <RichTextEditor
-              onSubmit={handleCreateInteraction}
-              showTemplates={true}
-              showTimeTracking={true}
-              ticketId={ticket.id}
-              customerHours={customerHours}
-              templates={templates as any}
-              placeholder="Escreva sua resposta para o cliente..."
-            />
+            {!isClosed ? (
+              clientRestrictions.isClient ? (
+                <ClientRichTextEditor
+                  onSubmit={(data) => {
+                    // Converter para o formato esperado pelo handleCreateInteraction
+                    const interactionData: InteractionData = {
+                      content: data.content,
+                      isInternal: data.isInternal,
+                      attachments: data.attachments,
+                      // Clientes não podem definir tempo ou contrato
+                      timeSpent: undefined,
+                      contractId: undefined
+                    };
+                    handleCreateInteraction(interactionData);
+                  }}
+                  placeholder="Escreva seu comentário..."
+                />
+              ) : (
+                <RichTextEditor
+                  onSubmit={handleCreateInteraction}
+                  showTemplates={true}
+                  showTimeTracking={true}
+                  ticketId={ticket.id}
+                  customerHours={customerHours}
+                  templates={templates as any}
+                  placeholder="Escreva sua resposta para o cliente..."
+                />
+              )
+            ) : (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm">Interações bloqueadas</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">Este chamado está marcado como concluído/fechado e não aceita novas interações ou edições.</p>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => reopenMutation.mutate('open')}
+                      disabled={reopenMutation.isPending}
+                    >
+                      Reabrir chamado
+                    </Button>
+                    <Button variant="outline" onClick={() => setLocation('/tickets')}>Voltar para lista</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Indicadores de SLA */}
-            <SlaIndicators 
-              ticket={{
-                id: ticket.id!,
-                status: ticket.status,
-                priority: ticket.priority,
-                createdAt: ticket.createdAt,
-                responseDueAt: ticket.responseDueAt || undefined,
-                solutionDueAt: ticket.solutionDueAt || undefined,
-                updatedAt: ticket.updatedAt
-              }}
-              hasFirstResponse={interactions.some(i => !i.isInternal && i.type === 'comment')}
-            />
+            {/* Indicadores de SLA - Apenas para helpdesk */}
+            {!clientRestrictions.isClient && (
+              <SlaIndicators 
+                ticket={{
+                  id: ticket.id!,
+                  status: ticket.status,
+                  priority: ticket.priority,
+                  createdAt: ticket.createdAt,
+                  responseDueAt: ticket.responseDueAt || undefined,
+                  solutionDueAt: ticket.solutionDueAt || undefined,
+                  updatedAt: ticket.updatedAt
+                }}
+                hasFirstResponse={interactions.some(i => !i.isInternal && i.type === 'comment')}
+              />
+            )}
 
             {/* Informações do Cliente */}
             <Card>
@@ -371,7 +553,8 @@ export default function TicketDetails() {
                   </div>
                 </div>
 
-                {customerHours ? (
+                {/* Informações de contrato - Apenas para helpdesk */}
+                {!clientRestrictions.isClient && customerHours ? (
                   <div className="space-y-3">
                     {/* Seletor de Contrato */}
                     {availableContracts.length > 1 && (
@@ -387,7 +570,20 @@ export default function TicketDetails() {
                             <SelectValue placeholder="Selecionar contrato" />
                           </SelectTrigger>
                           <SelectContent>
-                            {availableContracts.map((contract: any) => (
+                            <div className="p-2">
+                              <Input
+                                placeholder="Buscar contrato por número ou tipo..."
+                                value={contractSearch}
+                                onChange={(e) => setContractSearch(e.target.value)}
+                                className="text-sm"
+                              />
+                            </div>
+                            {(contractSearch.trim() === '' ? availableContracts : availableContracts.filter((c: any) => {
+                              const q = contractSearch.toLowerCase();
+                              return (c.contractNumber || '').toString().toLowerCase().includes(q)
+                                || (c.type || '').toLowerCase().includes(q)
+                                || (c.description || '').toLowerCase().includes(q);
+                            })).map((contract: any) => (
                               <SelectItem key={contract.id} value={contract.id}>
                                 {contract.contractNumber} - {contract.type} ({contract.usedHours}h/{contract.includedHours}h)
                               </SelectItem>
@@ -411,7 +607,7 @@ export default function TicketDetails() {
                       {customerHours.used.toFixed(1)}h / {customerHours.monthly}h utilizadas
                     </div>
                   </div>
-                ) : (
+                ) : !clientRestrictions.isClient && (
                   <div className="space-y-2">
                     <div className="text-sm text-muted-foreground">
                       Sem contrato vinculado
@@ -445,47 +641,47 @@ export default function TicketDetails() {
               </CardContent>
             </Card>
 
-            {/* Ações do Ticket */}
-            <TicketActions 
-              ticket={{
-                id: ticket.id!,
-                subject: ticket.subject,
-                status: ticket.status,
-                priority: ticket.priority,
-                category: ticket.category,
-                assigneeId: ticket.assigneeId || undefined,
-                assignee: ticket.assignee ? {
-                  id: ticket.assignee.id!,
-                  name: ticket.assignee.fullName,
-                  email: ticket.assignee.email
-                } : undefined
-              }}
-              agents={helpdeskUsers.map(user => ({
-                id: user.id!,
-                name: user.fullName,
-                email: user.email
-              }))}
-            />            {/* Tags do Ticket */}
-            <TicketTags 
-              ticketId={ticket.id!}
-              tags={ticket.tags || []}
-            />            {/* Tickets Vinculados */}
-            <TicketLinks 
-              ticketId={ticket.id!}
-              linkedTickets={(ticket.linkedTickets || []).map(link => ({
-                id: link.id,
-                ticketId: link.sourceTicketId,
-                linkedTicketId: link.targetTicketId,
-                linkType: link.linkType,
-                description: link.description,
-                linkedTicket: {
-                  id: link.targetTicket.id,
-                  subject: link.targetTicket.subject,
-                  status: link.targetTicket.status,
-                  priority: link.targetTicket.priority
-                }
-              }))}
-            />            {/* Informações Adicionais */}
+            {/* Ações do Ticket - Apenas para helpdesk */}
+            {!clientRestrictions.isClient && (
+              <TicketActions 
+                ticket={{
+                  id: ticket.id!,
+                  subject: ticket.subject,
+                  status: ticket.status,
+                  priority: ticket.priority,
+                  category: ticket.category,
+                  assigneeId: ticket.assigneeId || undefined,
+                  assignee: ticket.assignee ? {
+                    id: ticket.assignee.id!,
+                    name: ticket.assignee.fullName,
+                    email: ticket.assignee.email
+                  } : undefined
+                }}
+                agents={helpdeskUsers.map(user => ({
+                  id: user.id!,
+                  name: user.fullName,
+                  email: user.email
+                }))}
+                disabled={isClosed}
+              />
+            )}
+            
+            {/* Tags do Ticket - Apenas para helpdesk */}
+            {!clientRestrictions.isClient && (
+              <TicketTags 
+                ticketId={ticket.id!}
+                tags={ticket.tags || []}
+              />
+            )}
+            
+            {/* Tickets Vinculados - Apenas para helpdesk */}
+            {!clientRestrictions.isClient && (
+              <TicketLinks 
+                ticketId={ticket.id!}
+                linkedTickets={mappedLinkedTickets}
+              />
+            )}
+            {/* Informações Adicionais */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Detalhes</CardTitle>
@@ -496,19 +692,19 @@ export default function TicketDetails() {
                   <span className="text-muted-foreground">Prioridade:</span>
                   <TicketPriorityBadge priority={ticket.priority} />
                 </div>
-                
+
                 <div className="flex items-center gap-2 text-sm">
                   <Tag className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Categoria:</span>
                   <span>{translateCategory(ticket.category)}</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2 text-sm">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Criado em:</span>
                   <span>{ticket?.createdAt ? formatDate(ticket.createdAt) : 'N/A'}</span>
                 </div>
-                
+
                 {ticket.updatedAt && ticket.updatedAt !== ticket.createdAt && (
                   <div className="flex items-center gap-2 text-sm">
                     <Clock className="h-4 w-4 text-muted-foreground" />

@@ -71,11 +71,17 @@ export function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Configuração da estratégia local (username/password)
+  // Configuração da estratégia local (username/email e password)
   passport.use(
-    new LocalStrategy(async (username, password, done) => {
+    new LocalStrategy(async (usernameOrEmail, password, done) => {
       try {
-        const user = await storage.getUserByUsername(username);
+        // Tentar encontrar o usuário por username primeiro
+        let user = await storage.getUserByUsername(usernameOrEmail);
+        
+        // Se não encontrou por username, tentar por email
+        if (!user) {
+          user = await storage.getUserByEmail(usernameOrEmail);
+        }
         
         if (!user) {
           return done(null, false, { message: "Usuário não encontrado" });
@@ -113,10 +119,15 @@ export function setupAuth(app: Express) {
     try {
       const { username, password, fullName, email, role } = req.body;
       
-      // Verificar se usuário já existe
-      const existingUser = await storage.getUserByUsername(username);
-      if (existingUser) {
+      // Verificar se usuário já existe (por username ou email)
+      const existingUserByUsername = await storage.getUserByUsername(username);
+      if (existingUserByUsername) {
         return res.status(400).json({ message: "Nome de usuário já está em uso" });
+      }
+      
+      const existingUserByEmail = await storage.getUserByEmail(email);
+      if (existingUserByEmail) {
+        return res.status(400).json({ message: "Email já está em uso" });
       }
       
       // Hash da senha
@@ -128,7 +139,8 @@ export function setupAuth(app: Express) {
         password: hashedPassword,
         fullName,
         email,
-        role: role || "agent"
+        role: role || "helpdesk_agent",
+        isActive: true
       });
       
       // Auto login

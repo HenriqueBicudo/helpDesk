@@ -1,51 +1,40 @@
+version: '3.8'
+
 services:
-  # Banco de dados PostgreSQL
-  postgres:
-    image: postgres:15-alpine
-    container_name: helpdesk-postgres
-    environment:
-      POSTGRES_DB: helpdesk
-      POSTGRES_USER: helpdesk_user
-      POSTGRES_PASSWORD: helpdesk_password
-      POSTGRES_HOST_AUTH_METHOD: trust
-    ports:
-      - "5432:5432"
+  db:
+    image: postgres:15
+    restart: always
+    env_file: .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
-    restart: unless-stopped
     networks:
-      - helpdesk-network
+      - internal
 
-  # Aplicação Node.js
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: helpdesk-app
-    environment:
-      NODE_ENV: development
-      DATABASE_URL: postgresql://helpdesk_user:helpdesk_password@postgres:5432/helpdesk
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: helpdesk
-      DB_USER: helpdesk_user
-      DB_PASSWORD: helpdesk_password
-      SESSION_SECRET: your-super-secret-session-key-change-this
-      SENDGRID_API_KEY: your-sendgrid-api-key
-    ports:
-      - "5000:5000"
+  backend:
+    build: ./server
+    restart: always
+    env_file: .env
     depends_on:
-      - postgres
-    restart: unless-stopped
+      - db
+    ports:
+      - "3001:3001"
     networks:
-      - helpdesk-network
-    volumes:
-      - ./uploads:/app/uploads
+      - internal
+
+  frontend:
+    build: ./client
+    restart: always
+    env_file: .env
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - internal
 
 volumes:
   postgres_data:
 
 networks:
-  helpdesk-network:
+  internal:
     driver: bridge

@@ -36,9 +36,9 @@ interface Agent {
 interface TicketActionsProps {
   ticket: Ticket;
   agents: Agent[];
+  disabled?: boolean;
 }
-
-export function TicketActions({ ticket, agents }: TicketActionsProps) {
+export function TicketActions({ ticket, agents, disabled }: TicketActionsProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [changes, setChanges] = useState<Record<string, any>>({});
   const [comment, setComment] = useState('');
@@ -217,7 +217,7 @@ export function TicketActions({ ticket, agents }: TicketActionsProps) {
             Ações do Ticket
           </CardTitle>
           
-          {!isEditing && (
+          {!isEditing && !disabled && (
             <Button
               variant="outline"
               size="sm"

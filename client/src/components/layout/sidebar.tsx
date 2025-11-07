@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link, useLocation } from 'wouter';
 import { cn, getInitials } from '@/lib/utils';
-import { MessageCircleCode, ChevronRight, LayoutDashboard, Ticket, Settings, FileBarChart, Database, User, Shield, FileText, Target, Activity, BarChart3 } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';
+import { MessageCircleCode, ChevronRight, LayoutDashboard, Ticket, Settings, FileBarChart, Database, User, Shield, FileText, Target, BarChart3, Users } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/use-auth';
+import { useClientRestrictions } from '@/hooks/use-client-restrictions';
+import { ROLE_LABELS } from '@shared/permissions';
 import { Skeleton } from '@/components/ui/skeleton';
 
 type SidebarLinkProps = {
@@ -44,9 +45,10 @@ type SidebarProps = {
   onClose?: () => void;
 };
 
-export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
+export function Sidebar({ isOpen = true }: SidebarProps) {
   const [location] = useLocation();
-  const { user, isLoading } = useAuth();
+  const { user } = useAuth();
+  const { isClient } = useClientRestrictions();
   
   return (
     <div 
@@ -83,7 +85,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               </Avatar>
               <div className="ml-3">
                 <p className="text-sm font-medium text-foreground">{user.fullName}</p>
-                <p className="text-xs text-muted-foreground">{user.role}</p>
+                <p className="text-xs text-muted-foreground">{(ROLE_LABELS as any)[user.role] || user.role}</p>
               </div>
             </>
           ) : (
@@ -106,6 +108,14 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             active={location === '/'}
           >
             Dashboard
+          </SidebarLink>
+
+          <SidebarLink 
+            href="/my-team" 
+            icon={<Users className="mr-3 h-5 w-5" />} 
+            active={location === '/my-team'}
+          >
+            {isClient ? 'Meus Colegas' : 'Minha Equipe'}
           </SidebarLink>
           
           <div>
@@ -136,36 +146,64 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               </SidebarLink>
             </div>
           </div>
-          
-          <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Gerenciamento</div>
-          
-          {/* Acessos - apenas para administradores */}
-          {user?.role === 'admin' && (
-            <SidebarLink 
-              href="/access" 
-              icon={<Shield className="mr-3 h-5 w-5" />} 
-              active={location === '/access'}
-            >
-              Acessos
-            </SidebarLink>
-          )}
 
-          {/* Contratos - para administradores e gerentes */}
-          {(user?.role === 'admin' || user?.role === 'helpdesk_manager') && (
-            <SidebarLink 
-              href="/contracts" 
-              icon={<FileText className="mr-3 h-5 w-5" />} 
-              active={location === '/contracts'}
-            >
-              Contratos
-            </SidebarLink>
-          )}
-
-          {/* SLA - para administradores e gerentes */}
-          {(user?.role === 'admin' || user?.role === 'helpdesk_manager') && (
-            <div>
-              <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">SLA</div>
+          {/* Seção específica para clientes */}
+          {(user?.role === 'client_user' || user?.role === 'client_manager') && (
+            <>
+              <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Minha Conta</div>
               
+              <SidebarLink 
+                href="/profile" 
+                icon={<User className="mr-3 h-5 w-5" />} 
+                active={location === '/profile'}
+              >
+                Meu Perfil
+              </SidebarLink>
+
+              {user?.role === 'client_manager' && (
+                <SidebarLink 
+                  href="/team" 
+                  icon={<Shield className="mr-3 h-5 w-5" />} 
+                  active={location === '/team'}
+                >
+                  Minha Equipe
+                </SidebarLink>
+              )}
+            </>
+          )}
+          
+          {/* Seção Gerenciamento - Apenas para equipe helpdesk */}
+          {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
+            <>
+              <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Gerenciamento</div>
+              
+              {/* Acessos - apenas para administradores */}
+              {user?.role === 'admin' && (
+                <SidebarLink 
+                  href="/access" 
+                  icon={<Shield className="mr-3 h-5 w-5" />} 
+                  active={location === '/access'}
+                >
+                  Acessos
+                </SidebarLink>
+              )}
+
+              {/* Contratos - para administradores e gerentes */}
+              {(user?.role === 'admin' || user?.role === 'helpdesk_manager') && (
+                <SidebarLink 
+                  href="/contracts" 
+                  icon={<FileText className="mr-3 h-5 w-5" />} 
+                  active={location === '/contracts'}
+                >
+                  Contratos
+                </SidebarLink>
+              )}
+            </>
+          )}
+
+          {/* SLA Dashboard - Apenas para equipe helpdesk e admins */}
+          {user && user.role !== 'client_user' && user.role !== 'client_manager' && (
+            <div className="px-4">
               {user?.role === 'admin' && (
                 <SidebarLink 
                   href="/sla/admin" 
@@ -194,31 +232,36 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             </div>
           )}
           
-          <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Sistema</div>
-          
-          <SidebarLink 
-            href="/settings" 
-            icon={<Settings className="mr-3 h-5 w-5" />} 
-            active={location === '/settings'}
-          >
-            Configurações
-          </SidebarLink>
-          
-          <SidebarLink 
-            href="/reports" 
-            icon={<FileBarChart className="mr-3 h-5 w-5" />} 
-            active={location === '/reports'}
-          >
-            Relatórios
-          </SidebarLink>
-          
-          <SidebarLink 
-            href="/knowledge" 
-            icon={<Database className="mr-3 h-5 w-5" />} 
-            active={location === '/knowledge'}
-          >
-            Base de Conhecimento
-          </SidebarLink>
+          {/* Seção Sistema - Apenas para equipe helpdesk e admins */}
+          {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
+            <>
+              <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Sistema</div>
+              
+              <SidebarLink 
+                href="/settings" 
+                icon={<Settings className="mr-3 h-5 w-5" />} 
+                active={location === '/settings'}
+              >
+                Configurações
+              </SidebarLink>
+              
+              <SidebarLink 
+                href="/reports" 
+                icon={<FileBarChart className="mr-3 h-5 w-5" />} 
+                active={location === '/reports'}
+              >
+                Relatórios
+              </SidebarLink>
+              
+              <SidebarLink 
+                href="/knowledge" 
+                icon={<Database className="mr-3 h-5 w-5" />} 
+                active={location === '/knowledge'}
+              >
+                Base de Conhecimento
+              </SidebarLink>
+            </>
+          )}
         </nav>
       </div>
     </div>

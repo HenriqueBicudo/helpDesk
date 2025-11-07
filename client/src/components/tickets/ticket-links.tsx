@@ -198,7 +198,7 @@ export function TicketLinks({ ticketId, linkedTickets }: TicketLinksProps) {
                       variant="ghost"
                       size="sm"
                       className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={() => removeLinkMutation.mutate(link.linkedTicket.id)}
+                      onClick={() => removeLinkMutation.mutate(link.id)}
                       disabled={removeLinkMutation.isPending}
                     >
                       <X className="w-3 h-3" />

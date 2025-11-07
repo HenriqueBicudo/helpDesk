@@ -18,6 +18,8 @@ import {
   Redo, 
   Image as ImageIcon, 
   Link as LinkIcon,
+  Code,
+  Hash,
   Clock,
   Paperclip,
   FileText,
@@ -57,6 +59,7 @@ interface InteractionData {
   timeSpent?: number
   contractId?: string // Adicionar contrato selecionado
   attachments: File[]
+  status?: string
 }
 
 // Função para converter HH:MM para decimal
@@ -92,6 +95,7 @@ export function RichTextEditor({
   const [selectedContractId, setSelectedContractId] = useState<string>('')
   const [attachments, setAttachments] = useState<File[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
+  const [selectedStatus, setSelectedStatus] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Buscar contratos disponíveis para o ticket (baseado na empresa do ticket)
@@ -142,6 +146,56 @@ export function RichTextEditor({
       editor.chain().focus().setLink({ href: url }).run()
     }
   }, [editor])
+
+  // Inserir arquivos de imagem no editor e na lista de anexos
+  const insertImageFiles = useCallback((files: File[] | FileList) => {
+    const list = Array.from(files)
+    list.forEach((file) => {
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const src = e.target?.result as string
+          editor?.chain().focus().setImage({ src }).run()
+        }
+        reader.readAsDataURL(file)
+      }
+    })
+
+    // adiciona todos os arquivos (incluindo não-imagens) aos attachments
+    setAttachments(prev => [...prev, ...list])
+  }, [editor])
+
+  // Drag & drop handler
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    const dt = e.dataTransfer
+    if (!dt) return
+    if (dt.files && dt.files.length > 0) {
+      insertImageFiles(dt.files)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  // Paste handler (colar imagens da área de transferência)
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const files: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.kind === 'file') {
+        const file = item.getAsFile()
+        if (file) files.push(file)
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault()
+      insertImageFiles(files)
+    }
+  }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
@@ -205,17 +259,28 @@ export function RichTextEditor({
     setSelectedTemplate('');
   }
 
+  // Inserir macro/tag no editor (ex: {{Cliente}}, {{Agente}})
+  const insertMacro = (token: string) => {
+    if (!editor) return
+    // Inserir como texto simples para que o backend processe no /response-templates/:id/process
+    editor.chain().focus().insertContent(`${token} `).run()
+  }
+
   const handleSubmit = () => {
     if (!editor) return
     
     const timeDecimal = timeToDecimal(timeSpent)
-    
+
+    // normalizar placeholder 'none' para undefined (sem alteração)
+    const normalizedStatus = selectedStatus === 'none' ? undefined : (selectedStatus || undefined)
+
     const interactionData: InteractionData = {
       content: editor.getHTML(),
       isInternal,
       timeSpent: timeDecimal > 0 ? timeDecimal : undefined,
-      contractId: selectedContractId || undefined,
-      attachments
+  contractId: selectedContractId === 'none' ? undefined : (selectedContractId || undefined),
+      attachments,
+      status: normalizedStatus
     }
     
     onSubmit?.(interactionData)
@@ -278,7 +343,8 @@ export function RichTextEditor({
                       <Badge variant="outline" className="text-xs">
                         {template.category}
                       </Badge>
-                      {template.name}
+                      {/* backend may return `title` or `name` depending on source; support both */}
+                      {template.name || (template as any).title}
                     </div>
                   </SelectItem>
                 ))}
@@ -286,6 +352,8 @@ export function RichTextEditor({
             </Select>
           </div>
         )}
+
+        {/* Macros: removido UI de inserção — templates podem conter tokens que o backend processará */}
 
         {/* Toolbar */}
         <div className="border rounded-lg">
@@ -295,7 +363,8 @@ export function RichTextEditor({
               size="sm"
               onClick={() => editor.chain().focus().toggleBold().run()}
               data-active={editor.isActive('bold')}
-              className="data-[active=true]:bg-muted"
+              className="h-9 w-9 p-2 rounded-md data-[active=true]:bg-muted flex items-center justify-center"
+              title="Negrito"
             >
               <Bold className="h-4 w-4" />
             </Button>
@@ -304,7 +373,8 @@ export function RichTextEditor({
               size="sm"
               onClick={() => editor.chain().focus().toggleItalic().run()}
               data-active={editor.isActive('italic')}
-              className="data-[active=true]:bg-muted"
+              className="h-9 w-9 p-2 rounded-md data-[active=true]:bg-muted flex items-center justify-center"
+              title="Itálico"
             >
               <Italic className="h-4 w-4" />
             </Button>
@@ -314,7 +384,8 @@ export function RichTextEditor({
               size="sm"
               onClick={() => editor.chain().focus().toggleBulletList().run()}
               data-active={editor.isActive('bulletList')}
-              className="data-[active=true]:bg-muted"
+              className="h-9 w-9 p-2 rounded-md data-[active=true]:bg-muted flex items-center justify-center"
+              title="Lista"
             >
               <List className="h-4 w-4" />
             </Button>
@@ -323,7 +394,8 @@ export function RichTextEditor({
               size="sm"
               onClick={() => editor.chain().focus().toggleOrderedList().run()}
               data-active={editor.isActive('orderedList')}
-              className="data-[active=true]:bg-muted"
+              className="h-9 w-9 p-2 rounded-md data-[active=true]:bg-muted flex items-center justify-center"
+              title="Lista ordenada"
             >
               <ListOrdered className="h-4 w-4" />
             </Button>
@@ -332,7 +404,8 @@ export function RichTextEditor({
               size="sm"
               onClick={() => editor.chain().focus().toggleBlockquote().run()}
               data-active={editor.isActive('blockquote')}
-              className="data-[active=true]:bg-muted"
+              className="h-9 w-9 p-2 rounded-md data-[active=true]:bg-muted flex items-center justify-center"
+              title="Citação"
             >
               <Quote className="h-4 w-4" />
             </Button>
@@ -341,6 +414,8 @@ export function RichTextEditor({
               variant="ghost"
               size="sm"
               onClick={addImage}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Inserir imagem"
             >
               <ImageIcon className="h-4 w-4" />
             </Button>
@@ -348,8 +423,38 @@ export function RichTextEditor({
               variant="ghost"
               size="sm"
               onClick={addLink}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Inserir link"
             >
               <LinkIcon className="h-4 w-4" />
+            </Button>
+            {/* Macro button removed — templates may contain tokens like {{Cliente}} which are processed server-side */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Bloco de código"
+            >
+              <Code className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => editor.chain().focus().toggleCode().run()}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Código inline"
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Título H2"
+            >
+              <Hash className="h-4 w-4" />
             </Button>
             <Separator orientation="vertical" className="h-6" />
             <Button
@@ -357,6 +462,8 @@ export function RichTextEditor({
               size="sm"
               onClick={() => editor.chain().focus().undo().run()}
               disabled={!editor.can().undo()}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Desfazer"
             >
               <Undo className="h-4 w-4" />
             </Button>
@@ -365,26 +472,31 @@ export function RichTextEditor({
               size="sm"
               onClick={() => editor.chain().focus().redo().run()}
               disabled={!editor.can().redo()}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Refazer"
             >
               <Redo className="h-4 w-4" />
             </Button>
           </div>
           
           {/* Editor */}
-          <EditorContent 
-            editor={editor} 
-            className="prose prose-sm max-w-none p-4 min-h-[200px] focus-within:outline-none [&_.ProseMirror]:min-h-[200px] [&_.ProseMirror]:outline-none [&_.ProseMirror]:w-full [&_.ProseMirror]:resize-none"
-          />
+          <div onDrop={handleDrop} onDragOver={handleDragOver} onPaste={handlePaste}>
+            <EditorContent 
+              editor={editor} 
+              className="prose prose-sm max-w-none p-4 min-h-[220px] focus-within:outline-none [&_.ProseMirror]:min-h-[220px] [&_.ProseMirror]:outline-none [&_.ProseMirror]:w-full [&_.ProseMirror]:resize-none rounded-md bg-card/5 shadow-sm"
+            />
+          </div>
         </div>
 
         {/* Anexos */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
             <Label>Anexos</Label>
             <Button
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
+              className="h-9 px-3"
             >
               <Paperclip className="h-4 w-4 mr-1" />
               Adicionar Arquivo
@@ -402,18 +514,22 @@ export function RichTextEditor({
           {attachments.length > 0 && (
             <div className="space-y-2">
               {attachments.map((file, index) => (
-                <div key={index} className="flex items-center justify-between p-2 border rounded-lg">
-                  <div className="flex items-center gap-2">
-                    {getFileIcon(file.type)}
-                    <span className="text-sm font-medium">{file.name}</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {formatFileSize(file.size)}
-                    </Badge>
+                <div key={index} className="flex items-center justify-between p-2 border rounded-md bg-muted/10">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center h-8 w-8 rounded bg-muted/20">
+                      {getFileIcon(file.type)}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium max-w-[260px] truncate">{file.name}</span>
+                      <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                    </div>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => removeAttachment(index)}
+                    aria-label={`Remover anexo ${file.name}`}
+                    className="h-8 w-8 flex items-center justify-center"
                   >
                     ✕
                   </Button>
@@ -426,11 +542,12 @@ export function RichTextEditor({
         {/* Configurações */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-3">
               <Checkbox 
                 id="internal" 
                 checked={isInternal}
                 onCheckedChange={(checked) => setIsInternal(checked === true)}
+                className="scale-95"
               />
               <Label htmlFor="internal" className="text-sm">
                 Nota interna (não visível ao cliente)
@@ -438,14 +555,14 @@ export function RichTextEditor({
             </div>
             
             {showTimeTracking && (
-              <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4" />
                   <Input
                     type="time"
                     value={timeSpent}
                     onChange={(e) => setTimeSpent(e.target.value || '00:00')}
-                    className="w-24"
+                    className="w-24 h-9"
                     step="900" // 15 minutos em segundos
                   />
                   <Label className="text-sm">horas</Label>
@@ -459,13 +576,13 @@ export function RichTextEditor({
                       value={selectedContractId}
                       onValueChange={setSelectedContractId}
                     >
-                      <SelectTrigger className="w-48">
+                      <SelectTrigger className="w-56 h-9">
                         <SelectValue placeholder="Selecionar contrato" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Sem contrato específico</SelectItem>
                         {availableContracts.map((contract: any) => (
-                          <SelectItem key={contract.id} value={contract.id}>
+                          <SelectItem key={contract.id} value={contract.id?.toString?.() ?? String(contract.id)}>
                             {contract.contractNumber} - {contract.type} 
                             ({contract.usedHours}h/{contract.includedHours}h)
                           </SelectItem>
@@ -476,11 +593,25 @@ export function RichTextEditor({
                 )}
               </div>
             )}
+            {/* Status change selector: se vazio = sem alteração */}
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">Alterar status</Label>
+              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                <SelectTrigger className="w-44 h-9 text-sm">
+                  <SelectValue placeholder="Sem alteração" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem alteração</SelectItem>
+                  <SelectItem value="resolved">Concluído</SelectItem>
+                  <SelectItem value="closed">Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
-          <Button onClick={handleSubmit} className="ml-auto">
-            <Send className="h-4 w-4 mr-2" />
-            Enviar Resposta
+          <Button onClick={handleSubmit} className="ml-auto h-9 px-4 rounded-md bg-primary text-white hover:bg-primary/90 shadow-md flex items-center gap-2">
+            <Send className="h-4 w-4" />
+            <span>Enviar Resposta</span>
           </Button>
         </div>
       </CardContent>

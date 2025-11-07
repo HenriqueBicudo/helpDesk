@@ -171,9 +171,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'tickets:view_own',
     'tickets:create',
     'tickets:edit_own',
-    'sla:view',
-    'requesters:view_company',
-    'dashboard:view_company'
+    'sla:view'
   ]
 };
 
@@ -259,18 +257,18 @@ export function requirePermission(userRole: UserRole, permission: Permission): v
 
 // Labels amigáveis para os roles
 export const ROLE_LABELS: Record<UserRole, string> = {
-  admin: 'Administrador',
+  admin: 'Gestor Helpdesk',
   helpdesk_manager: 'Gerente de Suporte',
-  helpdesk_agent: 'Agente de Suporte',
-  client_manager: 'Gestor da Empresa',
-  client_user: 'Usuário'
+  helpdesk_agent: 'Agente Helpdesk',
+  client_manager: 'Admin cliente',
+  client_user: 'Cliente Funcionário'
 };
 
 // Descrições dos roles
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
-  admin: 'Acesso total ao sistema, incluindo configurações críticas e gerenciamento de usuários',
+  admin: 'Gestor Helpdesk — acesso total ao sistema e responsabilidades administrativas do time de suporte',
   helpdesk_manager: 'Gerenciamento completo de tickets e usuários, configurações de templates e SLA',
-  helpdesk_agent: 'Atendimento de tickets, apontamento de horas e acesso a relatórios operacionais',
-  client_manager: 'Gestão dos tickets e usuários da própria empresa, relatórios corporativos',
-  client_user: 'Abertura e acompanhamento dos próprios tickets, visualização de informações básicas'
+  helpdesk_agent: 'Agente Helpdesk — funcionário do time de suporte com acesso operacional a tickets e comentários',
+  client_manager: 'Admin cliente — pode ver todos os chamados da sua empresa e indicadores da empresa',
+  client_user: 'Cliente Funcionário — vinculado a uma empresa; não vê indicadores e só enxerga os próprios tickets'
 };

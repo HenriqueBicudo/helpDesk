@@ -523,22 +523,35 @@ slaRoutes.get('/rules', async (req, res) => {
 slaRoutes.get('/metrics', async (req, res) => {
   try {
     console.log('📊 [API] Buscando métricas SLA...');
-    
-    // Mock data por enquanto
-    const mockMetrics = {
-      totalTickets: 150,
-      slaCompliance: 85.5,
-      averageResponseTime: 45,
-      averageResolutionTime: 180,
-      breachedTickets: 22,
-      pendingTickets: 38,
-    };
-    
+    const useMock = process.env.MOCK_DATA === 'true';
+
+    if (useMock) {
+      // Mock data por enquanto
+      const mockMetrics = {
+        totalTickets: 150,
+        slaCompliance: 85.5,
+        averageResponseTime: 45,
+        averageResolutionTime: 180,
+        breachedTickets: 22,
+        pendingTickets: 38,
+      };
+
+      return res.json({
+        success: true,
+        data: mockMetrics,
+        meta: {
+          message: 'Métricas SLA obtidas com sucesso (mock)',
+          timestamp: new Date().toISOString(),
+        }
+      });
+    }
+
+    // Se MOCK_DATA !== 'true', retornar array vazio conforme regra de refatoração
     res.json({
       success: true,
-      data: mockMetrics,
+      data: [],
       meta: {
-        message: 'Métricas SLA obtidas com sucesso',
+        message: 'Métricas SLA não disponíveis (modo produção)',
         timestamp: new Date().toISOString(),
       }
     });
@@ -565,32 +578,44 @@ slaRoutes.get('/alerts', async (req, res) => {
     
     const acknowledged = req.query.acknowledged === 'true';
     const limit = parseInt(req.query.limit as string) || 10;
-    
-    // Mock data por enquanto
-    const mockAlerts = [
-      {
-        id: 1,
-        ticketId: 123,
-        type: 'breach',
-        message: 'SLA violado - Ticket #123',
-        acknowledged: false,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 2,
-        ticketId: 124,
-        type: 'warning',
-        message: 'SLA próximo do vencimento - Ticket #124',
-        acknowledged: false,
-        createdAt: new Date().toISOString(),
-      },
-    ].slice(0, limit);
-    
+    const useMock = process.env.MOCK_DATA === 'true';
+
+    if (useMock) {
+      const mockAlerts = [
+        {
+          id: 1,
+          ticketId: 123,
+          type: 'breach',
+          message: 'SLA violado - Ticket #123',
+          acknowledged: false,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 2,
+          ticketId: 124,
+          type: 'warning',
+          message: 'SLA próximo do vencimento - Ticket #124',
+          acknowledged: false,
+          createdAt: new Date().toISOString(),
+        },
+      ].slice(0, limit);
+
+      return res.json({
+        success: true,
+        data: mockAlerts,
+        meta: {
+          message: 'Alertas SLA obtidos com sucesso (mock)',
+          timestamp: new Date().toISOString(),
+        }
+      });
+    }
+
+    // Se MOCK_DATA !== 'true', retornar array vazio para compatibilidade com front-end
     res.json({
       success: true,
-      data: mockAlerts,
+      data: [],
       meta: {
-        message: 'Alertas SLA obtidos com sucesso',
+        message: 'Alertas SLA não disponíveis (modo produção)',
         timestamp: new Date().toISOString(),
       }
     });

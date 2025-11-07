@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import SlaConfigurator from '@/components/sla/sla-configurator';
-import { SlaMetricsGrid, sampleSlaMetrics } from '@/components/sla/sla-metrics-card';
+import { SlaMetricsGrid } from '@/components/sla/sla-metrics-card';
 import { AppLayout } from '@/components/layout/app-layout';
 import { 
   Settings, 
@@ -30,7 +30,7 @@ import {
   Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useSlaConfigurations } from '@/hooks/use-sla';
+import { useSlaConfigurations, useSlaeDashboard } from '@/hooks/use-sla';
 
 interface SystemStatus {
   slaEngine: 'running' | 'stopped' | 'error';
@@ -270,6 +270,55 @@ const SlaAdminDashboard: React.FC = () => {
 
   // Buscar configurações SLA
   const { data: configurations, isLoading: configLoading, refetch: refetchConfigs } = useSlaConfigurations();
+
+  // Buscar métricas SLA para painel (API-driven)
+  const { metrics, alerts } = useSlaeDashboard();
+
+  // Transformar metrics em SlaMetric[] esperado pelo SlaMetricsGrid
+  const metricsForGrid = React.useMemo(() => {
+    if (!metrics) return [];
+    return [
+      {
+        id: 'sla_compliance',
+        title: 'Conformidade SLA Geral',
+        value: metrics.compliancePercentage || 0,
+        target: 95.0,
+        unit: 'percentage' as any,
+        trend: { value: 0, direction: 'up', period: 'mês passado' },
+        status: (metrics.compliancePercentage || 0) >= 95 ? 'good' : (metrics.compliancePercentage || 0) >= 90 ? 'warning' : 'critical',
+        description: 'Percentual de tickets que cumpriram os prazos de SLA'
+      },
+      {
+        id: 'response_time',
+        title: 'Tempo Médio de Resposta',
+        value: metrics.averageResponseTime || 0,
+        target: 4.0,
+        unit: 'hours' as any,
+        trend: { value: 0, direction: 'down', period: 'semana passada' },
+        status: 'good',
+        description: 'Tempo médio para primeira resposta aos tickets'
+      },
+      {
+        id: 'resolution_time',
+        title: 'Tempo Médio de Resolução',
+        value: metrics.averageResolutionTime || 0,
+        target: 24.0,
+        unit: 'hours' as any,
+        trend: { value: 0, direction: 'down', period: 'mês passado' },
+        status: 'good',
+        description: 'Tempo médio para resolução completa dos tickets'
+      },
+      {
+        id: 'breached_tickets',
+        title: 'Tickets com SLA Violado',
+        value: metrics.breachedTickets || 0,
+        unit: 'count' as any,
+        trend: { value: 0, direction: 'up', period: 'semana passada' },
+        status: (metrics.breachedTickets || 0) > 0 ? 'critical' : 'good',
+        description: 'Número de tickets que violaram os prazos de SLA'
+      }
+    ];
+  }, [metrics]);
 
   // Funções para aplicação de templates
   const handleApplyTemplate = async () => {
@@ -863,7 +912,7 @@ const SlaAdminDashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Alertas Pendentes</p>
-                <p className="text-xl font-bold text-orange-600">12</p>
+                <p className="text-xl font-bold text-orange-600">{alerts?.length || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -877,7 +926,7 @@ const SlaAdminDashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Compliance Médio</p>
-                <p className="text-xl font-bold text-purple-600">94.5%</p>
+                <p className="text-xl font-bold text-purple-600">{metrics?.compliancePercentage?.toFixed(1) || '0'}%</p>
               </div>
             </div>
           </CardContent>
@@ -924,7 +973,7 @@ const SlaAdminDashboard: React.FC = () => {
         </CardHeader>
         <CardContent>
           <SlaMetricsGrid 
-            metrics={sampleSlaMetrics}
+            metrics={metricsForGrid}
             columns={4}
             size="sm"
             showTrend={true}

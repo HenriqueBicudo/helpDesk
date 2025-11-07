@@ -25,8 +25,97 @@ import {
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
+// Componente específico para dashboard dos clientes
+const ClientDashboard = ({ user, stats, isLoadingStats, onNavigate, onNewTicket }: any) => {
+  return (
+    <div className="mb-6">
+      {/* Card de boas-vindas */}
+      <Card className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <div className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-100 rounded-full">
+              <TicketCheck className="h-6 w-6 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Bem-vindo, {user.fullName}!
+              </h2>
+              <p className="text-gray-600">
+                {user.role === 'client_manager' 
+                  ? 'Gerencie os chamados da sua empresa' 
+                  : 'Acompanhe o status dos seus chamados'
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Métricas específicas do cliente */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <MetricCard
+          title="Meus Chamados Abertos"
+          value={isLoadingStats ? '...' : (stats as any)?.openTickets || 0}
+          icon={<Clock className="h-5 w-5" />}
+          iconBgColor="bg-orange-100"
+          iconColor="text-orange-600"
+        />
+
+        <MetricCard
+          title="Chamados Resolvidos"
+          value={isLoadingStats ? '...' : (stats as any)?.resolvedToday || 0}
+          icon={<CheckCircle className="h-5 w-5" />}
+          iconBgColor="bg-green-100"
+          iconColor="text-green-600"
+        />
+
+        <MetricCard
+          title="Tempo Médio de Atendimento"
+          value={isLoadingStats ? '...' : (stats as any)?.averageResponseTime || '0min'}
+          icon={<Timer className="h-5 w-5" />}
+          iconBgColor="bg-blue-100"
+          iconColor="text-blue-600"
+        />
+      </div>
+
+      {/* Ações rápidas para clientes */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <Card 
+          className="p-4 hover:bg-gray-50 transition-colors cursor-pointer" 
+          onClick={() => onNavigate('/tickets')}
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <TicketCheck className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-medium">Ver Meus Chamados</h3>
+              <p className="text-sm text-muted-foreground">Acompanhe o status dos seus chamados</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card 
+          className="p-4 hover:bg-gray-50 transition-colors cursor-pointer" 
+          onClick={() => onNewTicket()}
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <Plus className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <h3 className="font-medium">Novo Chamado</h3>
+              <p className="text-sm text-muted-foreground">Abra um novo chamado de suporte</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
 export default function Dashboard() {
-  const [dateRange, setDateRange] = useState('today');
+  const [dateRange, setDateRange] = useState('thisMonth');
   const [isNewTicketDialogOpen, setIsNewTicketDialogOpen] = useState(false);
   const [, setLocation] = useLocation();
   const [filters, setFilters] = useState({
@@ -46,6 +135,11 @@ export default function Dashboard() {
   // Fetch tickets with related data
   const { data: tickets, isLoading: isLoadingTickets } = useQuery({
     queryKey: ['/api/tickets'],
+  });
+
+  // Fetch volume (tickets per date) to compute deltas
+  const { data: volume } = useQuery({
+    queryKey: ['/api/statistics/volume'],
   });
 
   // Get only the most recent 5 tickets
@@ -169,67 +263,120 @@ export default function Dashboard() {
         <DashboardActions />
       </div>
       
-      {/* Dashboard Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* Dashboard Metrics - Apenas para equipe helpdesk e admins */}
+      {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <MetricCard
           title="Total de Chamados"
           value={isLoadingStats ? '...' : (stats as any)?.totalTickets || 0}
           icon={<TicketCheck className="h-5 w-5" />}
-          change={{
-            value: 12,
-            timeframe: "o último mês",
-            isPositive: true
-          }}
+          // compute percent change based on volume data and selected dateRange
+          change={(() => {
+            try {
+              if (!volume || !Array.isArray(volume)) return undefined;
+
+              const toDate = new Date();
+              const padDate = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+              let start: Date;
+              let end: Date = padDate(toDate);
+
+              if (dateRange === 'today') {
+                start = padDate(toDate);
+              } else if (dateRange === 'last7days') {
+                start = padDate(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
+              } else if (dateRange === 'last30days') {
+                start = padDate(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
+              } else if (dateRange === 'thisMonth') {
+                start = new Date(toDate.getFullYear(), toDate.getMonth(), 1);
+              } else if (dateRange === 'thisYear') {
+                start = new Date(toDate.getFullYear(), 0, 1);
+              } else {
+                start = padDate(toDate);
+              }
+
+              const startTime = start.getTime();
+              const endTime = end.getTime();
+
+              const sumInRange = (s: number, e: number) => volume
+                .filter((r: any) => {
+                  const d = new Date(r.date);
+                  const t = padDate(d).getTime();
+                  return t >= s && t <= e;
+                })
+                .reduce((acc: number, cur: any) => acc + (cur.count || 0), 0);
+
+              const currentSum = sumInRange(startTime, endTime);
+
+              // previous period: same length right before start
+              const periodDays = Math.round((endTime - startTime) / (24 * 60 * 60 * 1000)) + 1;
+              const prevEnd = new Date(startTime - 1 * 24 * 60 * 60 * 1000);
+              const prevStart = new Date(prevEnd.getTime() - (periodDays - 1) * 24 * 60 * 60 * 1000);
+
+              const prevSum = sumInRange(padDate(prevStart).getTime(), padDate(prevEnd).getTime());
+
+              const changePercent = prevSum === 0 ? (currentSum === 0 ? 0 : 100) : Math.round(((currentSum - prevSum) / prevSum) * 100);
+
+              return {
+                value: Math.abs(changePercent),
+                timeframe: dateRange === 'thisMonth' ? 'mês anterior' : 'período anterior',
+                isPositive: changePercent >= 0
+              };
+            } catch (err) {
+              return undefined;
+            }
+          })()}
         />
-        
+
         <MetricCard
           title="Chamados Abertos"
           value={isLoadingStats ? '...' : (stats as any)?.openTickets || 0}
           icon={<Clock className="h-5 w-5" />}
-          change={{
-            value: 8,
-            timeframe: "ontem",
-            isPositive: false
-          }}
           iconBgColor="bg-red-100"
           iconColor="text-red-600"
         />
-        
+
         <MetricCard
           title="Resolvidos Hoje"
           value={isLoadingStats ? '...' : (stats as any)?.resolvedToday || 0}
           icon={<CheckCircle className="h-5 w-5" />}
-          change={{
-            value: 24,
-            timeframe: "ontem",
-            isPositive: true
-          }}
           iconBgColor="bg-green-100"
           iconColor="text-green-600"
         />
-        
+
         <MetricCard
           title="Tempo de Resposta"
           value={isLoadingStats ? '...' : (stats as any)?.averageResponseTime || '0min'}
           icon={<Timer className="h-5 w-5" />}
-          change={{
-            value: 15,
-            timeframe: "a última semana",
-            isPositive: true
-          }}
           iconBgColor="bg-yellow-100"
           iconColor="text-yellow-600"
         />
-      </div>
+        </div>
+      )}
       
-      {/* SLA Access Cards */}
-      <SlaAccessCards />
+      {/* Dashboard específico para clientes */}
+      {(user?.role === 'client_user' || user?.role === 'client_manager') && (
+        <ClientDashboard 
+          user={user} 
+          stats={stats} 
+          isLoadingStats={isLoadingStats}
+          onNavigate={setLocation}
+          onNewTicket={() => setIsNewTicketDialogOpen(true)}
+        />
+      )}
+
+      {/* SLA Access Cards - Apenas para equipe helpdesk */}
+      {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
+        <SlaAccessCards />
+      )}
       
-      {/* Dashboard Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <ChartCategory />
-        <ChartVolume />
-      </div>
+      {/* Dashboard Charts - Apenas para usuários não clientes */}
+      {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <ChartCategory />
+          <ChartVolume />
+        </div>
+      )}
       
       {/* Recent Tickets */}
       <Card className="overflow-hidden mb-6 bg-card border-border">

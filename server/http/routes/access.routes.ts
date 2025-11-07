@@ -27,7 +27,10 @@ const createUserSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
   role: z.enum(['admin', 'helpdesk_manager', 'helpdesk_agent', 'client_manager', 'client_user']),
-  company: z.string().optional(),
+  company: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (val === null || val === undefined) return undefined;
+    return String(val);
+  }),
   teamId: z.number().optional(),
   isActive: z.boolean().default(true)
 });
@@ -314,6 +317,7 @@ router.get('/users', requireAuth, requireAdmin, async (req: Request, res: Respon
 router.post('/users', requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {
     console.log('Dados recebidos para criação de usuário:', JSON.stringify(req.body, null, 2));
+    console.log('Tipo do campo company:', typeof req.body.company, '- Valor:', req.body.company);
     
     const data = createUserSchema.parse(req.body);
     console.log('Dados validados para usuário:', JSON.stringify(data, null, 2));
@@ -341,6 +345,7 @@ router.post('/users', requireAuth, requireAdmin, async (req: Request, res: Respo
     res.status(201).json(user);
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error('Erros de validação Zod:', JSON.stringify(error.errors, null, 2));
       res.status(400).json({ message: 'Dados inválidos', errors: error.errors });
     } else {
       console.error('Erro ao criar usuário:', error);

@@ -459,37 +459,6 @@ export const SlaComplianceChart: React.FC<SlaComplianceChartProps> = ({
 };
 
 // Dados de exemplo para demonstração
-export const sampleComplianceData: SlaComplianceData[] = [
-  {
-    period: '01/01',
-    compliance: 92.5,
-    target: 95.0,
-    responseTime: 2.8,
-    resolutionTime: 18.5,
-    totalTickets: 45,
-    breachedTickets: 3,
-    priority: {
-      critical: { total: 5, breached: 1, compliance: 80.0 },
-      high: { total: 12, breached: 2, compliance: 83.3 },
-      medium: { total: 20, breached: 0, compliance: 100.0 },
-      low: { total: 8, breached: 0, compliance: 100.0 }
-    }
-  },
-  {
-    period: '02/01',
-    compliance: 94.2,
-    target: 95.0,
-    responseTime: 2.3,
-    resolutionTime: 16.8,
-    totalTickets: 52,
-    breachedTickets: 3,
-    priority: {
-      critical: { total: 6, breached: 1, compliance: 83.3 },
-      high: { total: 15, breached: 2, compliance: 86.7 },
-      medium: { total: 22, breached: 0, compliance: 100.0 },
-      low: { total: 9, breached: 0, compliance: 100.0 }
-    }
-  }
-];
+// sampleComplianceData removed — charts now receive data from API-driven components.
 
 export default SlaComplianceChart;

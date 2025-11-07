@@ -50,11 +50,11 @@ interface CreateUserForm {
 }
 
 const roleLabels = {
-  admin: 'Administrador',
-  helpdesk_manager: 'Gestor Helpdesk',
+  admin: 'Gestor Helpdesk',
+  helpdesk_manager: 'Gerente de Suporte',
   helpdesk_agent: 'Agente Helpdesk',
-  client_manager: 'Gestor da Empresa',
-  client_user: 'Funcionário da Empresa'
+  client_manager: 'Admin cliente',
+  client_user: 'Cliente Funcionário'
 };
 
 const roleColors = {
@@ -240,11 +240,19 @@ export function UserManagement() {
 
   const handleEditUser = (user: User) => {
     setEditingUser(user);
+    // Map company name (returned by API) to company id when possible
+    let companyId: number | undefined = undefined;
+    if (user.company) {
+      // companies is from query; try to find by name first
+      const match = (companies as any[]).find((c: any) => c.name === user.company || String(c.id) === String(user.company));
+      if (match) companyId = match.id;
+    }
+
     setEditForm({
       fullName: user.fullName,
       email: user.email,
       role: user.role,
-      company: user.company ? parseInt(user.company) : undefined,
+      company: companyId,
       teamId: user.teamId
     });
     setIsEditDialogOpen(true);
@@ -287,16 +295,17 @@ export function UserManagement() {
   // Determinar quais papéis podem ser criados/editados
   const getAvailableRoles = (isEdit = false) => {
     const company = isEdit ? editForm.company : createForm.company;
-    
+
     if (company) {
       return [
-        { value: 'client_manager', label: 'Gestor da Empresa' },
-        { value: 'client_user', label: 'Funcionário da Empresa' }
+        { value: 'client_manager', label: 'Admin cliente' },
+        { value: 'client_user', label: 'Cliente Funcionário' }
       ];
     } else {
       return [
         { value: 'helpdesk_manager', label: 'Gestor Helpdesk' },
-        { value: 'helpdesk_agent', label: 'Agente Helpdesk' }
+        { value: 'helpdesk_agent', label: 'Agente Helpdesk' },
+        { value: 'admin', label: 'Gestor Helpdesk (Admin)' }
       ];
     }
   };

@@ -37,8 +37,8 @@ const ExampleTicketDetailsWithSla: React.FC<{ ticketId: string }> = ({ ticketId 
   // Buscar dados SLA do ticket
   const { data: slaData, isLoading } = useSlaData(ticketId);
 
-  // Dados mockados do ticket (substitua pela sua implementação)
-  const ticket = {
+  // Use dados reais quando disponíveis (fallback para exemplo)
+  const ticket = slaData?.ticket || {
     id: ticketId,
     title: 'Problema com sistema de email',
     priority: 'high' as const,

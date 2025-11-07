@@ -5,8 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DatePickerWithRange } from '@/components/ui/date-picker-with-range';
-import SlaMetricsCard, { SlaMetricsGrid, sampleSlaMetrics } from '@/components/sla/sla-metrics-card';
-import SlaComplianceChart, { sampleComplianceData } from '@/components/sla/sla-compliance-chart';
+import SlaMetricsCard, { SlaMetricsGrid } from '@/components/sla/sla-metrics-card';
+import SlaComplianceChart from '@/components/sla/sla-compliance-chart';
 import { AppLayout } from '@/components/layout/app-layout';
 import { 
   BarChart3, 
@@ -27,12 +27,13 @@ import {
 import { cn } from '@/lib/utils';
 import { useSlaeDashboard, useSlaMetrics } from '@/hooks/use-sla';
 import { DateRange } from 'react-day-picker';
-import { addDays, format } from 'date-fns';
+import { addDays, format, startOfMonth, endOfMonth } from 'date-fns';
 
 const SlaManagerDashboard: React.FC = () => {
+  // Default to current month (métrica mensal)
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: addDays(new Date(), -30),
-    to: new Date()
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date())
   });
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [selectedContract, setSelectedContract] = useState<string>('all');
@@ -56,19 +57,42 @@ const SlaManagerDashboard: React.FC = () => {
     refetchAll
   } = useSlaeDashboard(filters);
 
-  // Mock de dados para agentes (idealmente viria de uma API)
-  const agents = [
-    { id: 'agent1', name: 'João Silva' },
-    { id: 'agent2', name: 'Maria Santos' },
-    { id: 'agent3', name: 'Pedro Oliveira' }
-  ];
+  // Agents and contracts will be loaded from the API
+  const [agents, setAgents] = React.useState<{id: string; name: string}[]>([]);
+  const [contracts, setContracts] = React.useState<{id: string; name: string}[]>([]);
 
-  // Mock de dados para contratos
-  const contracts = [
-    { id: 'contract1', name: 'Contrato Empresa A' },
-    { id: 'contract2', name: 'Contrato Empresa B' },
-    { id: 'contract3', name: 'Contrato Empresa C' }
-  ];
+  React.useEffect(() => {
+    // fetch agents (users with role helpdesk_agent)
+    (async () => {
+      try {
+        const resp = await fetch('/api/users');
+        if (resp.ok) {
+          const users = await resp.json();
+          if (Array.isArray(users)) {
+            const agentUsers = users.filter((u: any) => u.role === 'helpdesk_agent');
+            setAgents(agentUsers.map((u: any) => ({ id: String(u.id), name: u.fullName || u.username })));
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao buscar agentes:', err);
+      }
+    })();
+
+    // fetch contracts
+    (async () => {
+      try {
+        const resp = await fetch('/api/contracts');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (Array.isArray(data)) {
+            setContracts(data.map((c: any) => ({ id: c.id, name: c.contractNumber || c.contractName || `Contrato ${c.id}` })));
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao buscar contratos:', err);
+      }
+    })();
+  }, []);
 
   const handleExportReport = () => {
     // Implementar exportação de relatório
@@ -215,51 +239,114 @@ const SlaManagerDashboard: React.FC = () => {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          {agents.map((agent, index) => {
-            // Mock de dados de performance
-            const compliance = 95 - (index * 5);
-            const tickets = 25 + (index * 8);
-            const avgResponse = 2.5 + (index * 0.5);
-            
-            return (
-              <div key={agent.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                    <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                      {agent.name.split(' ').map(n => n[0]).join('')}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-medium">{agent.name}</p>
-                    <p className="text-sm text-gray-500">{tickets} tickets ativos</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="text-sm font-medium">Compliance SLA</p>
-                    <p className={cn(
-                      "text-lg font-bold",
-                      compliance >= 95 ? "text-green-600" : 
-                      compliance >= 90 ? "text-orange-600" : "text-red-600"
-                    )}>
-                      {compliance}%
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium">Tempo Resposta</p>
-                    <p className="text-lg font-bold text-blue-600">
-                      {avgResponse}h
-                    </p>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <AgentPerformance />
       </CardContent>
     </Card>
   );
+
+  const AgentPerformance: React.FC = () => {
+    const [statsByAgent, setStatsByAgent] = React.useState<Record<string, { tickets: number; breached: number; compliance: number; avgResponse: number | null }>>({});
+
+    React.useEffect(() => {
+      if (!agents || agents.length === 0) return;
+
+      let mounted = true;
+
+      (async () => {
+        const promises = agents.map(async (agent) => {
+          try {
+            // Include date filters so AgentPerformance computes metrics for the selected period (monthly by default)
+            const params = new URLSearchParams();
+            params.set('assigneeId', String(agent.id));
+            if (filters.startDate) params.set('startDate', String(filters.startDate));
+            if (filters.endDate) params.set('endDate', String(filters.endDate));
+            const resp = await fetch(`/api/tickets?${params.toString()}`);
+            if (!resp.ok) return { agentId: agent.id, tickets: 0, breached: 0, compliance: 0, avgResponse: null };
+            const tickets = await resp.json();
+            if (!Array.isArray(tickets)) return { agentId: agent.id, tickets: 0, breached: 0, compliance: 0, avgResponse: null };
+
+            const now = new Date();
+            let breached = 0;
+            let responseSumHours = 0;
+            let responseCount = 0;
+
+            tickets.forEach((t: any) => {
+              const solutionDue = t.solutionDueAt ? new Date(t.solutionDueAt) : null;
+              if (solutionDue && solutionDue < now && !['resolved', 'closed'].includes(t.status)) breached++;
+
+              if (t.responseDueAt) {
+                const responseDue = new Date(t.responseDueAt);
+                const createdAt = t.createdAt ? new Date(t.createdAt) : null;
+                if (createdAt) {
+                  const hours = Math.abs((responseDue.getTime() - createdAt.getTime()) / (1000 * 60 * 60));
+                  responseSumHours += hours;
+                  responseCount++;
+                }
+              }
+            });
+
+            const ticketsCount = tickets.length;
+            const compliance = ticketsCount > 0 ? Math.round(((ticketsCount - breached) / ticketsCount) * 100) : 100;
+            const avgResponse = responseCount > 0 ? +(responseSumHours / responseCount).toFixed(1) : null;
+
+            return { agentId: agent.id, tickets: ticketsCount, breached, compliance, avgResponse };
+          } catch (err) {
+            console.warn('Erro ao buscar tickets do agente', agent.id, err);
+            return { agentId: agent.id, tickets: 0, breached: 0, compliance: 0, avgResponse: null };
+          }
+        });
+
+        const results = await Promise.all(promises);
+        if (!mounted) return;
+
+        const map: any = {};
+        results.forEach(r => map[r.agentId] = { tickets: r.tickets, breached: r.breached, compliance: r.compliance, avgResponse: r.avgResponse });
+        setStatsByAgent(map);
+      })();
+
+      return () => { mounted = false; };
+    }, [agents]);
+
+    return (
+      <div className="space-y-4">
+        {agents.map((agent) => {
+          const st = statsByAgent[agent.id] || { tickets: 0, breached: 0, compliance: 100, avgResponse: null };
+          return (
+            <div key={agent.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                  <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                    {agent.name.split(' ').map(n => n[0]).join('')}
+                  </span>
+                </div>
+                <div>
+                  <p className="font-medium">{agent.name}</p>
+                  <p className="text-sm text-gray-500">{st.tickets} tickets atribuídos</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="text-sm font-medium">Compliance SLA</p>
+                  <p className={cn(
+                    "text-lg font-bold",
+                    st.compliance >= 95 ? "text-green-600" : st.compliance >= 90 ? "text-orange-600" : "text-red-600"
+                  )}>
+                    {st.compliance}%
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-medium">Tempo Resposta</p>
+                  <p className="text-lg font-bold text-blue-600">
+                    {st.avgResponse !== null ? `${st.avgResponse}h` : '—'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   if (isError) {
     return (
@@ -405,27 +492,100 @@ const SlaManagerDashboard: React.FC = () => {
 
         <TabsContent value="overview" className="space-y-6">
           {/* Métricas SLA */}
-          <SlaMetricsGrid 
-            metrics={sampleSlaMetrics}
+          {/* Grid de métricas usando dados reais retornados pela API */}
+          <SlaMetricsGrid
+            metrics={(metrics ? [
+              {
+                id: 'sla_compliance',
+                title: 'Conformidade SLA Geral',
+                value: metrics?.compliancePercentage || 0,
+                target: 95.0,
+                unit: 'percentage' as any,
+                trend: { value: 0, direction: 'up', period: 'mês passado' },
+                status: (metrics?.compliancePercentage || 0) >= 95 ? 'good' : (metrics?.compliancePercentage || 0) >= 90 ? 'warning' : 'critical',
+                description: 'Percentual de tickets que cumpriram os prazos de SLA'
+              },
+              {
+                id: 'response_time',
+                title: 'Tempo Médio de Resposta',
+                value: metrics?.averageResponseTime || 0,
+                target: 4.0,
+                unit: 'hours' as any,
+                trend: { value: 0, direction: 'down', period: 'semana passada' },
+                status: 'good'
+              },
+              {
+                id: 'resolution_time',
+                title: 'Tempo Médio de Resolução',
+                value: metrics?.averageResolutionTime || 0,
+                target: 24.0,
+                unit: 'hours' as any,
+                trend: { value: 0, direction: 'down', period: 'mês passado' },
+                status: 'good'
+              },
+              {
+                id: 'breached_tickets',
+                title: 'Tickets com SLA Violado',
+                value: metrics?.breachedTickets || 0,
+                unit: 'count' as any,
+                trend: { value: 0, direction: 'up', period: 'semana passada' },
+                status: (metrics?.breachedTickets || 0) > 0 ? 'critical' : 'good'
+              }
+            ] : [])}
             columns={4}
             size="md"
             showTrend={true}
             showTarget={true}
           />
 
-          {/* Gráfico de Compliance */}
+          {/* Gráfico de Compliance usando os dados agregados (ponto atual) */}
           <SlaComplianceChart
-            data={sampleComplianceData}
+            data={(metrics ? [
+              {
+                period: 'Agora',
+                compliance: metrics?.compliancePercentage || 0,
+                target: 95.0,
+                responseTime: metrics?.averageResponseTime || 0,
+                resolutionTime: metrics?.averageResolutionTime || 0,
+                totalTickets: metrics?.totalTickets || 0,
+                breachedTickets: metrics?.breachedTickets || 0,
+                priority: metrics?.priorityBreakdown || {
+                  critical: { total: 0, breached: 0, compliance: 0 },
+                  high: { total: 0, breached: 0, compliance: 0 },
+                  medium: { total: 0, breached: 0, compliance: 0 },
+                  low: { total: 0, breached: 0, compliance: 0 }
+                }
+              }
+            ] : [])}
             chartType="combined"
+            period="monthly"
             showTarget={true}
             showPriorityBreakdown={true}
           />
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-6">
+          {/* Use API-driven data for analytics (avoid local sample data) */}
           <SlaComplianceChart
-            data={sampleComplianceData}
+            data={(metrics ? [
+              {
+                period: 'Agora',
+                compliance: metrics?.compliancePercentage || 0,
+                target: 95.0,
+                responseTime: metrics?.averageResponseTime || 0,
+                resolutionTime: metrics?.averageResolutionTime || 0,
+                totalTickets: metrics?.totalTickets || 0,
+                breachedTickets: metrics?.breachedTickets || 0,
+                priority: metrics?.priorityBreakdown || {
+                  critical: { total: 0, breached: 0, compliance: 0 },
+                  high: { total: 0, breached: 0, compliance: 0 },
+                  medium: { total: 0, breached: 0, compliance: 0 },
+                  low: { total: 0, breached: 0, compliance: 0 }
+                }
+              }
+            ] : [])}
             chartType="area"
+            period="monthly"
             showTarget={true}
             showPriorityBreakdown={true}
           />

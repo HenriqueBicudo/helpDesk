@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,64 +17,7 @@ import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { FileText, Search, Plus, Trash2, Pencil, Clock, FileQuestion, Loader2, Tag, Eye, Save } from 'lucide-react';
 
-// Mock data for knowledge base articles
-const mockArticles = [
-  {
-    id: 1,
-    title: 'Como resetar sua senha',
-    content: 'Aprenda como resetar sua senha em poucos passos simples.',
-    category: 'Contas',
-    tags: ['senha', 'conta', 'autenticação'],
-    createdAt: '2025-03-15T10:30:00Z',
-    updatedAt: '2025-04-10T14:45:00Z',
-    author: 'João Silva',
-    views: 245
-  },
-  {
-    id: 2,
-    title: 'Configurando seu e-mail no Outlook',
-    content: 'Guia passo a passo para configurar seu email corporativo no Microsoft Outlook.',
-    category: 'Email',
-    tags: ['outlook', 'email', 'configuração'],
-    createdAt: '2025-03-20T09:15:00Z',
-    updatedAt: '2025-03-20T09:15:00Z',
-    author: 'Ana Santos',
-    views: 178
-  },
-  {
-    id: 3,
-    title: 'Utilizando o sistema de chamados',
-    content: 'Aprenda como utilizar o sistema de chamados para reportar problemas e solicitar suporte.',
-    category: 'Suporte',
-    tags: ['chamados', 'tickets', 'suporte'],
-    createdAt: '2025-03-25T14:20:00Z',
-    updatedAt: '2025-04-15T11:30:00Z',
-    author: 'João Silva',
-    views: 320
-  },
-  {
-    id: 4,
-    title: 'Como acessar o sistema remotamente',
-    content: 'Guia para acesso remoto seguro ao sistema corporativo.',
-    category: 'Acesso',
-    tags: ['vpn', 'acesso remoto', 'segurança'],
-    createdAt: '2025-04-05T08:45:00Z',
-    updatedAt: '2025-04-18T16:20:00Z',
-    author: 'Marcos Oliveira',
-    views: 156
-  },
-  {
-    id: 5,
-    title: 'Procedimentos para backup de dados',
-    content: 'Procedimentos recomendados para realizar backup de dados importantes.',
-    category: 'Segurança',
-    tags: ['backup', 'dados', 'segurança'],
-    createdAt: '2025-04-10T13:10:00Z',
-    updatedAt: '2025-04-10T13:10:00Z',
-    author: 'Ana Santos',
-    views: 98
-  }
-];
+// Artigos carregados via API em tempo de execução
 
 // Form schema for articles
 const articleFormSchema = z.object({
@@ -89,13 +32,37 @@ type ArticleFormValues = z.infer<typeof articleFormSchema>;
 export default function Knowledge() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
-  const [articles, setArticles] = useState(mockArticles);
+  const [articles, setArticles] = useState<any[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
   const [activeCategory, setActiveCategory] = useState('all');
   
+  // Sempre carregar artigos via API (não usar mocks)
+  useEffect(() => {
+    const fetchArticles = async () => {
+      try {
+        const resp = await fetch('/api/knowledge');
+        if (!resp.ok) throw new Error(`Status ${resp.status}`);
+        const body = await resp.json();
+        if (body && Array.isArray(body.data)) {
+          setArticles(body.data);
+        } else if (Array.isArray(body)) {
+          // Compatibilidade com endpoints que retornam array simples
+          setArticles(body as any[]);
+        } else {
+          setArticles([]);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar artigos via API:', err);
+        setArticles([]);
+      }
+    };
+
+    fetchArticles();
+  }, []);
+
   // Get unique categories
   const categories = ['all', ...Array.from(new Set(articles.map(article => article.category)))];
   
@@ -123,10 +90,11 @@ export default function Knowledge() {
   
   // Filter articles based on search query and category
   const filteredArticles = articles.filter(article => {
+    const tags = article.tags || [];
     const matchesSearch = 
-      article.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      article.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      article.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+      (article.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (article.content || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tags.some((tag: string) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
     
     const matchesCategory = activeCategory === 'all' || article.category === activeCategory;
     
@@ -146,7 +114,7 @@ export default function Knowledge() {
       title: article.title,
       content: article.content,
       category: article.category,
-      tags: article.tags.join(', ')
+      tags: (article.tags || []).join(', ')
     });
     setIsEditDialogOpen(true);
   };
@@ -157,73 +125,102 @@ export default function Knowledge() {
     setIsViewDialogOpen(true);
     
     // Increment view count
-    setArticles(prev => 
-      prev.map(a => 
-        a.id === article.id 
-          ? { ...a, views: a.views + 1 } 
-          : a
-      )
-    );
+    // Chamar API para incrementar views
+    (async () => {
+      try {
+        const resp = await fetch(`/api/knowledge/${article.id}/views`, { method: 'PATCH' });
+        if (!resp.ok) throw new Error('Erro incrementando views');
+        const body = await resp.json();
+        if (body && body.data) {
+          setArticles(prev => prev.map(a => a.id === article.id ? body.data : a));
+          setSelectedArticle(body.data);
+        } else {
+          setArticles(prev => prev.map(a => a.id === article.id ? { ...a, views: (a.views || 0) + 1 } : a));
+        }
+      } catch (err) {
+        console.warn('Não foi possível incrementar views via API:', err);
+        setArticles(prev => prev.map(a => a.id === article.id ? { ...a, views: (a.views || 0) + 1 } : a));
+      }
+    })();
   };
   
   // Handle form submission for new article
   const onSubmit = (data: ArticleFormValues) => {
-    const newArticle = {
-      id: articles.length + 1,
-      title: data.title,
-      content: data.content,
-      category: data.category,
-      tags: data.tags ? data.tags.split(',').map(t => t.trim()) : [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      author: 'Ana Silva', // Hardcoded for demo
-      views: 0
-    };
-    
-    setArticles([...articles, newArticle]);
-    setIsAddDialogOpen(false);
-    
-    toast({
-      title: 'Artigo criado',
-      description: 'O artigo foi adicionado à base de conhecimento',
-    });
+    (async () => {
+      try {
+        const resp = await fetch('/api/knowledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: data.title,
+            content: data.content,
+            category: data.category,
+            tags: data.tags ? data.tags.split(',').map(t => t.trim()) : [],
+            author: 'Ana Silva'
+          })
+        });
+
+        if (!resp.ok) throw new Error(`Status ${resp.status}`);
+        const body = await resp.json();
+        if (body && body.data) {
+          setArticles(prev => [...prev, body.data]);
+        }
+
+        setIsAddDialogOpen(false);
+        toast({ title: 'Artigo criado', description: 'O artigo foi adicionado à base de conhecimento' });
+      } catch (err) {
+        console.error('Erro ao criar artigo via API:', err);
+        toast({ title: 'Erro', description: 'Não foi possível criar o artigo' });
+      }
+    })();
   };
   
   // Handle edit form submission
   const onEditSubmit = (data: ArticleFormValues) => {
     if (!selectedArticle) return;
-    
-    setArticles(prev => 
-      prev.map(article => 
-        article.id === selectedArticle.id 
-          ? {
-              ...article,
-              title: data.title,
-              content: data.content,
-              category: data.category,
-              tags: data.tags ? data.tags.split(',').map((t: string) => t.trim()) : [],
-              updatedAt: new Date().toISOString()
-            }
-          : article
-      )
-    );
-    
-    setIsEditDialogOpen(false);
-    
-    toast({
-      title: 'Artigo atualizado',
-      description: 'O artigo foi atualizado com sucesso',
-    });
+
+    (async () => {
+      try {
+        const resp = await fetch(`/api/knowledge/${selectedArticle.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: data.title,
+            content: data.content,
+            category: data.category,
+            tags: data.tags ? data.tags.split(',').map((t: string) => t.trim()) : []
+          })
+        });
+
+        if (!resp.ok) throw new Error(`Status ${resp.status}`);
+        const body = await resp.json();
+        if (body && body.data) {
+          setArticles(prev => prev.map(article => article.id === selectedArticle.id ? body.data : article));
+        }
+
+        setIsEditDialogOpen(false);
+        toast({ title: 'Artigo atualizado', description: 'O artigo foi atualizado com sucesso' });
+      } catch (err) {
+        console.error('Erro ao atualizar artigo via API:', err);
+        toast({ title: 'Erro', description: 'Não foi possível atualizar o artigo' });
+      }
+    })();
   };
   
   // Handle article deletion
   const handleDeleteArticle = (id: number) => {
-    setArticles(prev => prev.filter(article => article.id !== id));
-    
-    toast({
-      title: 'Artigo excluído',
-      description: 'O artigo foi removido da base de conhecimento',
-    });
+    (async () => {
+      try {
+        const resp = await fetch(`/api/knowledge/${id}`, { method: 'DELETE' });
+        if (!resp.ok && resp.status !== 204) throw new Error(`Status ${resp.status}`);
+
+        setArticles(prev => prev.filter(article => article.id !== id));
+        toast({ title: 'Artigo excluído', description: 'O artigo foi removido da base de conhecimento' });
+      } catch (err) {
+        console.error('Erro ao excluir artigo via API:', err);
+        toast({ title: 'Erro', description: 'Não foi possível excluir o artigo' });
+      }
+    })();
   };
   
   // Format date
@@ -393,7 +390,7 @@ export default function Knowledge() {
                 </CardHeader>
                 <CardContent className="flex-grow">
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {article.tags.map((tag: string, index: number) => (
+                    {(article.tags || []).map((tag: string, index: number) => (
                       <Badge key={index} variant="outline" className="text-xs">
                         {tag}
                       </Badge>
@@ -462,7 +459,7 @@ export default function Knowledge() {
                   <Tag className="h-4 w-4 text-gray-500" />
                   <span className="text-sm text-gray-500">Tags:</span>
                   <div className="flex flex-wrap gap-1 ml-1">
-                    {selectedArticle?.tags.map((tag: string, index: number) => (
+                    {(selectedArticle?.tags || []).map((tag: string, index: number) => (
                       <Badge key={index} variant="outline" className="text-xs">
                         {tag}
                       </Badge>

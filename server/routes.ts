@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import express from 'express';
 import { createServer, type Server } from "http";
 import multer from "multer";
 import path from "path";
@@ -27,6 +28,7 @@ import { ContractService } from "./services/contract.service";
 import { contractSimpleRoutes } from "./http/routes/contract-simple.routes";
 import { slaRoutes } from "./http/routes/sla.routes";
 import { accessRoutes } from "./http/routes/access.routes";
+import { knowledgeRoutes } from './http/routes/knowledge.routes';
 
 // Configurar multer para upload de arquivos
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -73,6 +75,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // API routes prefix
   const apiPrefix = '/api';
 
+  // Servir arquivos de upload estaticamente em /api/uploads
+  app.use(`${apiPrefix}/uploads`, express.static(uploadDir));
+
   // Health check endpoint
   app.get(`${apiPrefix}/health`, (req: Request, res: Response) => {
     res.json({ status: 'OK', timestamp: new Date() });
@@ -86,6 +91,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Access routes (Admin only)
   app.use(`${apiPrefix}/access`, accessRoutes);
+
+  // Knowledge (Base de Conhecimento) routes
+  app.use(`${apiPrefix}/knowledge`, knowledgeRoutes);
 
   // Rota específica para contratos ativos de um solicitante (para uso no frontend)
   app.get(`${apiPrefix}/requesters/:requesterId/contracts`, async (req: Request, res: Response) => {
@@ -241,8 +249,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // My Team routes
+  app.get(`${apiPrefix}/teams/:teamId/details`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const teamId = parseInt(req.params.teamId);
+      const user = req.user as any;
+      
+      // Verificar se o usuário tem acesso a esta equipe
+      if (user.teamId !== teamId && !['admin', 'helpdesk_manager'].includes(user.role)) {
+        return res.status(403).json({ message: 'Acesso negado a esta equipe' });
+      }
+      
+      const team = await storage.getTeamById(teamId);
+      if (!team) {
+        return res.status(404).json({ message: 'Equipe não encontrada' });
+      }
+      
+      const members = await storage.getTeamMembers(teamId);
+      
+      res.json({
+        ...team,
+        members
+      });
+    } catch (error) {
+      console.error('Error fetching team details:', error);
+      res.status(500).json({ message: 'An error occurred fetching team details' });
+    }
+  });
+
+  app.get(`${apiPrefix}/teams/:teamId/stats`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const teamId = parseInt(req.params.teamId);
+      const user = req.user as any;
+      
+      // Verificar se o usuário tem acesso a esta equipe
+      if (user.teamId !== teamId && !['admin', 'helpdesk_manager'].includes(user.role)) {
+        return res.status(403).json({ message: 'Acesso negado a esta equipe' });
+      }
+      
+      // Buscar estatísticas da equipe (implementação básica)
+      const assignedTickets = await storage.getTicketsByTeam(teamId);
+      const resolvedTickets = assignedTickets.filter(t => t.status === 'resolved' || t.status === 'closed');
+      
+      const stats = {
+        assignedTickets: assignedTickets.length,
+        resolvedTickets: resolvedTickets.length,
+        resolutionRate: assignedTickets.length > 0 ? Math.round((resolvedTickets.length / assignedTickets.length) * 100) : 0
+      };
+      
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching team stats:', error);
+      res.status(500).json({ message: 'An error occurred fetching team stats' });
+    }
+  });
+
+  app.get(`${apiPrefix}/users/company-colleagues`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const user = req.user as any;
+      
+      if (!user.company) {
+        return res.status(400).json({ message: 'Usuário não está associado a uma empresa' });
+      }
+      
+      const colleagues = await storage.getUsersByCompany(user.company);
+      
+      // Remover informações sensíveis e o próprio usuário da lista
+      let visible = colleagues.filter(colleague => colleague.id !== user.id);
+
+      // Se o usuário é um cliente padrão, não mostrar outros clientes (privacidade)
+      if (user.role === 'client_user') {
+        visible = visible.filter(colleague => colleague.role !== 'client_user');
+      }
+
+      const filteredColleagues = visible.map(colleague => ({
+        id: colleague.id,
+        fullName: colleague.fullName,
+        email: colleague.email,
+        role: colleague.role,
+        isActive: colleague.isActive,
+        createdAt: colleague.createdAt,
+        company: colleague.company
+      }));
+
+      res.json(filteredColleagues);
+    } catch (error) {
+      console.error('Error fetching company colleagues:', error);
+      res.status(500).json({ message: 'An error occurred fetching colleagues' });
+    }
+  });
+
   // Ticket routes
-  app.get(`${apiPrefix}/tickets`, requireAuthAndPermission('tickets:view_all'), async (req: Request, res: Response) => {
+  app.get(`${apiPrefix}/tickets`, requireAuth, async (req: Request, res: Response) => {
     try {
       const { status, priority, category, assigneeId } = req.query;
       const user = req.user as any;
@@ -263,9 +361,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           tickets = await storage.getAllTicketsWithRelations();
         }
+      } else if (user.role === 'client_manager') {
+        // Client managers veem tickets da própria empresa
+        if (!user.company) {
+          return res.status(403).json({ message: 'Usuário não está associado a uma empresa' });
+        }
+        tickets = await storage.getTicketsByCompany(user.company);
+      } else if (user.role === 'client_user') {
+        // Client users só veem seus próprios tickets
+        tickets = await storage.getTicketsByRequester(user.id);
       } else {
-        // Clientes só podem ver tickets da própria empresa
-        tickets = await storage.getTicketsByCompany(user.company!);
+        return res.status(403).json({ message: 'Acesso negado aos tickets' });
       }
       
       // Filtrar tickets baseado nas permissões do usuário
@@ -322,7 +428,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!canUserAccessTicket(user, ticket)) {
         return res.status(403).json({ message: 'Acesso negado a este ticket' });
       }
-      
+
+      // Anexar tags do ticket para que o frontend as mostre imediatamente
+      try {
+        const tags = await storage.getTicketTags(id);
+        // garantir formato esperado
+        (ticket as any).tags = tags || [];
+      } catch (tagErr) {
+        console.warn('Could not load ticket tags for ticket', id, tagErr);
+        (ticket as any).tags = [];
+      }
+
       res.json(ticket);
     } catch (error) {
       console.error('Error fetching ticket:', error);
@@ -333,24 +449,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(`${apiPrefix}/tickets`, requireAuthAndPermission('tickets:create'), async (req: Request, res: Response) => {
     try {
       const data = insertTicketSchema.parse(req.body);
+      const user = req.user as any;
+
+      // If a standard client is creating a ticket, force the requester to be the authenticated user
+      if (user && user.role === 'client_user') {
+        try {
+          // Try to find an existing requester by the user's email
+          let requester = await storage.getRequesterByEmail(user.email);
+          if (!requester) {
+            // Create a requester record based on the authenticated user
+            requester = await storage.createRequester({
+              fullName: user.fullName,
+              email: user.email,
+              company: user.company || undefined,
+              planType: 'basic',
+              monthlyHours: 10,
+              usedHours: '0'
+            });
+          }
+
+          // Override the requesterId to the authenticated user's requester entry
+          (data as any).requesterId = requester.id;
+        } catch (err) {
+          console.error('Error ensuring requester for client user:', err);
+          return res.status(500).json({ message: 'Erro ao processar solicitante do cliente' });
+        }
+      }
       
       // Se um contrato foi especificado, validar se está ativo
       if (data.contractId) {
-        const contractService = new ContractService();
-        const contract = await contractService.findById(data.contractId);
-        
+        // Usar o storage diretamente — contratos usam chaves string (ex: CONTRACT_...)
+        const contract = await storage.getContract(data.contractId as any);
+
         if (!contract) {
           return res.status(400).json({ 
             message: 'Contrato não encontrado' 
           });
         }
-        
-        if (!contract.isActive) {
+
+        if (contract.status !== 'active') {
           return res.status(400).json({ 
             message: 'Contrato não está ativo' 
           });
         }
-        
+
         // Verificar se o contrato pertence ao solicitante do ticket
         // TODO: Implementar validação correta quando schema estiver alinhado
         /*
@@ -362,7 +504,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         */
       }
       
-      const ticket = await storage.createTicket(data);
+  const ticket = await storage.createTicket(data);
       res.status(201).json(ticket);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -414,6 +556,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // Normalize status synonyms before applying
+      if (updates.status && (updates.status === 'cancelled' || updates.status === 'canceled')) {
+        updates.status = 'closed';
+      }
+
       const ticket = await storage.updateTicket(id, updates);
       
       if (!ticket) {
@@ -478,10 +625,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = Number(req.params.id);
       const { status } = req.body;
-      
+
       if (typeof status !== 'string') {
         return res.status(400).json({ message: 'status is required and must be a string' });
       }
+
+      // Normalize synonyms coming from UI
+      const normalizeStatus = (s: string) => {
+        if (!s) return s;
+        if (s === 'cancelled' || s === 'canceled') return 'closed';
+        return s;
+      };
+
+      const normalizedStatus = normalizeStatus(status);
       
       // Buscar ticket atual para verificar se tem contrato associado
       const currentTicket = await storage.getTicket(id);
@@ -489,14 +645,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Ticket not found' });
       }
       
-      const ticket = await storage.changeTicketStatus(id, status);
+  const ticket = await storage.changeTicketStatus(id, normalizedStatus);
       
       if (!ticket) {
         return res.status(404).json({ message: 'Ticket not found' });
       }
       
       // Se o ticket foi resolvido e tem contrato associado, contabilizar horas
-      if (status === 'resolved' && currentTicket.contractId) {
+  if (normalizedStatus === 'resolved' && currentTicket.contractId) {
         try {
           // Calcular total de horas gastas nas interações do ticket
           const interactions = await storage.getTicketInteractions(id);
@@ -531,28 +687,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Dashboard statistics routes
-  app.get(`${apiPrefix}/statistics`, async (req: Request, res: Response) => {
+  // Statistics endpoint now requires auth and respects dashboard permissions.
+  app.get(`${apiPrefix}/statistics`, requireAuth, async (req: Request, res: Response) => {
     try {
-      const stats = await storage.getTicketStatistics();
-      res.json(stats);
+      const user = (req as any).user as any;
+      // If user can view full dashboard, return global stats
+      if (user && (user.role === 'admin' || user.role === 'helpdesk_manager')) {
+        const stats = await storage.getTicketStatistics();
+        return res.json(stats);
+      }
+
+      // If user can view company dashboard, compute stats scoped to company
+      if (user && user.company && user.role === 'client_manager') {
+        const tickets = await storage.getTicketsByCompany(user.company);
+        const totalTickets = tickets.length;
+        const openTickets = tickets.filter((t: any) => t.status === 'open').length;
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const resolvedToday = tickets.filter((t: any) => t.status === 'resolved' && new Date(t.updatedAt) >= today).length;
+
+        return res.json({
+          totalTickets,
+          openTickets,
+          resolvedToday,
+          averageResponseTime: 'N/A (company-scoped)'
+        });
+      }
+
+      // Client users têm acesso muito limitado às estatísticas
+      if (user && user.role === 'client_user') {
+        return res.status(403).json({ message: 'Acesso negado a estatísticas do sistema' });
+      }
+
+      // Otherwise deny access
+      return res.status(403).json({ message: 'Acesso negado a estatísticas' });
     } catch (error) {
       res.status(500).json({ message: 'An error occurred fetching statistics' });
     }
   });
 
-  app.get(`${apiPrefix}/statistics/categories`, async (req: Request, res: Response) => {
+  app.get(`${apiPrefix}/statistics/categories`, requireAuth, async (req: Request, res: Response) => {
     try {
-      const categoryStats = await storage.getTicketCategoriesCount();
-      res.json(categoryStats);
+      // allow helpdesk/admin to get global categories, company users get scoped
+      const user = (req as any).user as any;
+      if (user && (user.role === 'admin' || user.role === 'helpdesk_manager')) {
+        const categoryStats = await storage.getTicketCategoriesCount();
+        return res.json(categoryStats);
+      }
+
+      if (user && user.company && user.role === 'client_manager') {
+        const tickets = await storage.getTicketsByCompany(user.company);
+        const byCategory: Record<string, number> = {};
+        tickets.forEach((t: any) => { byCategory[t.category] = (byCategory[t.category] || 0) + 1; });
+        return res.json(Object.entries(byCategory).map(([category, count]) => ({ category, count })));
+      }
+
+      // Client users não têm acesso a estatísticas por categoria
+      if (user && user.role === 'client_user') {
+        return res.status(403).json({ message: 'Acesso negado a estatísticas por categoria' });
+      }
+
+      return res.status(403).json({ message: 'Acesso negado a estatísticas por categoria' });
     } catch (error) {
       res.status(500).json({ message: 'An error occurred fetching category statistics' });
     }
   });
 
-  app.get(`${apiPrefix}/statistics/volume`, async (req: Request, res: Response) => {
+  app.get(`${apiPrefix}/statistics/volume`, requireAuth, async (req: Request, res: Response) => {
     try {
-      const volumeStats = await storage.getTicketVolumeByDate();
-      res.json(volumeStats);
+      const user = (req as any).user as any;
+      if (user && (user.role === 'admin' || user.role === 'helpdesk_manager')) {
+        const volumeStats = await storage.getTicketVolumeByDate();
+        return res.json(volumeStats);
+      }
+
+      if (user && user.company && user.role === 'client_manager') {
+        // For company managers, compute volume by date using company tickets
+        const tickets = await storage.getTicketsByCompany(user.company);
+        const map: Record<string, number> = {};
+        tickets.forEach((t: any) => {
+          const d = new Date(t.createdAt).toISOString().slice(0,10);
+          map[d] = (map[d] || 0) + 1;
+        });
+        const arr = Object.entries(map).map(([date, count]) => ({ date, count }));
+        arr.sort((a,b) => a.date.localeCompare(b.date));
+        return res.json(arr);
+      }
+
+      // Client users não têm acesso a estatísticas de volume
+      if (user && user.role === 'client_user') {
+        return res.status(403).json({ message: 'Acesso negado a estatísticas de volume' });
+      }
+
+      return res.status(403).json({ message: 'Acesso negado a volume de tickets' });
     } catch (error) {
       res.status(500).json({ message: 'An error occurred fetching volume statistics' });
     }
@@ -681,15 +908,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(`${apiPrefix}/tickets/:id/interactions`, upload.array('attachments', 5), async (req: Request, res: Response) => {
     try {
       const ticketId = Number(req.params.id);
-      const { type, content, isInternal = 'false', timeSpent = 0, contractId } = req.body;
+      let { type, content, isInternal = 'false', timeSpent = 0, contractId } = req.body;
       
       if (!type || !content) {
         return res.status(400).json({ message: 'type and content are required' });
       }
-      
+
       // Converter isInternal corretamente (FormData sempre envia como string)
       const isInternalBool = isInternal === 'true' || isInternal === true;
-      
+
+      // Buscar ticket para permitir processamento de tokens/macro no conteúdo
+      const ticket = await storage.getTicketWithRelations(ticketId);
+
+      let processedContent = content as string;
+
+      if (ticket) {
+        // Função utilitária para normalizar chave: remove diacríticos e caracteres não alfanuméricos
+        const normalizeKey = (s: string) => {
+          return s
+            .normalize('NFD')
+            .replace(/\p{M}/gu, '') // remove diacritics
+            .replace(/[^\p{L}\p{N}_]/gu, '') // keep letters, numbers, underscore
+            .toLowerCase();
+        };
+
+        const replacements: Record<string, string> = {
+          cliente: ticket.requester?.fullName || 'Cliente',
+          clienteemail: ticket.requester?.email || '',
+          empresa: ticket.requester?.company || 'Nossa Empresa',
+          numerochamado: ticket.id?.toString().padStart(6, '0') || '',
+          assunto: ticket.subject || '',
+          agente: ticket.assignee?.fullName || 'Equipe de Suporte',
+        };
+
+        // Substituir tokens no formato {{Token}} — aceita letras Unicode e números
+        processedContent = (processedContent || '').replace(/\{\{\s*([\p{L}\p{N}_]+)\s*\}\}/gu, (match, p1: string) => {
+          const key = normalizeKey(p1);
+          if (replacements[key] !== undefined) return replacements[key];
+          if (key === 'dataatual' || key === 'currentdate' || key === 'current_date') return new Date().toLocaleDateString('pt-BR');
+          if (key === 'horaatual' || key === 'currenttime' || key === 'current_time') return new Date().toLocaleTimeString('pt-BR');
+          return match; // manter se não houver substituição
+        });
+      }
+
+      // Atualizar content com processedContent antes de salvar
+      content = processedContent;
+
       // Criar a interação
       const interaction = await storage.createTicketInteraction({
         ticketId,
@@ -700,24 +964,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         contractId: contractId || null,
         createdBy: (req as any).user?.id || 1, // TODO: get from auth
       });
-      
+
       // Processar anexos se existirem
       const files = req.files as Express.Multer.File[];
+      const createdAttachments: Array<any> = [];
       if (files && files.length > 0) {
         for (const file of files) {
-          await storage.createAttachment({
+          const att = await storage.createAttachment({
             ticketId,
             fileName: file.filename,
             fileSize: file.size,
             mimeType: file.mimetype,
             filePath: file.path,
           });
+          createdAttachments.push({
+            id: att.id,
+            fileName: file.filename,
+            url: `${apiPrefix}/uploads/${file.filename}`,
+            originalName: file.originalname,
+            size: file.size,
+            mimeType: file.mimetype,
+          });
         }
       }
-      
+
       // Atualizar as horas utilizadas do cliente se for necessário
       if (timeSpent && timeSpent > 0) {
-        const ticket = await storage.getTicketWithRelations(ticketId);
         if (ticket?.requester) {
           const currentUsed = parseFloat(ticket.requester.usedHours || '0');
           const newUsed = currentUsed + parseFloat(timeSpent.toString());
@@ -726,11 +998,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       }
-      
-      res.status(201).json(interaction);
+
+      // Se o campo `status` foi enviado junto com a interação, aplicar alteração de status
+      let updatedTicket: any = null;
+      const requestedStatus = (req.body as any).status;
+      if (requestedStatus && typeof requestedStatus === 'string' && requestedStatus.trim() !== '') {
+        const s = requestedStatus.trim().toLowerCase();
+        let normalized: string | null = s;
+
+        // Mapear variantes em português/inglês para os status do sistema
+        if ([ 'concluido', 'concluído', 'resolved', 'resolvido', 'concluded' ].includes(s)) normalized = 'resolved';
+        if ([ 'cancelado', 'cancelled', 'canceled', 'closed', 'fechado' ].includes(s)) normalized = 'closed';
+
+        try {
+          updatedTicket = await storage.changeTicketStatus(ticketId, normalized as string);
+        } catch (statusErr) {
+          console.error('Error changing ticket status after creating interaction:', statusErr);
+        }
+      }
+
+      res.status(201).json({ interaction, attachments: createdAttachments, ticket: updatedTicket });
     } catch (error) {
       console.error('Error creating interaction:', error);
       res.status(500).json({ message: 'An error occurred creating the interaction' });
+    }
+  });
+
+  // Endpoint simples para upload de arquivos (usado para imagens coladas/embutidas antes de submeter o HTML)
+  app.post(`${apiPrefix}/uploads`, upload.array('files', 20), async (req: Request, res: Response) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) return res.status(400).json({ message: 'No files uploaded' });
+
+      const result = files.map(f => ({
+        originalName: f.originalname,
+        fileName: f.filename,
+        url: `${apiPrefix}/uploads/${f.filename}`,
+        size: f.size,
+        mimeType: f.mimetype,
+      }));
+
+      res.json(result);
+    } catch (error) {
+      console.error('Error uploading files:', error);
+      res.status(500).json({ message: 'An error occurred uploading files' });
     }
   });
 
@@ -787,19 +1098,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       let processedContent = template.content;
-      
-      // Se ticketId for fornecido, buscar dados do ticket
+
+      // Helper to safely get ticket fields
+      const getTicket = async (id: number) => {
+        try {
+          return await storage.getTicketWithRelations(id);
+        } catch (err) {
+          return null;
+        }
+      }
+
+      // Se ticketId for fornecido, buscar dados do ticket e substituir variáveis
       if (ticketId) {
-        const ticket = await storage.getTicketWithRelations(ticketId);
-        
+        const ticket = await getTicket(Number(ticketId));
+
         if (ticket) {
-          // Substituir variáveis com dados reais
-          processedContent = processedContent.replace(/\{\{customer_name\}\}/g, ticket.requester?.fullName || 'Cliente');
-          processedContent = processedContent.replace(/\{\{customer_email\}\}/g, ticket.requester?.email || '');
-          processedContent = processedContent.replace(/\{\{company_name\}\}/g, ticket.requester?.company || 'Nossa Empresa');
-          processedContent = processedContent.replace(/\{\{ticket_number\}\}/g, ticket.id?.toString().padStart(6, '0') || '');
-          processedContent = processedContent.replace(/\{\{ticket_subject\}\}/g, ticket.subject || '');
-          processedContent = processedContent.replace(/\{\{agent_name\}\}/g, ticket.assignee?.fullName || 'Equipe de Suporte');
+          // Map de tokens (aceitamos variantes em inglês e português)
+          const tokenMap: Record<string, string> = {
+            // cliente
+            '{{customer_name}}': ticket.requester?.fullName || 'Cliente',
+            '{{cliente}}': ticket.requester?.fullName || 'Cliente',
+            '{{Cliente}}': ticket.requester?.fullName || 'Cliente',
+            '{{customer_email}}': ticket.requester?.email || '',
+            '{{cliente_email}}': ticket.requester?.email || '',
+            '{{ClienteEmail}}': ticket.requester?.email || '',
+            // empresa
+            '{{company_name}}': ticket.requester?.company || 'Nossa Empresa',
+            '{{empresa}}': ticket.requester?.company || 'Nossa Empresa',
+            '{{Empresa}}': ticket.requester?.company || 'Nossa Empresa',
+            // ticket
+            '{{ticket_number}}': ticket.id?.toString().padStart(6, '0') || '',
+            '{{numero_chamado}}': ticket.id?.toString().padStart(6, '0') || '',
+            '{{NúmeroChamado}}': ticket.id?.toString().padStart(6, '0') || '',
+            '{{ticket_subject}}': ticket.subject || '',
+            '{{assunto}}': ticket.subject || '',
+            '{{Assunto}}': ticket.subject || '',
+            // agente
+            '{{agent_name}}': ticket.assignee?.fullName || 'Equipe de Suporte',
+            '{{agente}}': ticket.assignee?.fullName || 'Equipe de Suporte',
+            '{{Agente}}': ticket.assignee?.fullName || 'Equipe de Suporte'
+          };
+
+          for (const [token, val] of Object.entries(tokenMap)) {
+            const re = new RegExp(token.replace(/[{}]/g, m => `\\${m}`), 'g');
+            processedContent = processedContent.replace(re, val);
+          }
         }
       }
       
@@ -820,18 +1163,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(`${apiPrefix}/response-templates`, async (req: Request, res: Response) => {
     try {
       const { title, content, category, isActive = true } = req.body;
-      
-      if (!title || !content || !category) {
-        return res.status(400).json({ message: 'title, content, and category are required' });
+
+      if (!title || !content) {
+        return res.status(400).json({ message: 'title and content are required' });
       }
-      
+
+      // Normalize category to allowed enum values. Accept legacy value 'general' -> 'other'.
+      const allowedCategories = ['technical_support', 'financial', 'commercial', 'other'];
+      let cat = (category || '').toString().toLowerCase();
+      if (cat === 'general') cat = 'other';
+      if (!allowedCategories.includes(cat)) {
+        console.warn(`Unknown response template category received: ${category} - defaulting to 'other'`);
+        cat = 'other';
+      }
+
       const template = await storage.createResponseTemplate({
         title,
         content,
-        category,
+        category: cat,
         isActive: Boolean(isActive),
       });
-      
+
       res.status(201).json(template);
     } catch (error) {
       console.error('Error creating response template:', error);
@@ -839,10 +1191,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update response template (PATCH)
+  app.patch(`${apiPrefix}/response-templates/:id`, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: 'Invalid template id' });
+
+      const updates: any = { ...req.body };
+
+      // Normalize category if provided
+      if (updates.category) {
+        const allowedCategories = ['technical_support', 'financial', 'commercial', 'other'];
+        let cat = updates.category.toString().toLowerCase();
+        if (cat === 'general') cat = 'other';
+        if (!allowedCategories.includes(cat)) cat = 'other';
+        updates.category = cat;
+      }
+
+      // If title provided, map to DB column name later in storage implementation
+      const updated = await storage.updateResponseTemplate(id, updates as any);
+
+      if (!updated) return res.status(404).json({ message: 'Response template not found' });
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating response template:', error);
+      res.status(500).json({ message: 'An error occurred updating the response template' });
+    }
+  });
+
+  // Delete response template
+  app.delete(`${apiPrefix}/response-templates/:id`, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: 'Invalid template id' });
+
+      const success = await storage.deleteResponseTemplate(id);
+      if (!success) return res.status(404).json({ message: 'Response template not found' });
+
+      res.status(204).end();
+    } catch (error) {
+      console.error('Error deleting response template:', error);
+      res.status(500).json({ message: 'An error occurred deleting the response template' });
+    }
+  });
+
   // System Settings routes
-  app.get(`${apiPrefix}/settings`, async (req: Request, res: Response) => {
+  app.get(`${apiPrefix}/settings`, requireAuthAndPermission('settings:view'), async (req: Request, res: Response) => {
     try {
       const { category } = req.query;
+      const user = req.user as any;
+      
+      // Client users não têm acesso a configurações do sistema
+      if (user.role === 'client_user' || user.role === 'client_manager') {
+        return res.status(403).json({ message: 'Acesso negado a configurações do sistema' });
+      }
       
       let settings;
       if (category) {
@@ -871,9 +1274,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get(`${apiPrefix}/settings/:key`, async (req: Request, res: Response) => {
+  app.get(`${apiPrefix}/settings/:key`, requireAuthAndPermission('settings:view'), async (req: Request, res: Response) => {
     try {
       const key = req.params.key;
+      const user = req.user as any;
+      
+      // Client users não têm acesso a configurações do sistema
+      if (user.role === 'client_user' || user.role === 'client_manager') {
+        return res.status(403).json({ message: 'Acesso negado a configurações do sistema' });
+      }
+      
       const setting = await storage.getSystemSetting(key);
       
       if (!setting) {
@@ -887,7 +1297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post(`${apiPrefix}/settings`, async (req: Request, res: Response) => {
+  app.post(`${apiPrefix}/settings`, requireAuthAndPermission('settings:manage'), async (req: Request, res: Response) => {
     try {
       const data = updateSystemSettingsSchema.parse(req.body);
       
@@ -926,7 +1336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put(`${apiPrefix}/settings/:key`, async (req: Request, res: Response) => {
+  app.put(`${apiPrefix}/settings/:key`, requireAuthAndPermission('settings:manage'), async (req: Request, res: Response) => {
     try {
       const key = req.params.key;
       const { value } = req.body;
@@ -948,7 +1358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete(`${apiPrefix}/settings/:key`, async (req: Request, res: Response) => {
+  app.delete(`${apiPrefix}/settings/:key`, requireAuthAndPermission('settings:manage'), async (req: Request, res: Response) => {
     try {
       const key = req.params.key;
       const success = await storage.deleteSystemSetting(key);
@@ -991,6 +1401,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put(`${apiPrefix}/tags/:id`, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: 'Invalid tag id' });
+
+      const { name, color } = req.body;
+      if (!name && !color) return res.status(400).json({ message: 'name or color required' });
+
+      const updated = await storage.updateTag(id, { name, color });
+      if (!updated) return res.status(404).json({ message: 'Tag not found' });
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating tag:', error);
+      res.status(500).json({ message: 'An error occurred updating the tag' });
+    }
+  });
+
+  // Update tag
+  app.put(`${apiPrefix}/tags/:id`, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: 'Invalid tag id' });
+
+      const { name, color } = req.body;
+      if (!name && !color) return res.status(400).json({ message: 'name or color required' });
+
+      const updated = await storage.updateTag(id, { name, color });
+      if (!updated) return res.status(404).json({ message: 'Tag not found' });
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating tag:', error);
+      res.status(500).json({ message: 'An error occurred updating the tag' });
+    }
+  });
+
   app.delete(`${apiPrefix}/tags/:id`, async (req: Request, res: Response) => {
     try {
       const id = Number(req.params.id);
@@ -1022,14 +1469,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(`${apiPrefix}/tickets/:id/tags`, async (req: Request, res: Response) => {
     try {
       const ticketId = Number(req.params.id);
-      const { tagId } = req.body;
-      
-      if (!tagId) {
-        return res.status(400).json({ message: 'tagId is required' });
+      const { tagId, tagName, color } = req.body;
+
+      // If tagId provided, just link
+      if (tagId) {
+        await storage.addTicketTag(ticketId, Number(tagId));
+        return res.status(201).json({ message: 'Tag added to ticket' });
       }
-      
-      await storage.addTicketTag(ticketId, tagId);
-      res.status(201).json({ message: 'Tag added to ticket' });
+
+      // If tagName provided, create the tag then link
+      if (tagName && typeof tagName === 'string') {
+        // color is optional; provide a default if missing
+        const tagColor = (color && typeof color === 'string') ? color : '#6B7280';
+        const created = await storage.createTag({ name: tagName.trim(), color: tagColor });
+        await storage.addTicketTag(ticketId, created.id);
+        return res.status(201).json(created);
+      }
+
+      return res.status(400).json({ message: 'tagId or tagName is required' });
     } catch (error) {
       console.error('Error adding tag to ticket:', error);
       res.status(500).json({ message: 'An error occurred adding tag to ticket' });
@@ -1042,12 +1499,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tagId = Number(req.params.tagId);
       
       const success = await storage.removeTicketTag(ticketId, tagId);
-      
-      if (!success) {
-        return res.status(404).json({ message: 'Tag not found on ticket' });
-      }
-      
-      res.status(204).end();
+      // Make DELETE idempotent: return 204 even if the relation did not exist.
+      // This avoids spurious 404 errors when clients retry or race conditions occur.
+      return res.status(204).end();
     } catch (error) {
       console.error('Error removing tag from ticket:', error);
       res.status(500).json({ message: 'An error occurred removing tag from ticket' });
@@ -1092,14 +1546,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Cannot link ticket to itself' });
       }
       
-      const link = await storage.createTicketLink({
-        sourceTicketId,
-        targetTicketId,
-        linkType,
-        description
-      });
-      
-      res.status(201).json(link);
+      // Map frontend link types to DB enum values
+      const mapLinkType = (incoming: string) => {
+        const m: Record<string, string> = {
+          related_to: 'related',
+          duplicate_of: 'duplicate',
+          caused_by: 'parent', // interpretado como relação pai/causa
+          blocks: 'blocks',
+          blocked_by: 'blocked_by',
+          child_of: 'child',
+          parent_of: 'parent'
+        };
+        return m[incoming] || incoming;
+      };
+
+      const mappedType = mapLinkType(linkType);
+
+      try {
+        const link = await storage.createTicketLink({
+          sourceTicketId,
+          targetTicketId,
+          linkType: mappedType,
+          description
+        });
+        return res.status(201).json(link);
+      } catch (dbErr: any) {
+        console.error('DB error creating ticket link:', dbErr);
+        // Detect enum error and return friendly message
+        if (dbErr?.cause?.code === '22P02' || /enum/i.test(dbErr?.cause?.message || '')) {
+          return res.status(400).json({ message: `Invalid linkType: ${linkType}` });
+        }
+        throw dbErr;
+      }
     } catch (error) {
       console.error('Error creating ticket link:', error);
       res.status(500).json({ message: 'An error occurred creating ticket link' });
@@ -1127,10 +1605,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ CONTRACTS ROUTES ============
   
   // Listar todos os contratos
-  app.get(`${apiPrefix}/contracts`, async (req: Request, res: Response) => {
+  app.get(`${apiPrefix}/contracts`, requireAuth, async (req: Request, res: Response) => {
     try {
-      const contracts = await storage.getAllContracts();
-      res.json(contracts);
+      const user = req.user as any;
+      
+      if (user.role === 'admin' || user.role === 'helpdesk_manager' || user.role === 'helpdesk_agent') {
+        // Helpdesk pode ver todos os contratos
+        const contracts = await storage.getAllContracts();
+        res.json(contracts);
+      } else if (user.role === 'client_manager' && user.company) {
+        // Client managers só veem contratos da própria empresa
+        // Primeiro buscar empresa por nome para obter o ID
+        const companies = await storage.getAllCompanies();
+        const company = companies.find(c => c.name === user.company);
+        
+        if (company) {
+          const contracts = await storage.getContractsByCompany(company.id);
+          res.json({ success: true, data: contracts });
+        } else {
+          res.json({ success: true, data: [] });
+        }
+      } else if (user.role === 'client_user') {
+        // Client users têm acesso muito limitado - apenas contratos associados a tickets que podem ver
+        return res.status(403).json({ message: 'Acesso negado aos contratos do sistema' });
+      } else {
+        return res.status(403).json({ message: 'Acesso negado aos contratos' });
+      }
     } catch (error) {
       console.error('Error fetching contracts:', error);
       res.status(500).json({ message: 'An error occurred fetching contracts' });
@@ -1138,8 +1638,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Criar novo contrato
-  app.post(`${apiPrefix}/contracts`, async (req: Request, res: Response) => {
+  app.post(`${apiPrefix}/contracts`, requireAuthAndPermission('companies:manage'), async (req: Request, res: Response) => {
     try {
+      const user = req.user as any;
+      
+      // Client users não podem criar contratos
+      if (user.role === 'client_user' || user.role === 'client_manager') {
+        return res.status(403).json({ message: 'Acesso negado para criar contratos' });
+      }
+      
       const contractData = req.body;
       const contract = await storage.createContract(contractData);
       res.status(201).json(contract);
@@ -1150,8 +1657,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Atualizar contrato
-  app.put(`${apiPrefix}/contracts/:id`, async (req: Request, res: Response) => {
+  app.put(`${apiPrefix}/contracts/:id`, requireAuthAndPermission('companies:manage'), async (req: Request, res: Response) => {
     try {
+      const user = req.user as any;
+      
+      // Client users não podem editar contratos
+      if (user.role === 'client_user' || user.role === 'client_manager') {
+        return res.status(403).json({ message: 'Acesso negado para editar contratos' });
+      }
+      
       const contractId = req.params.id;
       const updateData = req.body;
       const contract = await storage.updateContract(contractId, updateData);
@@ -1168,8 +1682,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Deletar contrato
-  app.delete(`${apiPrefix}/contracts/:id`, async (req: Request, res: Response) => {
+  app.delete(`${apiPrefix}/contracts/:id`, requireAuthAndPermission('companies:manage'), async (req: Request, res: Response) => {
     try {
+      const user = req.user as any;
+      
+      // Client users não podem deletar contratos
+      if (user.role === 'client_user' || user.role === 'client_manager') {
+        return res.status(403).json({ message: 'Acesso negado para deletar contratos' });
+      }
+      
       const contractId = req.params.id;
       const success = await storage.deleteContract(contractId);
       
@@ -1197,10 +1718,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Buscar empresas (para dropdown nos contratos)
-  app.get(`${apiPrefix}/companies`, async (req: Request, res: Response) => {
+  app.get(`${apiPrefix}/companies`, requireAuth, async (req: Request, res: Response) => {
     try {
-      const companies = await storage.getAllCompanies();
-      res.json(companies);
+      const user = req.user as any;
+      
+      if (user.role === 'admin' || user.role === 'helpdesk_manager' || user.role === 'helpdesk_agent') {
+        // Helpdesk pode ver todas as empresas
+        const companies = await storage.getAllCompanies();
+        res.json(companies);
+      } else if (user.role === 'client_manager' && user.company) {
+        // Client managers só veem sua própria empresa
+        const companies = await storage.getAllCompanies();
+        const userCompany = companies.find(c => c.name === user.company);
+        res.json(userCompany ? [userCompany] : []);
+      } else if (user.role === 'client_user') {
+        // Client users não têm acesso à lista de empresas
+        return res.status(403).json({ message: 'Acesso negado à lista de empresas' });
+      } else {
+        return res.status(403).json({ message: 'Acesso negado às empresas' });
+      }
     } catch (error) {
       console.error('Error fetching companies:', error);
       res.status(500).json({ message: 'An error occurred fetching companies' });

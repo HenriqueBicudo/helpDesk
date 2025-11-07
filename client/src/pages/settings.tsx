@@ -14,6 +14,8 @@ import { useTheme as useDarkTheme } from 'next-themes';
 import { ThemeColorEditor } from '@/components/theme/theme-color-editor';
 import { Loader2, Save, Shield, Zap, Palette, Globe, Settings, Monitor, Sun, Moon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import TagsPage from './tags';
+import ResponseTemplatesPage from './response-templates';
 
 export default function SettingsNew() {
   const { toast } = useToast();
@@ -221,12 +223,13 @@ export default function SettingsNew() {
       <div className="p-6 space-y-6">
         <Tabs defaultValue="general">
           <div className="flex justify-between items-center mb-4">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-8">
               <TabsTrigger value="general">Geral</TabsTrigger>
               <TabsTrigger value="notifications">Notificações</TabsTrigger>
               <TabsTrigger value="security">Segurança</TabsTrigger>
               <TabsTrigger value="automation">Automação</TabsTrigger>
               <TabsTrigger value="customization">Personalização</TabsTrigger>
+              <TabsTrigger value="tickets">Tickets</TabsTrigger>
               <TabsTrigger value="integrations">Integrações</TabsTrigger>
             </TabsList>
             
@@ -903,6 +906,21 @@ export default function SettingsNew() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Tickets Tab: reúne Tags e Respostas Prontas (empilhados por linha) */}
+          <TabsContent value="tickets">
+            <div className="flex flex-col gap-6 p-4">
+              <div className="bg-card border-border p-4 rounded-lg w-full">
+                <TagsPage />
+              </div>
+
+              <div className="bg-card border-border p-4 rounded-lg w-full">
+                <ResponseTemplatesPage />
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Removed separate Tags and Templates tabs — content is under Tickets tab now */}
         </Tabs>
       </div>
     </AppLayout>

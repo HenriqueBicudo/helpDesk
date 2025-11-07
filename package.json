@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "Sistema de Help Desk com SLA automático",
   "scripts": {
-    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npx tsx index.ts",
+    "dev:client": "cd client && npm run dev",
     "server:dev": "cd server && npx tsx index.ts",
     "client:dev": "cd client && npm run dev",
     "server:start": "cd server && npx tsx index.ts",
@@ -16,7 +18,8 @@
     "check:sla": "set DATABASE_URL=postgresql://helpdesk_user:helpdesk_password@localhost:5432/helpdesk && npx tsx check-sla-data.js",
     "analyze:db": "set DATABASE_URL=postgresql://helpdesk_user:helpdesk_password@localhost:5432/helpdesk && npx tsx analyze-db.js",
     "clean:db": "set DATABASE_URL=postgresql://helpdesk_user:helpdesk_password@localhost:5432/helpdesk && npx tsx clean-db-safe.js",
-    "seed": "npx tsx seed-data.ts"
+    "seed": "npx tsx seed-data.ts",
+    "db:reset": "node scripts/reset_db.js"
   },
   "keywords": [
     "helpdesk",

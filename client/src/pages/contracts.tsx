@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { AppLayout } from '@/components/layout/app-layout';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -60,6 +62,31 @@ export default function ContractsPage() {
       const result = await response.json();
       return result.data || []; // Extrair o array de 'data'
     }
+  });
+
+  // Search / Filters state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [companyFilter, setCompanyFilter] = useState<number | null>(null);
+
+  const normalize = (s?: string) => (s || '').toString().toLowerCase();
+
+  const filteredContracts = (contracts || []).filter((c: Contract) => {
+    // Status filter
+    if (statusFilter && c.status !== statusFilter) return false;
+    // Company filter
+    if (companyFilter && c.companyId !== companyFilter) return false;
+    // Search query (contractNumber, type, description, companyName)
+    if (searchQuery && searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase();
+      if (!(
+        normalize(c.contractNumber).includes(q) ||
+        normalize(c.type).includes(q) ||
+        normalize(c.description).includes(q) ||
+        normalize(c.companyName).includes(q)
+      )) return false;
+    }
+    return true;
   });
 
   // Mutation para deletar contrato (temporariamente desabilitado)
@@ -149,6 +176,50 @@ export default function ContractsPage() {
           </Button>
         </div>
 
+        {/* Busca e Filtros */}
+        <div className="flex flex-col lg:flex-row gap-4 items-start justify-between">
+          <div className="flex-1 flex gap-2">
+            <Input
+              placeholder="Buscar contratos por número, tipo, empresa ou descrição..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full"
+            />
+            <Select
+              onValueChange={(v) => setStatusFilter(v === 'all' ? null : v)}
+              defaultValue="all"
+            >
+              <SelectTrigger className="h-8 w-40 text-sm">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="active">Ativo</SelectItem>
+                <SelectItem value="inactive">Inativo</SelectItem>
+                <SelectItem value="expired">Expirado</SelectItem>
+                <SelectItem value="suspended">Suspenso</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              onValueChange={(v) => setCompanyFilter(v === 'all' ? null : parseInt(v))}
+              defaultValue="all"
+            >
+              <SelectTrigger className="h-8 w-48 text-sm">
+                <SelectValue placeholder="Empresa" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as empresas</SelectItem>
+                {companies.map((co: Company) => (
+                  <SelectItem key={co.id} value={co.id.toString()}>{co.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Button onClick={() => { setSearchQuery(''); setStatusFilter(null); setCompanyFilter(null); }} variant="outline">Limpar</Button>
+          </div>
+        </div>
+
         {/* Resumo Geral */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
@@ -158,7 +229,7 @@ export default function ContractsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Contratos Ativos</p>
                   <p className="text-2xl font-bold">
-                    {contracts.filter((c: Contract) => c.status === 'active').length}
+                    {filteredContracts.filter((c: Contract) => c.status === 'active').length}
                   </p>
                 </div>
               </div>
@@ -172,7 +243,7 @@ export default function ContractsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Total de Horas</p>
                   <p className="text-2xl font-bold">
-                    {contracts.reduce((acc: number, c: Contract) => acc + c.includedHours, 0)}
+                    {filteredContracts.reduce((acc: number, c: Contract) => acc + c.includedHours, 0)}
                   </p>
                 </div>
               </div>
@@ -186,7 +257,7 @@ export default function ContractsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Horas Consumidas</p>
                   <p className="text-2xl font-bold">
-                    {contracts.reduce((acc: number, c: Contract) => acc + c.usedHours, 0)}
+                    {filteredContracts.reduce((acc: number, c: Contract) => acc + c.usedHours, 0)}
                   </p>
                 </div>
               </div>
@@ -200,7 +271,7 @@ export default function ContractsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Horas Sobresalentes</p>
                   <p className="text-2xl font-bold text-red-600">
-                    {contracts.reduce((acc: number, c: Contract) => acc + getOverageHours(c.usedHours, c.includedHours), 0)}
+                    {filteredContracts.reduce((acc: number, c: Contract) => acc + getOverageHours(c.usedHours, c.includedHours), 0)}
                   </p>
                 </div>
               </div>
@@ -210,7 +281,7 @@ export default function ContractsPage() {
 
         {/* Lista de Contratos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {contracts.map((contract: Contract) => {
+          {filteredContracts.map((contract: Contract) => {
             const usagePercentage = getUsagePercentage(contract.usedHours, contract.includedHours);
             const overageHours = getOverageHours(contract.usedHours, contract.includedHours);
             const company = companies.find((c: Company) => c.id === contract.companyId);

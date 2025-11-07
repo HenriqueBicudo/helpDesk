@@ -179,6 +179,8 @@ export interface IStorage {
   getAllResponseTemplates(): Promise<ResponseTemplate[]>;
   getResponseTemplatesByCategory(category: string): Promise<ResponseTemplate[]>;
   createResponseTemplate(template: InsertResponseTemplate): Promise<ResponseTemplate>;
+  updateResponseTemplate(id: number, updates: Partial<ResponseTemplate>): Promise<ResponseTemplate | undefined>;
+  deleteResponseTemplate(id: number): Promise<boolean>;
   
   // Dashboard statistics
   getTicketStatistics(): Promise<{
@@ -212,6 +214,7 @@ export interface IStorage {
   // Tags methods
   getTags(): Promise<Tag[]>;
   createTag(tag: InsertTag): Promise<Tag>;
+  updateTag(id: number, updates: Partial<InsertTag>): Promise<Tag | undefined>;
   deleteTag(id: number): Promise<boolean>;
   
   // Ticket Tags methods

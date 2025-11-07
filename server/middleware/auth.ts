@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { User as DrizzleUser, UserRole } from '@shared/drizzle-schema';
-import { hasPermission, Permission } from '@shared/permissions';
+import { hasPermission, Permission, canAccessTicket, canEditTicket } from '@shared/permissions';
 
 // Tipo do usuário com todos os campos necessários
 export type AuthUser = DrizzleUser & {
@@ -119,55 +119,34 @@ export function requireAuthAndPermission(permission: Permission) {
 
 // Função helper para verificar se um usuário pode acessar um ticket específico
 export function canUserAccessTicket(user: any, ticket: any): boolean {
-  const userRole = user.role as UserRole;
-  const userCompany = user.company;
-  
-  // Admin e helpdesk têm acesso a todos os tickets
-  if (hasPermission(userRole, 'tickets:view_all')) {
-    return true;
+  // Delegate to shared permission helper to keep logic in one place
+  try {
+    return canAccessTicket(
+      user.role as UserRole,
+      user.company ?? null,
+      ticket.requester?.company ?? null,
+      ticket.requesterId,
+      user.id,
+      ticket.assigneeId === user.id
+    );
+  } catch (err) {
+    // Fallback conservative deny
+    return false;
   }
-  
-  // Usuários podem ver tickets da própria empresa
-  if (hasPermission(userRole, 'tickets:view_company')) {
-    if (userCompany && userCompany === ticket.requester?.company) {
-      return true;
-    }
-  }
-  
-  // Usuários podem ver seus próprios tickets
-  if (hasPermission(userRole, 'tickets:view_own')) {
-    // Se é o requester original ou está atribuído ao ticket
-    if (ticket.requesterId === user.id || ticket.assigneeId === user.id) {
-      return true;
-    }
-  }
-  
-  return false;
 }
 
 // Função helper para verificar se um usuário pode editar um ticket específico
 export function canUserEditTicket(user: any, ticket: any): boolean {
-  const userRole = user.role as UserRole;
-  const userCompany = user.company;
-  
-  // Admin e helpdesk agents podem editar todos os tickets
-  if (hasPermission(userRole, 'tickets:edit_all')) {
-    return true;
+  try {
+    return canEditTicket(
+      user.role as UserRole,
+      user.company ?? null,
+      ticket.requester?.company ?? null,
+      ticket.requesterId,
+      user.id,
+      ticket.assigneeId === user.id
+    );
+  } catch (err) {
+    return false;
   }
-  
-  // Client managers podem editar tickets da própria empresa
-  if (hasPermission(userRole, 'tickets:edit_company')) {
-    if (userCompany && userCompany === ticket.requester?.company) {
-      return true;
-    }
-  }
-  
-  // Usuários podem editar seus próprios tickets (limitado)
-  if (hasPermission(userRole, 'tickets:edit_own')) {
-    if (ticket.requesterId === user.id || ticket.assigneeId === user.id) {
-      return true;
-    }
-  }
-  
-  return false;
 }

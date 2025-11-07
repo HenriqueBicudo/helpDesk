@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { X, Tag, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface Tag {
   id: number;
@@ -19,27 +20,32 @@ interface TicketTagsProps {
 }
 
 export function TicketTags({ ticketId, tags }: TicketTagsProps) {
-  const [isAdding, setIsAdding] = useState(false);
-  const [newTagName, setNewTagName] = useState('');
-  const [newTagColor, setNewTagColor] = useState('#6B7280');
+  const [selectedTagId, setSelectedTagId] = useState<number | ''>('');
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: async () => {
+      const res = await fetch('/api/tags');
+      if (!res.ok) throw new Error('Falha ao carregar tags');
+      return res.json();
+    }
+  });
 
   const addTagMutation = useMutation({
-    mutationFn: async ({ tagName, color }: { tagName: string; color: string }) => {
+    mutationFn: async (tagId: number) => {
       const response = await fetch(`/api/tickets/${ticketId}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tagName, color })
+        body: JSON.stringify({ tagId })
       });
       if (!response.ok) throw new Error('Erro ao adicionar tag');
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ticket', ticketId] });
-      setIsAdding(false);
-      setNewTagName('');
-      setNewTagColor('#6B7280');
+      // Invalidate the same query key used by ticket details
+      queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
+      setSelectedTagId('');
       toast({
         title: "✅ Tag Adicionada",
         description: "Tag foi adicionada ao ticket com sucesso."
@@ -53,7 +59,6 @@ export function TicketTags({ ticketId, tags }: TicketTagsProps) {
       });
     }
   });
-
   const removeTagMutation = useMutation({
     mutationFn: async (tagId: number) => {
       const response = await fetch(`/api/tickets/${ticketId}/tags/${tagId}`, {
@@ -62,7 +67,7 @@ export function TicketTags({ ticketId, tags }: TicketTagsProps) {
       if (!response.ok) throw new Error('Erro ao remover tag');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ticket', ticketId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
       toast({
         title: "🗑️ Tag Removida",
         description: "Tag foi removida do ticket."
@@ -78,16 +83,11 @@ export function TicketTags({ ticketId, tags }: TicketTagsProps) {
   });
 
   const handleAddTag = () => {
-    if (!newTagName.trim()) {
-      toast({
-        title: "❌ Nome Obrigatório",
-        description: "Digite um nome para a tag.",
-        variant: "destructive"
-      });
+    if (!selectedTagId) {
+      toast({ title: 'Selecione uma tag', description: 'Escolha uma tag existente para adicionar', variant: 'destructive' });
       return;
     }
-
-    addTagMutation.mutate({ tagName: newTagName.trim(), color: newTagColor });
+    addTagMutation.mutate(Number(selectedTagId));
   };
 
   const predefinedColors = [
@@ -129,68 +129,27 @@ export function TicketTags({ ticketId, tags }: TicketTagsProps) {
             ))}
           </div>
 
-          {/* Adicionar nova tag */}
-          {isAdding ? (
-            <div className="space-y-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-900">
-              <div>
-                <Input
-                  placeholder="Nome da tag"
-                  value={newTagName}
-                  onChange={(e) => setNewTagName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAddTag();
-                    if (e.key === 'Escape') setIsAdding(false);
-                  }}
-                />
-              </div>
-              
-              <div>
-                <label className="text-xs text-muted-foreground">Cor:</label>
-                <div className="flex gap-1 mt-1">
-                  {predefinedColors.map((color) => (
-                    <button
-                      key={color}
-                      className={`w-6 h-6 rounded border-2 ${newTagColor === color ? 'border-black dark:border-white' : 'border-gray-300'}`}
-                      style={{ backgroundColor: color }}
-                      onClick={() => setNewTagColor(color)}
-                    />
-                  ))}
-                </div>
-              </div>
+          {/* Adicionar tag existente */}
+          <div>
+            <div className="flex items-center gap-2">
+              <Select value={selectedTagId === '' ? '' : String(selectedTagId)} onValueChange={(v) => setSelectedTagId(v === '' ? '' : Number(v))}>
+                <SelectTrigger className="h-8 text-sm w-56">
+                  <SelectValue placeholder="Selecionar tag" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allTags
+                    .filter((t: Tag) => !tags.some(att => att.id === t.id))
+                    .map((t: Tag) => (
+                      <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
 
-              <div className="flex gap-2">
-                <Button 
-                  size="sm" 
-                  onClick={handleAddTag}
-                  disabled={addTagMutation.isPending || !newTagName.trim()}
-                  className="flex-1"
-                >
-                  {addTagMutation.isPending ? 'Adicionando...' : 'Adicionar'}
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => {
-                    setIsAdding(false);
-                    setNewTagName('');
-                    setNewTagColor('#6B7280');
-                  }}
-                >
-                  Cancelar
-                </Button>
-              </div>
+              <Button onClick={handleAddTag} disabled={addTagMutation.isPending || !selectedTagId}>
+                <Plus className="w-4 h-4 mr-2" />Adicionar
+              </Button>
             </div>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsAdding(true)}
-              className="w-full"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar Tag
-            </Button>
-          )}
+          </div>
         </div>
       </CardContent>
     </Card>

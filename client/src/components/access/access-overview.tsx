@@ -43,11 +43,11 @@ interface AccessStats {
 }
 
 const roleLabels = {
-  admin: 'Administradores',
-  helpdesk_manager: 'Gestores Helpdesk',
-  helpdesk_agent: 'Agentes Helpdesk',
-  client_manager: 'Gestores de Empresa',
-  client_user: 'Funcionários'
+  admin: 'Gestor Helpdesk',
+  helpdesk_manager: 'Gerente de Suporte',
+  helpdesk_agent: 'Agente Helpdesk',
+  client_manager: 'Admin cliente',
+  client_user: 'Cliente Funcionário'
 };
 
 export function AccessOverview() {

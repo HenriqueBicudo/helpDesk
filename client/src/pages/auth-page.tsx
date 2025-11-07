@@ -105,17 +105,17 @@ export default function AuthPage() {
                 <CardHeader>
                   <CardTitle>Faça login na sua conta</CardTitle>
                   <CardDescription>
-                    Digite suas credenciais para acessar o sistema
+                    Digite seu usuário/email e senha para acessar o sistema
                   </CardDescription>
                 </CardHeader>
                 <form onSubmit={handleLogin}>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="login-username">Nome de usuário</Label>
+                      <Label htmlFor="login-username">Nome de usuário ou Email</Label>
                       <Input
                         id="login-username"
                         type="text"
-                        placeholder="Digite seu nome de usuário"
+                        placeholder="Digite seu nome de usuário ou email"
                         value={loginData.username}
                         onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
                         required
