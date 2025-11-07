@@ -1,5 +1,7 @@
 # HelpDesk - Sistema de Gerenciamento de Chamados
 
+Olá
+
 Um sistema completo de gerenciamento de chamados (tickets) inspirado no Movidesk, com interface moderna e dashboard analítico.
 
 ![HelpDesk Screenshot](./screenshot.png)
