@@ -118,11 +118,11 @@ export default function ClientProfile() {
 
                   <div>
                     <Label>Tipo de Usuário</Label>
-                    <p className="text-sm text-gray-900 mt-1 p-2 bg-gray-50 rounded">
+                    <div className="text-sm text-gray-900 mt-1 p-2 bg-gray-50 rounded">
                       <Badge variant="outline">
                         {user?.role ? ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] : 'N/A'}
                       </Badge>
-                    </p>
+                    </div>
                   </div>
                 </div>
 

@@ -18,7 +18,7 @@
     "check:sla": "set DATABASE_URL=postgresql://helpdesk_user:helpdesk_password@localhost:5432/helpdesk && npx tsx check-sla-data.js",
     "analyze:db": "set DATABASE_URL=postgresql://helpdesk_user:helpdesk_password@localhost:5432/helpdesk && npx tsx analyze-db.js",
     "clean:db": "set DATABASE_URL=postgresql://helpdesk_user:helpdesk_password@localhost:5432/helpdesk && npx tsx clean-db-safe.js",
-  "seed": "npx tsx scripts/seed.ts",
+    "seed": "npx tsx scripts/seed.ts",
     "db:reset": "node scripts/reset_db.js"
   },
   "keywords": [
@@ -52,7 +52,7 @@
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.1",
-    "drizzle-orm": "^0.44.4",
+    "drizzle-orm": "^0.44.7",
     "drizzle-zod": "^0.8.2",
     "express": "^5.1.0",
     "express-session": "^1.18.2",

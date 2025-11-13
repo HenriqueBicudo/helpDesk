@@ -47,7 +47,7 @@ type SidebarProps = {
 
 export function Sidebar({ isOpen = true }: SidebarProps) {
   const [location] = useLocation();
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const { isClient } = useClientRestrictions();
   
   return (

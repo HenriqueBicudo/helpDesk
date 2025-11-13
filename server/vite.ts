@@ -2,15 +2,15 @@ import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { createServer as createViteServer, createLogger } from "vite";
+// carregaremos vite dinamicamente dentro de setupVite
 import { type Server } from "http";
-import { nanoid } from "nanoid";
+// usamos timestamp simples para cache-busting em vez de trazer 'nanoid'
 
 // Para compatibilidade com import.meta.dirname no Node.js 18
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const viteLogger = createLogger();
+// viteLogger será criado apenas se o pacote 'vite' estiver disponível
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -24,26 +24,40 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true as true,
-  };
+  // tente importar 'vite' dinamicamente; se não estiver presente, apenas logue e siga sem middleware
+  let vite: any = null;
+  let viteLogger: any = null;
 
-  const vite = await createViteServer({
-    configFile: path.resolve(__dirname, "..", "client", "vite.config.ts"),
-    root: path.resolve(__dirname, "..", "client"),
-    customLogger: {
-      ...viteLogger,
-      error: (msg, options) => {
-        viteLogger.error(msg, options);
-        process.exit(1);
+  try {
+    const viteModule = await import("vite");
+    const { createServer: createViteServer, createLogger } = viteModule;
+    viteLogger = createLogger();
+
+    const serverOptions = {
+      middlewareMode: true,
+      hmr: { server },
+      allowedHosts: true as true,
+    };
+
+    vite = await createViteServer({
+      configFile: path.resolve(__dirname, "..", "client", "vite.config.ts"),
+      root: path.resolve(__dirname, "..", "client"),
+      customLogger: {
+        ...viteLogger,
+        error: (msg: any, options: any) => {
+          viteLogger.error(msg, options);
+          process.exit(1);
+        },
       },
-    },
-    server: serverOptions,
-    appType: "custom",
-  });
+      server: serverOptions,
+      appType: "custom",
+    });
+  } catch (err) {
+    log("vite não encontrado — carregando sem integração de dev middleware", "vite");
+    return; // não falha o servidor, apenas não monta o middleware do Vite
+  }
 
+  // se chegamos aqui, vite está disponível
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
@@ -65,7 +79,7 @@ export async function setupVite(app: Express, server: Server) {
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
       template = template.replace(
         `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`,
+        `src="/src/main.tsx?v=${Date.now()}"`,
       );
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);

@@ -207,6 +207,36 @@ const predefinedThemes: PredefinedTheme[] = [
       input: '#1e293b',
       destructive: '#ef4444',
     }
+  },
+  {
+    id: 'totvs',
+    name: 'TOTVS',
+    description: 'Identidade visual oficial TOTVS',
+    category: 'blue',
+    light: {
+      primary: '#0090D0',        // Azul TOTVS oficial (mais corporativo)
+      secondary: '#F5F7FA',      // Cinza claro suave
+      accent: '#00C3A5',         // Verde TOTVS secundário
+      background: '#FFFFFF',     // Branco puro
+      foreground: '#1A1A1A',     // Preto suave (melhor que puro)
+      muted: '#F5F7FA',         // Cinza claro
+      border: '#E0E4E8',        // Borda cinza clara
+      card: '#FFFFFF',          // Cards brancos
+      input: '#F5F7FA',         // Inputs com fundo cinza claro
+      destructive: '#E03C31',   // Vermelho para erros
+    },
+    dark: {
+      primary: '#0090D0',        // Azul TOTVS mantido
+      secondary: '#1E2936',      // Cinza-azulado escuro
+      accent: '#00C3A5',         // Verde TOTVS
+      background: '#151A23',     // Fundo escuro profissional
+      foreground: '#FFFFFF',     // Branco puro
+      muted: '#2A3441',         // Cinza médio
+      border: '#3A4654',        // Bordas sutis
+      card: '#1E2936',          // Cards em tom médio
+      input: '#2A3441',         // Inputs em cinza médio
+      destructive: '#FF5A52',   // Vermelho suave para dark
+    }
   }
 ];
 

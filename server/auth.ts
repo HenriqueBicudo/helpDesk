@@ -235,11 +235,36 @@ export function setupAuth(app: Express) {
         profileData.password = await hashPassword(newPassword);
       }
       
-      // Atualizar perfil (a implementar)
-      // A função updateUser não existe na interface IStorage, então precisaria ser implementada
+      // Persistir as alterações no banco
+      // A interface storage já implementa updateUser no PostgresStorage
+      if (Object.keys(profileData).length > 0) {
+        try {
+          const updated = await storage.updateUser(userId!, profileData as any);
 
-      // Por enquanto, vamos apenas retornar o usuário atual
-      // Remover senha do objeto retornado
+          // Caso updateUser retorne o usuário atualizado, use-o; senão, recarregue do storage
+          const refreshedUser = updated || await storage.getUser(userId!);
+
+          if (!refreshedUser) {
+            return res.status(500).json({ message: 'Falha ao atualizar usuário' });
+          }
+
+          // Atualizar sessão com o usuário novo para que req.user reflita as mudanças
+          req.login(refreshedUser, (err) => {
+            if (err) {
+              console.error('Erro ao atualizar sessão após alteração de perfil:', err);
+            }
+
+            const { password, ...userWithoutPassword } = refreshedUser as UserSchema;
+            return res.json(userWithoutPassword);
+          });
+          return;
+        } catch (err) {
+          console.error('Erro ao persistir alterações de perfil:', err);
+          return res.status(500).json({ message: 'Erro ao persistir alterações de perfil' });
+        }
+      }
+
+      // Se não há alterações, retornar o usuário atual sem senha
       const { password, ...userWithoutPassword } = req.user as UserSchema;
       res.json(userWithoutPassword);
     } catch (error) {
