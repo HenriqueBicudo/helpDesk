@@ -150,3 +150,19 @@ export function canUserEditTicket(user: any, ticket: any): boolean {
     return false;
   }
 }
+
+// Middleware para permitir apenas administradores
+export const requireAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Não autenticado' });
+  }
+
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ 
+      message: 'Acesso negado: apenas administradores podem realizar esta ação',
+      userRole: req.user.role
+    });
+  }
+
+  next();
+};

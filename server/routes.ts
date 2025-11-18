@@ -25,8 +25,10 @@ import {
 } from "./middleware/auth";
 import { emailService } from "./email-service";
 import { ContractService } from "./services/contract.service";
+import { slaEngineService } from "./services/slaEngine.service";
 import { contractSimpleRoutes } from "./http/routes/contract-simple.routes";
 import { slaRoutes } from "./http/routes/sla.routes";
+import slaTemplateRoutes from "./http/routes/sla-templates.routes";
 import { accessRoutes } from "./http/routes/access.routes";
 import { knowledgeRoutes } from './http/routes/knowledge.routes';
 
@@ -88,6 +90,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // SLA routes (Sprint 4)
   app.use(`${apiPrefix}/sla`, slaRoutes);
+  app.use(`${apiPrefix}/sla/templates`, slaTemplateRoutes);
   
   // Access routes (Admin only)
   app.use(`${apiPrefix}/access`, accessRoutes);
@@ -504,7 +507,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         */
       }
       
-  const ticket = await storage.createTicket(data);
+      const ticket = await storage.createTicket(data);
+      
+      // Calcular e aplicar SLA automaticamente se o ticket tiver contrato
+      if (ticket && ticket.id && ticket.contractId) {
+        try {
+          console.log(`🎯 Calculando SLA para ticket #${ticket.id}...`);
+          await slaEngineService.calculateAndApplyDeadlines(ticket.id);
+          console.log(`✅ SLA aplicado ao ticket #${ticket.id}`);
+        } catch (slaError) {
+          console.error(`⚠️ Erro ao calcular SLA para ticket #${ticket.id}:`, slaError);
+          // Não falha a criação do ticket, apenas loga o erro
+        }
+      }
+      
       res.status(201).json(ticket);
     } catch (error) {
       if (error instanceof z.ZodError) {

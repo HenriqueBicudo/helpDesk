@@ -130,7 +130,7 @@ slaRoutes.get('/configurations', async (req, res) => {
     console.log('📋 [API] Buscando configurações SLA no banco de dados...');
     
     // Extrair filtros da query string
-    const contractId = req.query.contractId as string | undefined; // UUID como string
+    const contractId = req.query.contractId as string | undefined;
     
     // Validar prioridade se fornecida
     const validPriorities = ['low', 'medium', 'high', 'urgent', 'critical'] as const;
@@ -381,7 +381,7 @@ slaRoutes.delete('/configurations/:id', async (req, res) => {
  */
 slaRoutes.get('/contracts/:contractId/configurations', async (req, res) => {
   try {
-    const contractId = req.params.contractId as string; // UUID como string
+    const contractId = req.params.contractId as string;
     
     if (!contractId || contractId.trim() === '') {
       return res.status(400).json({

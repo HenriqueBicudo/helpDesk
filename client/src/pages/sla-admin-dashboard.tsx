@@ -3,6 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -30,7 +33,8 @@ import {
   Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useSlaConfigurations, useSlaeDashboard } from '@/hooks/use-sla';
+import { useSlaConfigurations, useSlaeDashboard } from "@/hooks/use-sla";
+import { useSlaTemplates, useApplySlaTemplate, useDeleteSlaTemplate, useSaveTemplate, getTemplateMainTimes, type SlaTemplate, type SlaTemplateRule } from "@/hooks/use-sla-templates";
 
 interface SystemStatus {
   slaEngine: 'running' | 'stopped' | 'error';
@@ -51,21 +55,6 @@ interface Client {
   };
 }
 
-interface SlaTemplate {
-  id: string;
-  name: string;
-  description: string;
-  type: string;
-  responseTime: string;
-  resolutionTime: string;
-  usage: number;
-  rules: {
-    priority: string;
-    responseTimeHours: number;
-    resolutionTimeHours: number;
-  }[];
-}
-
 const SlaAdminDashboard: React.FC = () => {
   const [activeConfigTab, setActiveConfigTab] = useState<'general' | 'templates' | 'system'>('general');
   const [systemStatus] = useState<SystemStatus>({
@@ -83,6 +72,25 @@ const SlaAdminDashboard: React.FC = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
+
+  // Estados para gerenciar templates
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<SlaTemplate | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
+
+  // Estados do formulário de template
+  const [templateForm, setTemplateForm] = useState({
+    name: '',
+    description: '',
+    type: 'support' as string,
+    rules: [
+      { priority: 'critical' as const, responseTimeMinutes: 30, solutionTimeMinutes: 240 },
+      { priority: 'high' as const, responseTimeMinutes: 120, solutionTimeMinutes: 480 },
+      { priority: 'medium' as const, responseTimeMinutes: 240, solutionTimeMinutes: 1440 },
+      { priority: 'low' as const, responseTimeMinutes: 480, solutionTimeMinutes: 2880 }
+    ] as SlaTemplateRule[]
+  });
 
   // Buscar empresas reais da API
   const { data: companiesData, isLoading: companiesLoading, error: companiesError } = useQuery({
@@ -114,6 +122,12 @@ const SlaAdminDashboard: React.FC = () => {
       return response.json();
     }
   });
+
+  // Buscar templates SLA da API
+  const { data: templatesData, isLoading: templatesLoading } = useSlaTemplates();
+  const applyTemplateMutation = useApplySlaTemplate();
+  const deleteTemplateMutation = useDeleteSlaTemplate();
+  const saveTemplateMutation = useSaveTemplate();
 
   // Processar dados para formato da interface
   const clients: Client[] = React.useMemo(() => {
@@ -165,108 +179,6 @@ const SlaAdminDashboard: React.FC = () => {
     
     return clientsList;
   }, [companiesData, requestersData, contractsData]);
-
-  // Templates SLA baseados em dados reais do sistema
-  const templates: SlaTemplate[] = React.useMemo(() => {
-    // Contar contratos por tipo para determinar usage
-    const contractsByType = contractsData?.reduce((acc: any, contract: any) => {
-      acc[contract.type] = (acc[contract.type] || 0) + 1;
-      return acc;
-    }, {}) || {};
-
-    return [
-      {
-        id: 'support_basic',
-        name: 'Suporte Básico',
-        description: 'Template para contratos de suporte básico',
-        type: 'support',
-        responseTime: '8h',
-        resolutionTime: '72h',
-        usage: contractsByType['support'] || 0,
-        rules: [
-          { priority: 'critical', responseTimeHours: 4, resolutionTimeHours: 24 },
-          { priority: 'high', responseTimeHours: 8, resolutionTimeHours: 48 },
-          { priority: 'medium', responseTimeHours: 16, resolutionTimeHours: 72 },
-          { priority: 'low', responseTimeHours: 24, resolutionTimeHours: 120 }
-        ]
-      },
-      {
-        id: 'support_premium',
-        name: 'Suporte Premium',
-        description: 'Template para contratos premium com atendimento prioritário',
-        type: 'support',
-        responseTime: '2h',
-        resolutionTime: '24h',
-        usage: Math.floor((contractsByType['support'] || 0) * 0.6),
-        rules: [
-          { priority: 'critical', responseTimeHours: 0.5, resolutionTimeHours: 4 },
-          { priority: 'high', responseTimeHours: 2, resolutionTimeHours: 8 },
-          { priority: 'medium', responseTimeHours: 4, resolutionTimeHours: 24 },
-          { priority: 'low', responseTimeHours: 8, resolutionTimeHours: 48 }
-        ]
-      },
-      {
-        id: 'support_critical',
-        name: 'Suporte Crítico',
-        description: 'Template para serviços críticos 24/7',
-        type: 'support',
-        responseTime: '30min',
-        resolutionTime: '4h',
-        usage: Math.floor((contractsByType['support'] || 0) * 0.2),
-        rules: [
-          { priority: 'critical', responseTimeHours: 0.25, resolutionTimeHours: 2 },
-          { priority: 'high', responseTimeHours: 0.5, resolutionTimeHours: 4 },
-          { priority: 'medium', responseTimeHours: 1, resolutionTimeHours: 8 },
-          { priority: 'low', responseTimeHours: 2, resolutionTimeHours: 12 }
-        ]
-      },
-      {
-        id: 'maintenance',
-        name: 'Manutenção',
-        description: 'Template para contratos de manutenção',
-        type: 'maintenance',
-        responseTime: '24h',
-        resolutionTime: '120h',
-        usage: contractsByType['maintenance'] || 0,
-        rules: [
-          { priority: 'critical', responseTimeHours: 8, resolutionTimeHours: 48 },
-          { priority: 'high', responseTimeHours: 24, resolutionTimeHours: 72 },
-          { priority: 'medium', responseTimeHours: 48, resolutionTimeHours: 120 },
-          { priority: 'low', responseTimeHours: 72, resolutionTimeHours: 168 }
-        ]
-      },
-      {
-        id: 'development',
-        name: 'Desenvolvimento',
-        description: 'Template para projetos de desenvolvimento',
-        type: 'development',
-        responseTime: '4h',
-        resolutionTime: '48h',
-        usage: contractsByType['development'] || 0,
-        rules: [
-          { priority: 'critical', responseTimeHours: 2, resolutionTimeHours: 12 },
-          { priority: 'high', responseTimeHours: 4, resolutionTimeHours: 24 },
-          { priority: 'medium', responseTimeHours: 8, resolutionTimeHours: 48 },
-          { priority: 'low', responseTimeHours: 24, resolutionTimeHours: 72 }
-        ]
-      },
-      {
-        id: 'consulting',
-        name: 'Consultoria',
-        description: 'Template para serviços de consultoria',
-        type: 'consulting',
-        responseTime: '12h',
-        resolutionTime: '96h',
-        usage: contractsByType['consulting'] || 0,
-        rules: [
-          { priority: 'critical', responseTimeHours: 4, resolutionTimeHours: 24 },
-          { priority: 'high', responseTimeHours: 12, resolutionTimeHours: 48 },
-          { priority: 'medium', responseTimeHours: 24, resolutionTimeHours: 96 },
-          { priority: 'low', responseTimeHours: 48, resolutionTimeHours: 168 }
-        ]
-      }
-    ];
-  }, [contractsData]);
 
   // Buscar configurações SLA
   const { data: configurations, isLoading: configLoading, refetch: refetchConfigs } = useSlaConfigurations();
@@ -327,59 +239,25 @@ const SlaAdminDashboard: React.FC = () => {
     setIsApplying(true);
     try {
       const clientData = getSelectedClientData();
-      const templateData = getSelectedTemplateData();
       
-      if (!clientData || !templateData) {
-        throw new Error('Dados do cliente ou template não encontrados');
+      if (!clientData || !clientData.currentContract) {
+        alert('Cliente não possui contrato ativo. Por favor, crie um contrato primeiro.');
+        return;
       }
 
-      // Extrair ID real do cliente (remove prefixo company_ ou requester_)
-      const [clientType, clientId] = selectedClient.split('_');
-      const realClientId = parseInt(clientId);
+      const contractId = clientData.currentContract.id;
       
-      // Criar contrato via API real
-      const contractPayload = {
-        contractNumber: `CNT-${Date.now()}`,
-        companyId: clientType === 'company' ? realClientId : undefined,
-        type: templateData.type,
-        status: 'active',
-        startDate: new Date().toISOString(),
-        endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 ano
-        monthlyValue: parseFloat(templateData.type === 'support' ? '5000' : 
-                               templateData.type === 'consulting' ? '8000' :
-                               templateData.type === 'development' ? '10000' : '3000'),
-        hourlyRate: 150,
-        includedHours: 40,
-        resetDay: 1, // Primeiro dia do mês
-        allowOverage: true,
-        description: `Contrato ${templateData.name} - ${clientData.name}`
-      };
-
-      const response = await fetch('/api/contracts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(contractPayload)
+      // Usar o mutation hook para aplicar o template
+      await applyTemplateMutation.mutateAsync({
+        templateId: selectedTemplate,
+        contractId: contractId,
+        replaceExisting: true // Substitui regras existentes
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Erro ao criar contrato');
-      }
-
-      await response.json(); // Contrato criado
       
-      // TODO: Criar regras SLA específicas baseadas no template
-      // Aqui seria feita a chamada para criar as regras SLA individuais
-      
-      alert(`Template "${templateData.name}" aplicado com sucesso ao cliente "${clientData.name}"!`);
+      alert(`Template aplicado com sucesso! Todas as regras SLA foram criadas para o contrato.`);
       setSelectedClient('');
       setSelectedTemplate('');
       setShowPreview(false);
-      
-      // Invalidar queries para recarregar dados
-      queryClient.invalidateQueries({ queryKey: ['contracts'] });
-      queryClient.invalidateQueries({ queryKey: ['companies'] });
-      queryClient.invalidateQueries({ queryKey: ['requesters'] });
       
     } catch (error: any) {
       alert('Erro ao aplicar template: ' + error.message);
@@ -389,10 +267,73 @@ const SlaAdminDashboard: React.FC = () => {
   };
 
   const getSelectedClientData = () => clients.find(c => c.id === selectedClient);
-  const getSelectedTemplateData = () => templates.find(t => t.id === selectedTemplate);
+  const getSelectedTemplateData = () => templatesData?.find(t => t.id === selectedTemplate);
+
+  // Handlers para gerenciamento de templates
+  const handleCreateTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateForm({
+      name: '',
+      description: '',
+      type: 'support',
+      rules: [
+        { priority: 'critical', responseTimeMinutes: 30, solutionTimeMinutes: 240 },
+        { priority: 'high', responseTimeMinutes: 120, solutionTimeMinutes: 480 },
+        { priority: 'medium', responseTimeMinutes: 240, solutionTimeMinutes: 1440 },
+        { priority: 'low', responseTimeMinutes: 480, solutionTimeMinutes: 2880 }
+      ]
+    });
+    setShowTemplateDialog(true);
+  };
+
+  const handleEditTemplate = (template: SlaTemplate) => {
+    setEditingTemplate(template);
+    setTemplateForm({
+      name: template.name,
+      description: template.description || '',
+      type: template.type,
+      rules: template.rules
+    });
+    setShowTemplateDialog(true);
+  };
+
+  const handleSaveTemplate = async () => {
+    try {
+      await saveTemplateMutation.mutateAsync({
+        templateId: editingTemplate?.id,
+        data: templateForm
+      });
+      
+      setShowTemplateDialog(false);
+      setEditingTemplate(null);
+    } catch (error: any) {
+      alert('Erro ao salvar template: ' + error.message);
+    }
+  };
+
+  const handleDeleteTemplate = (templateId: string) => {
+    setTemplateToDelete(templateId);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteTemplate = async () => {
+    if (!templateToDelete) return;
+
+    try {
+      await deleteTemplateMutation.mutateAsync({ 
+        templateId: templateToDelete,
+        hardDelete: false // Soft delete por padrão
+      });
+      
+      setShowDeleteDialog(false);
+      setTemplateToDelete(null);
+    } catch (error: any) {
+      alert('Erro ao deletar template: ' + error.message);
+    }
+  };
 
   // Estados de loading
-  const isLoadingData = companiesLoading || contractsLoading || requestersLoading;
+  const isLoadingData = companiesLoading || contractsLoading || requestersLoading || templatesLoading;
 
   const StatusCard: React.FC<{
     title: string;
@@ -548,16 +489,19 @@ const SlaAdminDashboard: React.FC = () => {
                       <SelectValue placeholder="Selecione um template" />
                     </SelectTrigger>
                     <SelectContent>
-                      {templates.map(template => (
+                      {templatesData && templatesData.map(template => {
+                        const times = getTemplateMainTimes(template);
+                        return (
                         <SelectItem key={template.id} value={template.id}>
                           <div className="flex flex-col">
                             <span>{template.name}</span>
                             <span className="text-xs text-gray-500">
-                              Resposta: {template.responseTime} | Resolução: {template.resolutionTime}
+                              Resposta: {times.responseTime} | Resolução: {times.resolutionTime}
                             </span>
                           </div>
                         </SelectItem>
-                      ))}
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -594,7 +538,7 @@ const SlaAdminDashboard: React.FC = () => {
                       <div>
                         <h4 className="font-medium mb-2">Template</h4>
                         <p className="text-sm">{getSelectedTemplateData()?.name}</p>
-                        <p className="text-xs text-gray-500">{getSelectedTemplateData()?.description}</p>
+                        <p className="text-xs text-gray-500">{getSelectedTemplateData()?.description || ''}</p>
                       </div>
                     </div>
 
@@ -614,8 +558,8 @@ const SlaAdminDashboard: React.FC = () => {
                               </Badge>
                             </div>
                             <div className="text-sm text-right">
-                              <div>Resposta: {rule.responseTimeHours < 1 ? `${rule.responseTimeHours * 60}min` : `${rule.responseTimeHours}h`}</div>
-                              <div>Resolução: {rule.resolutionTimeHours}h</div>
+                              <div>Resposta: {rule.responseTimeMinutes < 60 ? `${rule.responseTimeMinutes}min` : `${rule.responseTimeMinutes / 60}h`}</div>
+                              <div>Resolução: {rule.solutionTimeMinutes < 60 ? `${rule.solutionTimeMinutes}min` : `${rule.solutionTimeMinutes / 60}h`}</div>
                             </div>
                           </div>
                         ))}
@@ -627,7 +571,7 @@ const SlaAdminDashboard: React.FC = () => {
                         <AlertTriangle className="h-4 w-4" />
                         <AlertDescription>
                           Este cliente já possui um contrato ativo ({getSelectedClientData()?.currentContract?.type}). 
-                          A aplicação do template criará um novo contrato.
+                          O template será aplicado ao contrato existente, substituindo as regras atuais.
                         </AlertDescription>
                       </Alert>
                     )}
@@ -668,15 +612,20 @@ const SlaAdminDashboard: React.FC = () => {
             Gerencie templates pré-configurados para diferentes tipos de contratos
           </p>
         </div>
-        <Button>
+        <Button onClick={handleCreateTemplate}>
           <Plus className="h-4 w-4 mr-1" />
           Novo Template
         </Button>
       </div>
 
+      {templatesLoading ? (
+        <div className="text-center py-8 text-gray-500">Carregando templates...</div>
+      ) : templatesData && templatesData.length > 0 ? (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {templates.map((template, index) => (
-          <Card key={index}>
+        {templatesData.map((template) => {
+          const times = getTemplateMainTimes(template);
+          return (
+          <Card key={template.id}>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">{template.name}</CardTitle>
               <CardDescription>{template.description}</CardDescription>
@@ -685,30 +634,192 @@ const SlaAdminDashboard: React.FC = () => {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-gray-600 dark:text-gray-400">Resposta</p>
-                  <p className="font-medium">{template.responseTime}</p>
+                  <p className="font-medium">{times.responseTime}</p>
                 </div>
                 <div>
                   <p className="text-gray-600 dark:text-gray-400">Resolução</p>
-                  <p className="font-medium">{template.resolutionTime}</p>
+                  <p className="font-medium">{times.resolutionTime}</p>
                 </div>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {template.usage} contratos usando
+                  {template.type}
                 </span>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="outline">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => handleEditTemplate(template)}
+                  >
                     Editar
                   </Button>
-                  <Button size="sm" variant="outline">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => handleDeleteTemplate(template.id)}
+                  >
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">Nenhum template encontrado</div>
+      )}
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja desativar este template SLA? Esta ação pode ser revertida.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={confirmDeleteTemplate}
+              disabled={deleteTemplateMutation.isPending}
+            >
+              {deleteTemplateMutation.isPending ? 'Deletando...' : 'Confirmar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de criação/edição de template */}
+      <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingTemplate ? 'Editar Template SLA' : 'Novo Template SLA'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingTemplate 
+                ? 'Atualize as configurações do template SLA' 
+                : 'Configure um novo template SLA para diferentes tipos de contratos'}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Informações Básicas */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="template-name">Nome do Template *</Label>
+                <Input
+                  id="template-name"
+                  value={templateForm.name}
+                  onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
+                  placeholder="Ex: Suporte Premium"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="template-type">Tipo de Contrato *</Label>
+                <Select
+                  value={templateForm.type}
+                  onValueChange={(value) => setTemplateForm({ ...templateForm, type: value })}
+                >
+                  <SelectTrigger id="template-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="support">Suporte</SelectItem>
+                    <SelectItem value="maintenance">Manutenção</SelectItem>
+                    <SelectItem value="development">Desenvolvimento</SelectItem>
+                    <SelectItem value="consulting">Consultoria</SelectItem>
+                    <SelectItem value="other">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="template-description">Descrição</Label>
+              <Textarea
+                id="template-description"
+                value={templateForm.description}
+                onChange={(e) => setTemplateForm({ ...templateForm, description: e.target.value })}
+                placeholder="Descreva este template..."
+                rows={3}
+              />
+            </div>
+
+            {/* Regras SLA por Prioridade */}
+            <div className="space-y-4">
+              <h4 className="font-medium">Regras SLA por Prioridade</h4>
+              
+              {templateForm.rules.map((rule, index) => (
+                <Card key={rule.priority}>
+                  <CardContent className="p-4">
+                    <div className="grid grid-cols-3 gap-4 items-center">
+                      <div>
+                        <Badge variant={
+                          rule.priority === 'critical' ? 'destructive' :
+                          rule.priority === 'high' ? 'default' :
+                          rule.priority === 'medium' ? 'secondary' : 'outline'
+                        }>
+                          {rule.priority === 'critical' ? 'Crítica' :
+                           rule.priority === 'high' ? 'Alta' :
+                           rule.priority === 'medium' ? 'Média' : 'Baixa'}
+                        </Badge>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label className="text-xs">Tempo de Resposta (minutos)</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={rule.responseTimeMinutes}
+                          onChange={(e) => {
+                            const newRules = [...templateForm.rules];
+                            newRules[index].responseTimeMinutes = parseInt(e.target.value) || 0;
+                            setTemplateForm({ ...templateForm, rules: newRules });
+                          }}
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label className="text-xs">Tempo de Solução (minutos)</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={rule.solutionTimeMinutes}
+                          onChange={(e) => {
+                            const newRules = [...templateForm.rules];
+                            newRules[index].solutionTimeMinutes = parseInt(e.target.value) || 0;
+                            setTemplateForm({ ...templateForm, rules: newRules });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTemplateDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSaveTemplate}
+              disabled={!templateForm.name || saveTemplateMutation.isPending}
+            >
+              {saveTemplateMutation.isPending ? 'Salvando...' : 'Salvar Template'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

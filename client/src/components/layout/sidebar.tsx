@@ -23,13 +23,13 @@ const SidebarLink = ({ href, icon, children, active, level = 1, isExpanded }: Si
   return (
     <div
       className={cn(
-        "flex items-center px-4 py-2.5 text-sm font-medium rounded-md group transition-colors cursor-pointer",
-        level === 1 ? "mt-1" : "mt-0 py-1.5",
+        "flex items-center px-4 py-2.5 text-sm font-medium rounded group transition-all cursor-pointer mx-2",
+        level === 1 ? "mt-1" : "mt-0 py-2",
         active
-          ? "bg-primary text-primary-foreground"
+          ? "bg-white/15 text-white shadow-sm"
           : level === 1
-            ? "text-muted-foreground hover:text-foreground hover:bg-accent"
-            : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+            ? "text-white/80 hover:text-white hover:bg-white/10"
+            : "text-white/70 hover:text-white hover:bg-white/5"
       )}
       onClick={() => setLocation(href)}
     >
@@ -53,20 +53,21 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
   return (
     <div 
       className={cn(
-        "flex flex-col w-64 bg-card border-r border-border h-screen transition-transform duration-300 ease-in-out",
+        "flex flex-col w-64 bg-sidebar text-sidebar-foreground border-r border-sidebar-border h-screen transition-transform duration-300 ease-in-out",
         !isOpen && "transform -translate-x-full md:translate-x-0 fixed inset-y-0 z-50 md:relative"
       )}
     >
-      {/* Logo */}
-      <div className="flex items-center h-16 px-4 bg-card border-b border-border">
-        <div className="flex items-center">
-          <MessageCircleCode className="text-primary mr-2 h-6 w-6" />
-          <span className="text-foreground font-semibold text-lg">HelpDesk</span>
-        </div>
+      {/* Logo TOTVS */}
+      <div className="flex items-center ml-6 h-16 px-6 bg-sidebar border-b border-sidebar-border">
+        <img 
+          src="/logoTotvs.png" 
+          alt="TOTVS" 
+          className="h-16 w-auto object-contain"
+        />
       </div>
       
       {/* User */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-border">
+      <div className="flex-shrink-0 px-4 py-4 border-b border-sidebar-border bg-sidebar-accent/30">
         <div className="flex items-center">
           {isLoading ? (
             <div className="flex items-center">
@@ -78,18 +79,18 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
             </div>
           ) : user ? (
             <>
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-primary text-primary-foreground">
+              <Avatar className="h-10 w-10 ring-2 ring-white/20">
+                <AvatarFallback className="bg-white/10 text-white font-semibold backdrop-blur">
                   {getInitials(user.fullName)}
                 </AvatarFallback>
               </Avatar>
               <div className="ml-3">
-                <p className="text-sm font-medium text-foreground">{user.fullName}</p>
-                <p className="text-xs text-muted-foreground">{(ROLE_LABELS as any)[user.role] || user.role}</p>
+                <p className="text-sm font-semibold text-white">{user.fullName}</p>
+                <p className="text-xs text-white/70">{(ROLE_LABELS as any)[user.role] || user.role}</p>
               </div>
             </>
           ) : (
-            <Link href="/auth" className="text-muted-foreground hover:text-foreground flex items-center px-4 py-2 text-sm">
+            <Link href="/auth" className="text-white/80 hover:text-white flex items-center px-4 py-2 text-sm">
               <User className="mr-2 h-5 w-5" />
               <span>Entrar</span>
             </Link>
@@ -100,11 +101,11 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
       {/* Navigation Menu */}
       <div className="flex-1 h-0 overflow-y-auto scrollbar-thin">
         <nav className="py-4">
-          <div className="px-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Principal</div>
+          <div className="px-4 mb-2 text-xs font-bold text-white/60 uppercase tracking-wider">Principal</div>
           
           <SidebarLink 
             href="/" 
-            icon={<LayoutDashboard className="mr-3 h-5 w-5" />} 
+            icon={<LayoutDashboard className="h-5 w-5" />} 
             active={location === '/'}
           >
             Dashboard
@@ -112,7 +113,7 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
 
           <SidebarLink 
             href="/my-team" 
-            icon={<Users className="mr-3 h-5 w-5" />} 
+            icon={<Users className="h-5 w-5" />} 
             active={location === '/my-team'}
           >
             {isClient ? 'Meus Colegas' : 'Minha Equipe'}
@@ -121,14 +122,14 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
           <div>
             <SidebarLink 
               href="/tickets" 
-              icon={<Ticket className="mr-3 h-5 w-5" />} 
+              icon={<Ticket className="h-5 w-5" />} 
               active={location === '/tickets' || location.startsWith('/tickets/')}
               isExpanded
             >
               Chamados
             </SidebarLink>
             
-            <div className="ml-10 pl-2 border-l border-border space-y-1">
+            <div className="ml-10 pl-2 border-l border-white/10 space-y-1">
               <SidebarLink 
                 href="/tickets" 
                 level={2}
@@ -150,11 +151,11 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
           {/* Seção específica para clientes */}
           {(user?.role === 'client_user' || user?.role === 'client_manager') && (
             <>
-              <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Minha Conta</div>
+              <div className="px-4 mt-6 mb-2 text-xs font-bold text-white/60 uppercase tracking-wider">Minha Conta</div>
               
               <SidebarLink 
                 href="/profile" 
-                icon={<User className="mr-3 h-5 w-5" />} 
+                icon={<User className="h-5 w-5" />} 
                 active={location === '/profile'}
               >
                 Meu Perfil
@@ -163,7 +164,7 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
               {user?.role === 'client_manager' && (
                 <SidebarLink 
                   href="/team" 
-                  icon={<Shield className="mr-3 h-5 w-5" />} 
+                  icon={<Shield className="h-5 w-5" />} 
                   active={location === '/team'}
                 >
                   Minha Equipe
@@ -175,13 +176,13 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
           {/* Seção Gerenciamento - Apenas para equipe helpdesk */}
           {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
             <>
-              <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Gerenciamento</div>
+              <div className="px-4 mt-6 mb-2 text-xs font-bold text-white/60 uppercase tracking-wider">Gerenciamento</div>
               
               {/* Acessos - apenas para administradores */}
               {user?.role === 'admin' && (
                 <SidebarLink 
                   href="/access" 
-                  icon={<Shield className="mr-3 h-5 w-5" />} 
+                  icon={<Shield className="h-5 w-5" />} 
                   active={location === '/access'}
                 >
                   Acessos
@@ -192,7 +193,7 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
               {(user?.role === 'admin' || user?.role === 'helpdesk_manager') && (
                 <SidebarLink 
                   href="/contracts" 
-                  icon={<FileText className="mr-3 h-5 w-5" />} 
+                  icon={<FileText className="h-5 w-5" />} 
                   active={location === '/contracts'}
                 >
                   Contratos
@@ -203,11 +204,11 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
 
           {/* SLA Dashboard - Apenas para equipe helpdesk e admins */}
           {user && user.role !== 'client_user' && user.role !== 'client_manager' && (
-            <div className="px-4">
+            <div className="px-0">
               {user?.role === 'admin' && (
                 <SidebarLink 
                   href="/sla/admin" 
-                  icon={<Settings className="mr-3 h-5 w-5" />} 
+                  icon={<Settings className="h-5 w-5" />} 
                   active={location === '/sla/admin'}
                 >
                   Administração
@@ -216,7 +217,7 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
               
               <SidebarLink 
                 href="/sla/manager" 
-                icon={<BarChart3 className="mr-3 h-5 w-5" />} 
+                icon={<BarChart3 className="h-5 w-5" />} 
                 active={location === '/sla/manager'}
               >
                 Dashboard Gerencial
@@ -224,7 +225,7 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
               
               <SidebarLink 
                 href="/sla/agent" 
-                icon={<Target className="mr-3 h-5 w-5" />} 
+                icon={<Target className="h-5 w-5" />} 
                 active={location === '/sla/agent'}
               >
                 Dashboard do Agente
@@ -235,11 +236,11 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
           {/* Seção Sistema - Apenas para equipe helpdesk e admins */}
           {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
             <>
-              <div className="px-4 mt-4 mb-2 text-xs font-semibold text-muted-foreground uppercase">Sistema</div>
+              <div className="px-4 mt-6 mb-2 text-xs font-bold text-white/60 uppercase tracking-wider">Sistema</div>
               
               <SidebarLink 
                 href="/settings" 
-                icon={<Settings className="mr-3 h-5 w-5" />} 
+                icon={<Settings className="h-5 w-5" />} 
                 active={location === '/settings'}
               >
                 Configurações
@@ -247,7 +248,7 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
               
               <SidebarLink 
                 href="/reports" 
-                icon={<FileBarChart className="mr-3 h-5 w-5" />} 
+                icon={<FileBarChart className="h-5 w-5" />} 
                 active={location === '/reports'}
               >
                 Relatórios
@@ -255,7 +256,7 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
               
               <SidebarLink 
                 href="/knowledge" 
-                icon={<Database className="mr-3 h-5 w-5" />} 
+                icon={<Database className="h-5 w-5" />} 
                 active={location === '/knowledge'}
               >
                 Base de Conhecimento

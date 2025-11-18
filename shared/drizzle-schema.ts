@@ -1,5 +1,11 @@
 import { pgTable, integer, varchar, text, timestamp, boolean, pgEnum, numeric, json } from 'drizzle-orm/pg-core';
 
+// Import SLA schemas
+export * from './schema/sla_rules';
+export * from './schema/contracts';
+export * from './schema/calendars';
+export * from './schema/sla_templates';
+
 // Enum definitions for PostgreSQL
 export const statusEnum = pgEnum('status', ['open', 'in_progress', 'pending', 'resolved', 'closed']);
 export const priorityEnum = pgEnum('priority', ['low', 'medium', 'high', 'critical']);
