@@ -128,11 +128,31 @@ router.get('/stats', requireAuth, requireAdmin, async (req: Request, res: Respon
 });
 
 // ===== EMPRESAS =====
-router.get('/companies', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+router.get('/companies', requireAuth, async (req: Request, res: Response) => {
   try {
+    const user = req.user as any;
     const { search, status } = req.query;
     
     let companies = await storage.getAllCompanies();
+    // Campo 'company' armazena ID da empresa como string, converter para número
+    const userCompanyId = user.company ? parseInt(user.company, 10) : null;
+    console.log('📋 [/companies] User:', { id: user.id, role: user.role, company: user.company, companyId: userCompanyId });
+    console.log('📋 [/companies] Total de empresas no DB:', companies.length);
+    
+    // Clientes só veem a própria empresa
+    if (user.role === 'client_user' || user.role === 'client_manager') {
+      if (!userCompanyId) {
+        console.log('❌ [/companies] User sem company vinculada!');
+        return res.status(400).json({ message: 'Seu usuário não está vinculado a uma empresa' });
+      }
+      console.log('🔍 [/companies] Filtrando para companyId:', userCompanyId);
+      companies = companies.filter((c: any) => {
+        const match = c.id === userCompanyId;
+        console.log(`  - ${c.name} (ID: ${c.id}) === ${userCompanyId} ? ${match}`);
+        return match;
+      });
+      console.log('✅ [/companies] Após filtro, empresas:', companies.length);
+    }
     
     // Filtrar por busca
     if (search) {
@@ -373,7 +393,7 @@ router.patch('/users/:id', requireAuth, requireAdmin, async (req: Request, res: 
 });
 
 // ===== EQUIPES =====
-router.get('/teams', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+router.get('/teams', requireAuth, async (req: Request, res: Response) => {
   try {
     const { search, status } = req.query;
     

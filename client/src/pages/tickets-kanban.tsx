@@ -304,7 +304,8 @@ export default function TicketsKanban() {
 
   // Buscar todos os tickets
   const { data: tickets, isLoading } = useQuery<TicketWithRelations[]>({ 
-    queryKey: ["/api/tickets"], 
+    queryKey: ["/api/tickets"],
+    refetchInterval: 30000, // Atualiza automaticamente a cada 30 segundos
   });
 
   // Buscar todos os usuários

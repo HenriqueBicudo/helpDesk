@@ -4,12 +4,12 @@ import { useEffect } from 'react';
 function hexToHsl(hex: string): string {
   // Remove o # se estiver presente
   hex = hex.replace('#', '');
-  
+
   // Se for uma cor de 3 dígitos, expande para 6
   if (hex.length === 3) {
     hex = hex.split('').map(char => char + char).join('');
   }
-  
+
   // Converte para RGB
   const r = parseInt(hex.substr(0, 2), 16) / 255;
   const g = parseInt(hex.substr(2, 2), 16) / 255;
@@ -45,7 +45,7 @@ function hexToHsl(hex: string): string {
 function generateColorVariations(baseColor: string) {
   const hsl = hexToHsl(baseColor);
   const [h, s, l] = hsl.split(' ').map(v => parseInt(v));
-  
+
   return {
     primary: `${h} ${s}% ${l}%`,
     primaryForeground: `${h} ${s}% ${l > 50 ? 10 : 90}%`,
@@ -63,13 +63,13 @@ export interface ThemeColors {
 }
 
 export function useTheme() {
-  console.log('🚀 Hook use-theme foi carregado!');
-  
+
+
   // Função para converter HEX para HSL
   const hexToHsl = (hex: string): string => {
     // Remove o # se presente
     hex = hex.replace('#', '');
-    
+
     // Converte para RGB
     const r = parseInt(hex.substr(0, 2), 16) / 255;
     const g = parseInt(hex.substr(2, 2), 16) / 255;
@@ -98,56 +98,51 @@ export function useTheme() {
 
   // Função para aplicar tema completo (light/dark)
   const applyFullTheme = (lightColors: Record<string, string>, darkColors: Record<string, string>) => {
-    console.log('🎨 Aplicando tema completo:', { lightColors, darkColors });
-    
+
     // Determinar se estamos no modo escuro
     const isDark = document.documentElement.classList.contains('dark');
     const colorsToApply = isDark ? darkColors : lightColors;
-    
-    console.log('🎨 Modo atual:', isDark ? 'escuro' : 'claro');
-    console.log('🎨 Cores a aplicar:', colorsToApply);
-    
+
     // Aplicar todas as cores do tema
     Object.entries(colorsToApply).forEach(([key, value]) => {
       const hslValue = hexToHsl(value as string);
       document.documentElement.style.setProperty(`--${key}`, hslValue);
-      console.log(`🎨 Aplicando --${key}: ${hslValue}`);
     });
   };
   const applyTheme = (colors: ThemeColors) => {
     const root = document.documentElement;
-    
+
     if (colors.primaryColor) {
       const variations = generateColorVariations(colors.primaryColor);
-      
+
       // Aplica as variações de cor principal
       root.style.setProperty('--primary', variations.primary);
       root.style.setProperty('--primary-foreground', variations.primaryForeground);
-      
+
       // Se não tiver cores secundárias definidas, gera automaticamente
       if (!colors.secondaryColor) {
         root.style.setProperty('--secondary', variations.secondary);
         root.style.setProperty('--secondary-foreground', variations.secondaryForeground);
       }
-      
+
       if (!colors.accentColor) {
         root.style.setProperty('--accent', variations.accent);
         root.style.setProperty('--accent-foreground', variations.accentForeground);
       }
     }
-    
+
     if (colors.secondaryColor) {
       const secondaryHsl = hexToHsl(colors.secondaryColor);
       const [h, s, l] = secondaryHsl.split(' ').map(v => parseInt(v));
-      
+
       root.style.setProperty('--secondary', secondaryHsl);
       root.style.setProperty('--secondary-foreground', `${h} ${s}% ${l > 50 ? 15 : 85}%`);
     }
-    
+
     if (colors.accentColor) {
       const accentHsl = hexToHsl(colors.accentColor);
       const [h, s, l] = accentHsl.split(' ').map(v => parseInt(v));
-      
+
       root.style.setProperty('--accent', accentHsl);
       root.style.setProperty('--accent-foreground', `${h} ${s}% ${l > 50 ? 15 : 85}%`);
     }
@@ -156,32 +151,28 @@ export function useTheme() {
   // Função para carregar o tema salvo
   const loadSavedTheme = async () => {
     try {
-      console.log('🎨 Carregando tema do servidor...');
       const response = await fetch('/api/settings');
       if (response.ok) {
         const data = await response.json();
-        console.log('🎨 Dados recebidos do servidor:', data);
-        
+
         if (data.general) {
           const { lightTheme, darkTheme, themeId } = data.general;
-          
+
           // Se houver temas completos salvos no servidor, aplicar eles
           if (lightTheme && darkTheme && typeof lightTheme === 'object' && typeof darkTheme === 'object') {
-            console.log('🎨 Aplicando tema completo do servidor:', { themeId, lightTheme, darkTheme });
-            
+
             // Salvar no localStorage também
             localStorage.setItem('theme-colors-light', JSON.stringify(lightTheme));
             localStorage.setItem('theme-colors-dark', JSON.stringify(darkTheme));
             localStorage.setItem('current-theme-id', themeId || 'custom');
-            
+
             // Aplicar tema completo
             applyFullTheme(lightTheme, darkTheme);
             return;
           }
-          
+
           // Fallback para cores individuais (compatibilidade)
           if (data.general.primaryColor) {
-            console.log('🎨 Aplicando tema individual (fallback):', data.general);
             applyTheme({
               primaryColor: data.general.primaryColor,
               secondaryColor: data.general.secondaryColor,
@@ -192,6 +183,10 @@ export function useTheme() {
           }
         }
       } else {
+        // Para clientes sem permissão, apenas segue com tema padrão/localStorage
+        if (response.status === 401 || response.status === 403) {
+          return;
+        }
         console.warn('🎨 Falha ao carregar configurações do servidor:', response.status);
       }
     } catch (error) {
@@ -202,7 +197,7 @@ export function useTheme() {
   // Função para salvar e aplicar tema
   const setTheme = (colors: ThemeColors) => {
     applyTheme(colors);
-    
+
     // Salva no localStorage para persistência rápida
     localStorage.setItem('theme-colors', JSON.stringify(colors));
   };
@@ -210,7 +205,7 @@ export function useTheme() {
   // Função para resetar para o tema padrão
   const resetTheme = () => {
     const root = document.documentElement;
-    
+
     // Remove as propriedades customizadas (volta para o CSS padrão)
     root.style.removeProperty('--primary');
     root.style.removeProperty('--primary-foreground');
@@ -218,28 +213,27 @@ export function useTheme() {
     root.style.removeProperty('--secondary-foreground');
     root.style.removeProperty('--accent');
     root.style.removeProperty('--accent-foreground');
-    
+
     localStorage.removeItem('theme-colors');
   };
 
   // Carrega o tema na inicialização
   useEffect(() => {
     console.log('🔧 Inicializando sistema de temas...');
-    
+
     // Primeiro tenta carregar do localStorage (mais rápido)
     const savedColors = localStorage.getItem('theme-colors');
     const savedLightTheme = localStorage.getItem('theme-colors-light');
     const savedDarkTheme = localStorage.getItem('theme-colors-dark');
-    
-    console.log('🔧 LocalStorage check:', { 
-      savedColors: !!savedColors, 
-      savedLightTheme: !!savedLightTheme, 
-      savedDarkTheme: !!savedDarkTheme 
+
+    console.log('🔧 LocalStorage check:', {
+      savedColors: !!savedColors,
+      savedLightTheme: !!savedLightTheme,
+      savedDarkTheme: !!savedDarkTheme
     });
-    
+
     // Priorizar o sistema novo de temas (light/dark)
     if (savedLightTheme && savedDarkTheme) {
-      console.log('🔧 Aplicando tema completo do localStorage');
       try {
         const lightColors = JSON.parse(savedLightTheme);
         const darkColors = JSON.parse(savedDarkTheme);
@@ -258,9 +252,8 @@ export function useTheme() {
     } else {
       console.log('🔧 Nenhum tema no localStorage');
     }
-    
+
     // Depois carrega do servidor (mais atualizado)
-    console.log('🔧 Carregando tema do servidor...');
     loadSavedTheme();
   }, []);
 

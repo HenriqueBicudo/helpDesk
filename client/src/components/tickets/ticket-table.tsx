@@ -60,8 +60,8 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           bVal = b.subject;
           break;
         case 'requester':
-          aVal = a.requester.fullName;
-          bVal = b.requester.fullName;
+          aVal = a.requester?.fullName || '';
+          bVal = b.requester?.fullName || '';
           break;
         case 'status':
           aVal = a.status;
@@ -194,15 +194,15 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
                 <div className="flex items-center">
                   <Avatar className="h-8 w-8 mr-3">
                     <AvatarFallback className="bg-muted text-muted-foreground text-xs">
-                      {ticket.requester.avatarInitials}
+                      {ticket.requester?.avatarInitials || '--'}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <div className="text-sm font-medium text-foreground">
-                      {ticket.requester.fullName}
+                      {ticket.requester?.fullName || 'Solicitante desconhecido'}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {ticket.requester.email}
+                      {ticket.requester?.email || '—'}
                     </div>
                   </div>
                 </div>
@@ -237,11 +237,11 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
                   <div className="flex items-center">
                     <Avatar className="h-7 w-7 mr-2">
                       <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                        {ticket.assignee.avatarInitials}
+                        {ticket.assignee?.avatarInitials || '--'}
                       </AvatarFallback>
                     </Avatar>
                     <div className="text-sm text-foreground">
-                      {ticket.assignee.fullName}
+                      {ticket.assignee?.fullName || '—'}
                     </div>
                   </div>
                 ) : (

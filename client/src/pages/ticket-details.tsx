@@ -272,7 +272,7 @@ export default function TicketDetails() {
 
   // Mutation to update ticket contract
   const updateContractMutation = useMutation({
-    mutationFn: async (contractId: string) => {
+    mutationFn: async (contractId: string | null) => {
       const res = await fetch(`/api/tickets/${ticketId}`, {
         method: 'PATCH',
         headers: {
@@ -287,11 +287,11 @@ export default function TicketDetails() {
       
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, contractId) => {
       queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
       toast({
         title: "Sucesso",
-        description: "Contrato atualizado com sucesso",
+        description: contractId ? "Contrato vinculado com sucesso" : "Contrato removido com sucesso",
       });
     },
     onError: () => {
@@ -325,7 +325,13 @@ export default function TicketDetails() {
   });
 
   const handleCreateInteraction = (data: InteractionData) => {
-    createInteractionMutation.mutate(data);
+    // Se o ticket tem um contrato vinculado e não foi especificado contractId,
+    // usar o contrato do ticket automaticamente
+    const interactionData = {
+      ...data,
+      contractId: data.contractId || ticket?.contract?.id || undefined
+    };
+    createInteractionMutation.mutate(interactionData);
   };
 
   if (isLoading) {
@@ -554,86 +560,203 @@ export default function TicketDetails() {
                 </div>
 
                 {/* Informações de contrato - Apenas para helpdesk */}
-                {!clientRestrictions.isClient && customerHours ? (
-                  <div className="space-y-3">
-                    {/* Seletor de Contrato */}
-                    {availableContracts.length > 1 && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                          Contrato vinculado:
-                        </label>
-                        <Select
-                          value={ticket.contract?.id || ''}
-                          onValueChange={(value) => updateContractMutation.mutate(value)}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Selecionar contrato" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <div className="p-2">
-                              <Input
-                                placeholder="Buscar contrato por número ou tipo..."
-                                value={contractSearch}
-                                onChange={(e) => setContractSearch(e.target.value)}
-                                className="text-sm"
-                              />
+                {!clientRestrictions.isClient && (
+                  <div className="space-y-3 pt-3 border-t">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold flex items-center gap-1.5 mb-1">
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Contrato
+                      </label>
+                      
+                      <Select
+                        value={ticket.contract?.id || 'none'}
+                        onValueChange={(value) => updateContractMutation.mutate(value === 'none' ? null : value)}
+                        disabled={updateContractMutation.isPending}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecionar contrato..." />
+                        </SelectTrigger>
+                        <SelectContent className="max-w-[320px]">
+                          <SelectItem value="none">
+                            <span className="text-muted-foreground">Nenhum contrato</span>
+                          </SelectItem>
+                          {availableContracts.map((contract: any) => (
+                            <SelectItem key={contract.id} value={contract.id}>
+                              <div className="flex items-center justify-between gap-2 w-full">
+                                <span className="font-medium">{contract.contractNumber}</span>
+                                <span className="text-xs text-muted-foreground capitalize">
+                                  {contract.type === 'support' ? 'Suporte' : 
+                                   contract.type === 'maintenance' ? 'Manutenção' :
+                                   contract.type === 'development' ? 'Desenvolvimento' : 
+                                   contract.type}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      
+                      <div className="rounded-lg border bg-card p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm">{ticket.contract?.contractNumber}</span>
+                            <Badge variant="default" className="text-xs">
+                              {ticket.contract?.status === 'active' ? 'Ativo' : ticket.contract?.status}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground capitalize mb-3">
+                          {ticket.contract?.type === 'support' ? 'Suporte' : 
+                           ticket.contract?.type === 'maintenance' ? 'Manutenção' :
+                           ticket.contract?.type === 'development' ? 'Desenvolvimento' : 
+                           ticket.contract?.type}
+                        </div>
+                        
+                        {/* Informações de uso do contrato */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium flex items-center gap-1.5">
+                              <Clock className="h-3.5 w-3.5" />
+                              Horas do Contrato
+                            </span>
+                            <Badge 
+                              variant={
+                                customerHours.remaining < 2 ? "destructive" : 
+                                customerHours.remaining < 5 ? "secondary" : 
+                                "default"
+                              }
+                              className="text-xs font-semibold"
+                            >
+                              {customerHours.remaining.toFixed(1)}h restantes
+                            </Badge>
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <Progress 
+                              value={(customerHours.used / customerHours.monthly) * 100} 
+                              className="h-2"
+                            />
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>
+                                {customerHours.used.toFixed(1)}h utilizadas
+                              </span>
+                              <span>
+                                {customerHours.monthly}h totais
+                              </span>
                             </div>
-                            {(contractSearch.trim() === '' ? availableContracts : availableContracts.filter((c: any) => {
-                              const q = contractSearch.toLowerCase();
-                              return (c.contractNumber || '').toString().toLowerCase().includes(q)
-                                || (c.type || '').toLowerCase().includes(q)
-                                || (c.description || '').toLowerCase().includes(q);
-                            })).map((contract: any) => (
-                              <SelectItem key={contract.id} value={contract.id}>
-                                {contract.contractNumber} - {contract.type} ({contract.usedHours}h/{contract.includedHours}h)
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                            {customerHours.monthly > 0 && (
+                              <div className="text-center pt-0.5">
+                                <span className={`text-xs font-semibold ${
+                                  (customerHours.used / customerHours.monthly) * 100 > 80 
+                                    ? 'text-destructive' 
+                                    : 'text-primary'
+                                }`}>
+                                  {((customerHours.used / customerHours.monthly) * 100).toFixed(0)}% consumido
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between text-sm">
-                      <span>Contrato: {ticket.contract?.contractNumber}</span>
-                      <Badge variant={customerHours.remaining < 2 ? "destructive" : "default"}>
-                        {customerHours.remaining.toFixed(1)}h restantes
-                      </Badge>
-                    </div>
-                    <Progress 
-                      value={(customerHours.used / customerHours.monthly) * 100} 
-                      className="h-2"
-                    />
-                    <div className="text-xs text-muted-foreground">
-                      {customerHours.used.toFixed(1)}h / {customerHours.monthly}h utilizadas
                     </div>
                   </div>
-                ) : !clientRestrictions.isClient && (
-                  <div className="space-y-2">
-                    <div className="text-sm text-muted-foreground">
-                      Sem contrato vinculado
-                    </div>
+                )}
                     
-                    {/* Permitir vincular um contrato se houver contratos disponíveis */}
-                    {availableContracts.length > 0 && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                          Vincular contrato:
+                {/* Mostrar sempre opção de vincular contratos se disponível */}
+                {!clientRestrictions.isClient && !ticket.contract && availableContracts.length > 0 && (
+                      <div className="space-y-3 pt-3 border-t">
+                        {availableContracts.length > 0 ? (
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold flex items-center gap-1.5 mb-1">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Vincular Contrato
                         </label>
                         <Select
                           value=""
                           onValueChange={(value) => updateContractMutation.mutate(value)}
+                          disabled={updateContractMutation.isPending}
                         >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Selecionar contrato" />
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Selecionar contrato..." />
                           </SelectTrigger>
-                          <SelectContent>
-                            {availableContracts.map((contract: any) => (
-                              <SelectItem key={contract.id} value={contract.id}>
-                                {contract.contractNumber} - {contract.type} ({contract.usedHours}h/{contract.includedHours}h)
-                              </SelectItem>
-                            ))}
+                          <SelectContent className="max-w-[320px]">
+                            <div className="p-2 border-b bg-muted/50">
+                              <Input
+                                placeholder="Buscar por número, tipo..."
+                                value={contractSearch}
+                                onChange={(e) => setContractSearch(e.target.value)}
+                                className="h-8 text-sm border-0 bg-background"
+                              />
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto">
+                              {(contractSearch.trim() === '' ? availableContracts : availableContracts.filter((c: any) => {
+                                const q = contractSearch.toLowerCase();
+                                return (c.contractNumber || '').toString().toLowerCase().includes(q)
+                                  || (c.type || '').toLowerCase().includes(q)
+                                  || (c.description || '').toLowerCase().includes(q);
+                              })).map((contract: any) => {
+                                const usagePercent = (parseFloat(contract.usedHours || 0) / contract.includedHours) * 100;
+                                const isLowHours = usagePercent > 80;
+                                
+                                return (
+                                  <SelectItem 
+                                    key={contract.id} 
+                                    value={contract.id}
+                                    className="cursor-pointer hover:bg-accent/50 transition-colors py-3"
+                                  >
+                                    <div className="flex flex-col gap-1.5 w-full">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="font-semibold text-sm">{contract.contractNumber}</span>
+                                        <Badge 
+                                          variant={contract.status === 'active' ? 'default' : 'secondary'}
+                                          className="text-xs"
+                                        >
+                                          {contract.status === 'active' ? 'Ativo' : contract.status}
+                                        </Badge>
+                                      </div>
+                                      <div className="text-xs text-muted-foreground capitalize">
+                                        {contract.type === 'support' ? 'Suporte' : 
+                                         contract.type === 'maintenance' ? 'Manutenção' :
+                                         contract.type === 'development' ? 'Desenvolvimento' : 
+                                         contract.type}
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden">
+                                          <div 
+                                            className={`h-full transition-all ${
+                                              isLowHours ? 'bg-destructive' : 'bg-primary'
+                                            }`}
+                                            style={{ width: `${Math.min(usagePercent, 100)}%` }}
+                                          />
+                                        </div>
+                                        <span className={`text-xs font-medium ${isLowHours ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                          {contract.usedHours}h/{contract.includedHours}h
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
+                            </div>
                           </SelectContent>
                         </Select>
+                        <p className="text-xs text-muted-foreground italic">
+                          Selecione um contrato para vincular a este ticket
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border-2 border-dashed bg-muted/20 p-4 text-center">
+                        <svg className="h-10 w-10 mx-auto mb-2 text-muted-foreground/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p className="text-sm font-medium text-muted-foreground">Sem contrato vinculado</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Nenhum contrato disponível para esta empresa
+                        </p>
                       </div>
                     )}
                   </div>

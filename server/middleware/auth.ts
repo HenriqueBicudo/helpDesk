@@ -121,16 +121,39 @@ export function requireAuthAndPermission(permission: Permission) {
 export function canUserAccessTicket(user: any, ticket: any): boolean {
   // Delegate to shared permission helper to keep logic in one place
   try {
+    // Para clientes, comparar por companyId ao invés de nome da empresa
+    const userCompanyId = user.company && !isNaN(parseInt(user.company, 10)) 
+      ? parseInt(user.company, 10) 
+      : null;
+    
+    const ticketCompanyId = ticket.companyId || ticket.company?.id || null;
+    
+    // Se temos IDs numéricos, comparar por ID
+    if (userCompanyId && ticketCompanyId) {
+      if (userCompanyId === ticketCompanyId) {
+        return true; // Mesma empresa, acesso liberado
+      }
+    }
+    
+    // Fallback: validação pelo e-mail para clientes
+    const isOwnTicketByEmail = Boolean(ticket?.requester?.email && user?.email && ticket.requester.email === user.email);
+    if (isOwnTicketByEmail) {
+      return true;
+    }
+    
+    // Usar a função canAccessTicket como fallback
+    const effectiveRequesterId = isOwnTicketByEmail ? user.id : ticket.requesterId;
     return canAccessTicket(
       user.role as UserRole,
       user.company ?? null,
       ticket.requester?.company ?? null,
-      ticket.requesterId,
+      effectiveRequesterId,
       user.id,
       ticket.assigneeId === user.id
     );
   } catch (err) {
     // Fallback conservative deny
+    console.error('❌ Erro ao verificar acesso ao ticket:', err);
     return false;
   }
 }

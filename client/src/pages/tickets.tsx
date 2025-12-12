@@ -24,6 +24,7 @@ export default function Tickets() {
   // Fetch all tickets with relations
   const { data: allTickets, isLoading } = useQuery<TicketWithRelations[]>({
     queryKey: ['/api/tickets'],
+    refetchInterval: 30000, // Atualiza automaticamente a cada 30 segundos
   });
   
   // Apply filters to tickets

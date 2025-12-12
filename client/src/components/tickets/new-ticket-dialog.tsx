@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -93,6 +93,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
 
   const form = useForm<NewTicketFormValues>({
     resolver: zodResolver(formSchema),
+    mode: 'onChange',
     defaultValues: {
       subject: '',
       description: '',
@@ -107,16 +108,30 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
   });
 
   const { user } = useAuth();
-  const { isClientUser } = useClientRestrictions();
+  const { isClient, isClientUser } = useClientRestrictions();
+  const hasFilledRef = useRef(false);
 
-  // If the current user is a client, prefill requesterEmail so the client cannot
-  // choose another requester. This provides defense-in-depth in the UI while
-  // the backend also enforces the requester override.
+  // Prefill requester/company for client users and validate
   useEffect(() => {
-    if (isClientUser && user?.email) {
-      form.setValue('requesterEmail', user.email);
+    if (!isClient || !user?.email || companies.length === 0 || hasFilledRef.current) return;
+
+    hasFilledRef.current = true;
+    form.setValue('requesterEmail', user.email, { shouldValidate: true });
+
+    if (user.company) {
+      // Campo 'company' armazena ID como string, converter para número
+      const userCompanyId = parseInt(user.company, 10);
+      const userCompany = companies.find((c) => c.id === userCompanyId);
+
+      if (userCompany && form.getValues('companyId') !== userCompany.id) {
+        form.setValue('companyId', userCompany.id, { shouldValidate: true });
+        setDetectedCompany(userCompany);
+      }
     }
-  }, [isClientUser, user?.email]);
+
+    // Ensure validation state is computed after programmatic setValue
+    form.trigger();
+  }, [isClient, user?.email, user?.company, companies.length]);
 
   const [contractSearch, setContractSearch] = useState('');
 
@@ -203,10 +218,10 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
         }
         
         if (company) {
-          form.setValue('companyId', company.id);
+          form.setValue('companyId', company.id, { shouldValidate: true });
           setShowManualCompanySelect(false);
         } else {
-          form.setValue('companyId', undefined);
+          form.setValue('companyId', undefined, { shouldValidate: true });
           setShowManualCompanySelect(watchedSearch.includes('@'));
         }
       } else {
@@ -239,25 +254,32 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
     ];
   };
 
-  const availableCategories = getAvailableCategories();  const createTicketMutation = useMutation({
+  const availableCategories = getAvailableCategories();
+
+  const createTicketMutation = useMutation({
     mutationFn: async (data: NewTicketFormValues) => {
+      console.log('🟡 [mutationFn START]');
       // Find or create requester
       let requesterId;
       
       // Se encontramos um cliente pela busca, usar os dados dele
       if (foundRequester) {
+        console.log('🟡 [mutationFn] Usando foundRequester:', foundRequester.id);
         requesterId = foundRequester.id;
       } else {
         // Verificar se é um email válido
         const isEmail = data.requesterEmail.includes('@') && data.requesterEmail.includes('.');
         
         if (isEmail) {
+          console.log('🟡 [mutationFn] Procurando requester por email:', data.requesterEmail);
           // Buscar por email
           const existingRequester = requesters.find((r: Requester) => r.email === data.requesterEmail);
           
           if (existingRequester) {
+            console.log('🟡 [mutationFn] Requester encontrado:', existingRequester.id);
             requesterId = existingRequester.id;
           } else {
+            console.log('🟡 [mutationFn] Criando novo requester...');
             // Create new requester com email
             const [firstName, ...restName] = data.requesterEmail.split('@')[0].split('.');
             const fullName = [
@@ -267,6 +289,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
             
             const companyName = detectedCompany?.name || '';
             
+            console.log('🟡 [mutationFn] POST /api/requesters com:', { fullName, email: data.requesterEmail, company: companyName });
             const newRequester = await apiRequest('POST', '/api/requesters', {
               fullName,
               email: data.requesterEmail,
@@ -274,6 +297,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
             });
             
             const requesterData = await newRequester.json();
+            console.log('🟡 [mutationFn] Novo requester criado:', requesterData.id);
             requesterId = requesterData.id;
           }
         } else {
@@ -285,17 +309,20 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
       // Remove the requesterEmail as it's not part of the ticket schema
       const { requesterEmail: _, ...ticketData } = data;
 
-  // Build payload and include optional contractId (preserve string IDs)
-  const payload: any = { ...ticketData, requesterId };
-  // Contracts in the backend use string keys like "CONTRACT_...". Do not convert to number.
-  if ((ticketData as any).contractId) payload.contractId = (ticketData as any).contractId;
+      // Build payload and include optional contractId (preserve string IDs)
+      const payload: any = { ...ticketData, requesterId };
+      // Contracts in the backend use string keys like "CONTRACT_...". Do not convert to number.
+      if ((ticketData as any).contractId) payload.contractId = (ticketData as any).contractId;
 
+      console.log('🟡 [mutationFn] POST /api/tickets com payload:', payload);
       // Create ticket
       const res = await apiRequest('POST', '/api/tickets', payload);
-      
-      return res.json();
+      const result = await res.json();
+      console.log('🟡 [mutationFn] Ticket criado com sucesso:', result);
+      return result;
     },
     onSuccess: () => {
+      console.log('🟢 [onSuccess] Ticket criado com sucesso!');
       queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
       queryClient.invalidateQueries({ queryKey: ['/api/statistics'] });
       toast({
@@ -308,6 +335,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
       setDetectedCompany(null);
     },
     onError: (error: Error) => {
+      console.log('🔴 [onError] Erro ao criar ticket:', error.message);
       toast({
         title: 'Erro ao criar chamado',
         description: error.message || 'Ocorreu um erro ao registrar o chamado',
@@ -317,12 +345,42 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
   });
   
   function onSubmit(data: NewTicketFormValues) {
-    createTicketMutation.mutate(data);
+    console.log('🔴 [onSubmit START] Dados recebidos do form:', data);
+    console.log('🔴 [onSubmit] isClient:', isClient, 'detectedCompany:', detectedCompany);
+    
+    const enforcedData = { ...data };
+
+    if (isClient) {
+      // Cliente sempre é o solicitante e usa a própria empresa
+      if (user?.email) enforcedData.requesterEmail = user.email;
+
+      if (detectedCompany?.id) {
+        enforcedData.companyId = detectedCompany.id;
+      } else if (form.getValues('companyId')) {
+        enforcedData.companyId = form.getValues('companyId');
+      } else {
+        console.log('🔴 [onSubmit] ERRO: Empresa não encontrada');
+        toast({
+          title: 'Empresa não encontrada',
+          description: 'Sua conta precisa estar vinculada a uma empresa para abrir chamado. Contate o suporte.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      enforcedData.assigneeId = undefined;
+      enforcedData.contractId = undefined;
+    }
+
+    console.log('🔴 [onSubmit] Dados finais a enviar:', enforcedData);
+    console.log('🔴 [onSubmit] Chamando mutate...');
+    createTicketMutation.mutate(enforcedData);
+    console.log('🔴 [onSubmit] mutate chamado, aguardando resposta...');
   }
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Novo Chamado</DialogTitle>
           <DialogDescription>
@@ -332,7 +390,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
         
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {!isClientUser ? (
+            {!isClient ? (
               <FormField
                 control={form.control}
                 name="requesterEmail"
@@ -358,8 +416,8 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                 </AlertDescription>
               </Alert>
             )}
-            {/* Se houver contratos ativos para a empresa selecionada, permitir escolher um contrato */}
-            {(() => {
+            {/* Se houver contratos ativos para a empresa selecionada, permitir escolher um contrato (apenas agentes) */}
+            {!isClient && (() => {
               const companyId = form.watch('companyId') || detectedCompany?.id;
               // Mostrar todos os contratos da empresa (inclui inativos) para evitar esconder opções
               // anteriormente filtrávamos apenas status === 'active', o que podia ocultar contratos
@@ -423,7 +481,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                         type="button"
                         className="block text-left p-2 hover:bg-muted rounded text-sm w-full"
                         onClick={() => {
-                          form.setValue('requesterEmail', suggestion.email);
+                          form.setValue('requesterEmail', suggestion.email, { shouldValidate: true });
                           setSearchSuggestions([]);
                         }}
                       >
@@ -460,20 +518,22 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                 <Building2 className="h-4 w-4" />
                 <AlertDescription>
                   <strong>Empresa detectada:</strong> {detectedCompany.name}
-                  <Button
-                    type="button"
-                    variant="link"
-                    size="sm"
-                    className="ml-2 p-0 h-auto"
-                    onClick={() => setShowManualCompanySelect(true)}
-                  >
-                    Alterar empresa
-                  </Button>
+                  {!isClientUser && (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="ml-2 p-0 h-auto"
+                      onClick={() => setShowManualCompanySelect(true)}
+                    >
+                      Alterar empresa
+                    </Button>
+                  )}
                 </AlertDescription>
               </Alert>
             )}
 
-            {(showManualCompanySelect || (!detectedCompany && watchedSearch?.includes('@'))) && (
+            {(showManualCompanySelect || (!detectedCompany && watchedSearch?.includes('@'))) && !isClient && (
               <FormField
                 control={form.control}
                 name="companyId"
@@ -504,7 +564,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
               />
             )}
 
-            {!detectedCompany && watchedSearch?.includes('@') && !showManualCompanySelect && (
+            {!detectedCompany && watchedSearch?.includes('@') && !showManualCompanySelect && !isClient && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
@@ -614,47 +674,49 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                 )}
               />
               
-              <FormField
-                control={form.control}
-                name="assigneeId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Atribuir para</FormLabel>
-                    <Select 
-                      onValueChange={(value) => field.onChange(value === "unassigned" ? undefined : parseInt(value))} 
-                      defaultValue={field.value?.toString() || "unassigned"}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Não atribuído" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="unassigned">Não atribuído</SelectItem>
-                        {helpdeskUsers.map((user: User) => {
-                          const teamName = getTeamName(teams, user.teamId);
-                          const roleDisplay = user.role === 'admin' ? 'Administrador' : 
-                                            user.role === 'helpdesk_manager' ? 'Gerente' : 'Agente';
-                          
-                          return user.id ? (
-                            <SelectItem key={user.id} value={user.id.toString()}>
-                              <div className="flex flex-col">
-                                <span>{user.fullName} ({roleDisplay})</span>
-                                {teamName && (
-                                  <span className="text-xs text-muted-foreground">
-                                    {teamName} → Categoria: {teamName}
-                                  </span>
-                                )}
-                              </div>
-                            </SelectItem>
-                          ) : null;
-                        })}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {!isClient && (
+                <FormField
+                  control={form.control}
+                  name="assigneeId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Atribuir para</FormLabel>
+                      <Select 
+                        onValueChange={(value) => field.onChange(value === "unassigned" ? undefined : parseInt(value))} 
+                        defaultValue={field.value?.toString() || "unassigned"}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Não atribuído" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Não atribuído</SelectItem>
+                          {helpdeskUsers.map((user: User) => {
+                            const teamName = getTeamName(teams, user.teamId);
+                            const roleDisplay = user.role === 'admin' ? 'Administrador' : 
+                                              user.role === 'helpdesk_manager' ? 'Gerente' : 'Agente';
+                            
+                            return user.id ? (
+                              <SelectItem key={user.id} value={user.id.toString()}>
+                                <div className="flex flex-col">
+                                  <span>{user.fullName} ({roleDisplay})</span>
+                                  {teamName && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {teamName} → Categoria: {teamName}
+                                    </span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            ) : null;
+                          })}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
             
             <DialogFooter className="mt-6">
@@ -665,10 +727,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
               >
                 Cancelar
               </Button>
-              <Button 
-                type="submit"
-                disabled={createTicketMutation.isPending}
-              >
+              <Button type="submit" disabled={createTicketMutation.isPending}>
                 {createTicketMutation.isPending ? "Criando..." : "Criar chamado"}
               </Button>
             </DialogFooter>

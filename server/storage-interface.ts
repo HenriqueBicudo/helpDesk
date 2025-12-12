@@ -27,6 +27,7 @@ export interface ContractUI {
   allowOverage?: boolean;
   description?: string;
   slaRuleId?: string;
+  slaTemplateId?: number;  // Novo campo para relacionamento com templates SLA
   createdAt: string;
   updatedAt: string;
 }
@@ -127,6 +128,7 @@ export interface IStorage {
   getCompanyById(id: number): Promise<Company | undefined>;
   getCompanyByEmail(email: string): Promise<Company | undefined>;
   getCompanyByEmailDomain(domain: string): Promise<Company | undefined>;
+  getCompanyByName(name: string): Promise<Company | undefined>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: number, updates: Partial<Company>): Promise<Company | undefined>;
   deleteCompany(id: number): Promise<boolean>;
@@ -157,12 +159,14 @@ export interface IStorage {
   getAllTickets(): Promise<Ticket[]>;
   getAllTicketsWithRelations(): Promise<TicketWithRelations[]>;
   getTicketsByCompany(company: string): Promise<TicketWithRelations[]>;
+  getTicketsByCompanyId(companyId: number): Promise<TicketWithRelations[]>;
   getTicketsByUserCompany(userId: number): Promise<TicketWithRelations[]>;
   getTicketsByStatus(status: string): Promise<Ticket[]>;
   getTicketsByPriority(priority: string): Promise<Ticket[]>;
   getTicketsByCategory(category: string): Promise<Ticket[]>;
   getTicketsByAssignee(assigneeId: number): Promise<Ticket[]>;
-  getTicketsByRequester(requesterId: number): Promise<Ticket[]>;
+  getTicketsByRequester(requesterId: number): Promise<TicketWithRelations[]>;
+  getTicketsByRequesterEmail(email: string): Promise<TicketWithRelations[]>;
   assignTicket(ticketId: number, assigneeId: number): Promise<Ticket | undefined>;
   changeTicketStatus(ticketId: number, status: string): Promise<Ticket | undefined>;
   

@@ -64,8 +64,9 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = 5000;
-  server.listen(port, "localhost", () => {
-    log(`Servidor rodando em http://localhost:${port}`);
+  server.listen(port, "127.0.0.1", () => {
+    log(`Servidor rodando em http://127.0.0.1:${port}`);
+    log(`Também disponível em http://localhost:${port}`);
     
     // 🚀 Sprint 4: Iniciar monitoramento automático de SLA
     log(`🤖 Iniciando sistema de monitoramento de SLA...`);

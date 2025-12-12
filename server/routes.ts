@@ -26,9 +26,11 @@ import {
 import { emailService } from "./email-service";
 import { ContractService } from "./services/contract.service";
 import { slaEngineService } from "./services/slaEngine.service";
+import { slaV2Service } from "./services/slaV2.service";
 import { contractSimpleRoutes } from "./http/routes/contract-simple.routes";
 import { slaRoutes } from "./http/routes/sla.routes";
 import slaTemplateRoutes from "./http/routes/sla-templates.routes";
+import { slaV2Routes } from "./http/routes/sla-v2.routes";
 import { accessRoutes } from "./http/routes/access.routes";
 import { knowledgeRoutes } from './http/routes/knowledge.routes';
 
@@ -92,6 +94,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use(`${apiPrefix}/sla`, slaRoutes);
   app.use(`${apiPrefix}/sla/templates`, slaTemplateRoutes);
   
+  // SLA V2 routes (Nova arquitetura)
+  app.use(`${apiPrefix}/sla/v2`, slaV2Routes);
+  
   // Access routes (Admin only)
   app.use(`${apiPrefix}/access`, accessRoutes);
 
@@ -122,7 +127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User routes
-  app.get(`${apiPrefix}/users`, requireAuthAndPermission('users:view_all'), async (req: Request, res: Response) => {
+  app.get(`${apiPrefix}/users`, requireAuth, async (req: Request, res: Response) => {
     try {
       const user = req.user as any;
       let users;
@@ -131,11 +136,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (user.role === 'admin' || user.role === 'helpdesk_manager') {
         users = await storage.getAllUsers();
       } else if (user.role === 'client_manager') {
-        // Client managers só veem usuários da própria empresa
-        users = await storage.getUsersByCompany(user.company!);
+        // Client managers veem usuários da própria empresa + agentes helpdesk (para atribuição)
+        const clientUsers = await storage.getUsersByCompany(user.company!);
+        const helpdeskUsers = (await storage.getAllUsers()).filter((u: any) => 
+          ['admin', 'helpdesk_manager', 'helpdesk_agent'].includes(u.role)
+        );
+        users = [...clientUsers, ...helpdeskUsers];
+      } else if (user.role === 'client_user') {
+        // Client users só veem agentes/managers helpdesk (para atribuição)
+        users = (await storage.getAllUsers()).filter((u: any) => 
+          ['admin', 'helpdesk_manager', 'helpdesk_agent'].includes(u.role)
+        );
       } else {
-        // Outros roles não podem listar usuários
-        return res.status(403).json({ message: 'Acesso negado' });
+        // Outros roles: todos os usuários
+        users = await storage.getAllUsers();
       }
       
       res.json(users);
@@ -369,16 +383,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!user.company) {
           return res.status(403).json({ message: 'Usuário não está associado a uma empresa' });
         }
-        tickets = await storage.getTicketsByCompany(user.company);
+        
+        // user.company pode ser ID numérico (string "4") ou nome da empresa
+        const companyId = !isNaN(parseInt(user.company, 10)) 
+          ? parseInt(user.company, 10) 
+          : null;
+        
+        if (companyId) {
+          console.log(`🏢 [Tickets] client_manager ${user.id} buscando tickets por companyId=${companyId}`);
+          // Buscar por companyId numérico
+          tickets = await storage.getTicketsByCompanyId(companyId);
+        } else {
+          console.log(`🏢 [Tickets] client_manager ${user.id} buscando tickets por company name="${user.company}"`);
+          // Fallback: buscar pelo nome da empresa no requester
+          tickets = await storage.getTicketsByCompany(user.company);
+        }
+        
+        console.log(`🏢 [Tickets] encontrados ${tickets?.length ?? 0} tickets para empresa`);
       } else if (user.role === 'client_user') {
-        // Client users só veem seus próprios tickets
-        tickets = await storage.getTicketsByRequester(user.id);
+        // Client users só veem seus próprios tickets (associados ao e-mail do requester)
+        console.log(`👤 [Tickets] client_user ${user.id} (${user.email}) buscando seus próprios tickets por e-mail...`);
+        tickets = await storage.getTicketsByRequesterEmail(user.email);
+        console.log(`👤 [Tickets] encontrados ${tickets?.length ?? 0} tickets para requesterEmail=${user.email}`);
       } else {
         return res.status(403).json({ message: 'Acesso negado aos tickets' });
       }
       
       // Filtrar tickets baseado nas permissões do usuário
-      const accessibleTickets = tickets.filter(ticket => canUserAccessTicket(user, ticket));
+      // Para clientes comuns, já limitamos a consulta ao próprio requester no storage,
+      // então podemos liberar sem filtro adicional para evitar falsos negativos.
+      const accessibleTickets = (user.role === 'client_user')
+        ? tickets
+        : tickets.filter(ticket => canUserAccessTicket(user, ticket));
+      console.log(`🔒 [Tickets] Após filtro de acesso, restaram ${accessibleTickets.length} tickets para usuário ${user.id} (${user.role})`);
       
       res.json(accessibleTickets);
     } catch (error) {
@@ -454,17 +491,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = insertTicketSchema.parse(req.body);
       const user = req.user as any;
 
-      // If a standard client is creating a ticket, force the requester to be the authenticated user
-      if (user && user.role === 'client_user') {
+      // Para clientes (user ou manager), forçar solicitante e empresa vinculada
+      if (user && (user.role === 'client_user' || user.role === 'client_manager')) {
         try {
           // Try to find an existing requester by the user's email
           let requester = await storage.getRequesterByEmail(user.email);
           if (!requester) {
+            // Obter nome da empresa se user.company for um ID
+            let companyName = user.company || undefined;
+            if (companyName && !isNaN(parseInt(companyName, 10))) {
+              // É um ID numérico, buscar o nome real da empresa
+              try {
+                const userCompanyId = parseInt(companyName, 10);
+                const company = await storage.getCompanyById(userCompanyId);
+                companyName = company?.name || companyName;
+              } catch (err) {
+                console.warn('Não foi possível resolver nome da empresa do ID:', companyName);
+              }
+            }
+            
             // Create a requester record based on the authenticated user
             requester = await storage.createRequester({
               fullName: user.fullName,
               email: user.email,
-              company: user.company || undefined,
+              company: companyName,
               planType: 'basic',
               monthlyHours: 10,
               usedHours: '0'
@@ -473,6 +523,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Override the requesterId to the authenticated user's requester entry
           (data as any).requesterId = requester.id;
+
+          // Vincular empresa do usuário ao ticket via lookup direto por nome
+          if (!data.companyId && user.company) {
+            try {
+              // Se user.company for ID numérico, usar diretamente
+              if (!isNaN(parseInt(user.company, 10))) {
+                (data as any).companyId = parseInt(user.company, 10);
+              } else {
+                // Caso contrário, buscar por nome
+                const company = await storage.getCompanyByName(user.company);
+                if (company?.id) {
+                  (data as any).companyId = company.id;
+                }
+              }
+            } catch (cmpErr) {
+              console.warn('Não foi possível vincular companyId ao ticket do cliente (lookup por nome):', cmpErr);
+            }
+          }
+
+          // Auto-detectar contrato support da empresa se não especificado
+          if (!data.contractId && data.companyId) {
+            try {
+              const contracts = await storage.getContractsByCompany(data.companyId);
+              // Priorizar contratos type='support' ativos
+              const supportContract = contracts.find((c: any) => 
+                c.type === 'support' && c.status === 'active'
+              );
+              if (supportContract) {
+                (data as any).contractId = supportContract.id;
+                console.log(`🔗 [Auto-link] Contrato support ${supportContract.contractNumber} vinculado ao ticket`);
+              }
+            } catch (contractErr) {
+              console.warn('Não foi possível auto-detectar contrato support:', contractErr);
+            }
+          }
         } catch (err) {
           console.error('Error ensuring requester for client user:', err);
           return res.status(500).json({ message: 'Erro ao processar solicitante do cliente' });
@@ -507,26 +592,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
         */
       }
       
+      // Preencher companyId com base no requester se ainda não definido
+      if (!data.companyId && data.requesterId) {
+        try {
+          const requester = await storage.getRequester(data.requesterId);
+          if (requester?.company) {
+            // Tentar encontrar empresa pelo nome
+            const companies = await storage.getAllCompanies();
+            const matchingCompany = companies.find(c => c.name === requester.company);
+            if (matchingCompany) {
+              (data as any).companyId = matchingCompany.id;
+              console.log(`🏢 [Auto-link] Empresa ${matchingCompany.name} (ID: ${matchingCompany.id}) vinculada ao ticket via requester`);
+            }
+          }
+        } catch (err) {
+          console.warn('Não foi possível auto-detectar companyId via requester:', err);
+        }
+      }
+      
       const ticket = await storage.createTicket(data);
       
-      // Calcular e aplicar SLA automaticamente se o ticket tiver contrato
-      if (ticket && ticket.id && ticket.contractId) {
+      // Calcular e aplicar SLA V2.0 automaticamente
+      if (ticket && ticket.id) {
         try {
-          console.log(`🎯 Calculando SLA para ticket #${ticket.id}...`);
-          await slaEngineService.calculateAndApplyDeadlines(ticket.id);
-          console.log(`✅ SLA aplicado ao ticket #${ticket.id}`);
+          console.log(`🎯 [SLA V2] Calculando SLA para ticket #${ticket.id}...`);
+          
+          // Contratos usam string IDs (ex: CONTRACT_...), não converter para número
+          const ticketContext = {
+            ticketId: ticket.id,
+            priority: ticket.priority as 'low' | 'medium' | 'high' | 'urgent' | 'critical',
+            contractId: ticket.contractId || undefined,
+            companyId: ticket.companyId || undefined,
+            createdAt: ticket.createdAt,
+          };
+          
+          console.log(`🔍 [SLA V2] Contexto do ticket:`, {
+            ticketId: ticketContext.ticketId,
+            priority: ticketContext.priority,
+            contractId: ticketContext.contractId,
+            companyId: ticketContext.companyId
+          });
+          
+          const slaResult = await slaV2Service.calculateTicketSla(ticketContext);
+          
+          console.log(`✅ [SLA V2] SLA calculado para ticket #${ticket.id}:`, {
+            resposta: slaResult.responseDueAt.toISOString(),
+            solucao: slaResult.solutionDueAt.toISOString(),
+            template: slaResult.templateId,
+            calendario: slaResult.calendarId,
+          });
+          
+          // Atualizar o ticket com os prazos calculados
+          await storage.updateTicket(ticket.id, {
+            responseDueAt: slaResult.responseDueAt,
+            solutionDueAt: slaResult.solutionDueAt,
+          });
+          
+          console.log(`📅 [SLA V2] Prazos aplicados ao ticket #${ticket.id}`);
+          
         } catch (slaError) {
-          console.error(`⚠️ Erro ao calcular SLA para ticket #${ticket.id}:`, slaError);
-          // Não falha a criação do ticket, apenas loga o erro
+          console.error(`⚠️ [SLA V2] Erro ao calcular SLA para ticket #${ticket.id}:`, slaError);
+          
+          // Fallback para sistema SLA V1 em caso de erro
+          if (ticket.contractId) {
+            try {
+              console.log(`🔄 [SLA V1] Fallback - usando sistema antigo para ticket #${ticket.id}`);
+              await slaEngineService.calculateAndApplyDeadlines(ticket.id);
+              console.log(`✅ [SLA V1] SLA aplicado via fallback ao ticket #${ticket.id}`);
+            } catch (fallbackError) {
+              console.error(`❌ [SLA] Falha completa no cálculo SLA para ticket #${ticket.id}:`, fallbackError);
+            }
+          }
         }
       }
       
       res.status(201).json(ticket);
     } catch (error) {
+      console.error('Error creating ticket:', error);
       if (error instanceof z.ZodError) {
+        console.error('Validation errors:', error.errors);
         res.status(400).json({ message: 'Validation error', errors: error.errors });
       } else {
-        res.status(500).json({ message: 'An error occurred creating the ticket' });
+        console.error('Detailed error:', error);
+        res.status(500).json({ message: 'An error occurred creating the ticket', error: error instanceof Error ? error.message : String(error) });
       }
     }
   });
@@ -581,6 +729,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!ticket) {
         return res.status(404).json({ message: 'Ticket not found' });
+      }
+      
+      // Recalcular SLA se a prioridade, contrato ou status foram alterados
+      const shouldRecalculateSla = updates.priority || updates.contractId !== undefined || updates.status;
+      
+      if (shouldRecalculateSla) {
+        try {
+          console.log(`🔄 [SLA V2] Recalculando SLA para ticket #${id} devido a alterações...`);
+          
+          let reason = 'Atualização de ticket';
+          if (updates.priority) reason = `Mudança de prioridade para ${updates.priority}`;
+          else if (updates.contractId !== undefined) reason = 'Alteração de contrato';
+          else if (updates.status) reason = `Mudança de status para ${updates.status}`;
+          
+          await slaV2Service.recalculateTicketSla(id, reason);
+          console.log(`✅ [SLA V2] SLA recalculado para ticket #${id}`);
+          
+        } catch (slaError) {
+          console.error(`⚠️ [SLA V2] Erro ao recalcular SLA para ticket #${id}:`, slaError);
+          // Não falha a atualização do ticket, apenas loga o erro
+        }
       }
       
       res.json(ticket);
@@ -1004,16 +1173,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Atualizar as horas utilizadas do cliente se for necessário
-      if (timeSpent && timeSpent > 0) {
-        if (ticket?.requester) {
-          const currentUsed = parseFloat(ticket.requester.usedHours || '0');
-          const newUsed = currentUsed + parseFloat(timeSpent.toString());
-          await storage.updateRequester(ticket.requesterId, {
-            usedHours: newUsed.toString(),
-          });
-        }
-      }
+      // Atualizar as horas utilizadas já é feito dentro de createTicketInteraction
+      // O método createTicketInteraction já debita automaticamente do contrato
+      // quando há contractId ou quando o ticket tem um contrato vinculado
 
       // Se o campo `status` foi enviado junto com a interação, aplicar alteração de status
       let updatedTicket: any = null;
@@ -1623,12 +1785,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Listar todos os contratos
   app.get(`${apiPrefix}/contracts`, requireAuth, async (req: Request, res: Response) => {
     try {
+      console.log('Buscando contratos...');
       const user = req.user as any;
       
       if (user.role === 'admin' || user.role === 'helpdesk_manager' || user.role === 'helpdesk_agent') {
         // Helpdesk pode ver todos os contratos
         const contracts = await storage.getAllContracts();
-        res.json(contracts);
+        console.log('Contratos encontrados:', contracts.length);
+        console.log('Primeiros contratos:', contracts.slice(0, 2).map(c => ({ id: c.id, companyId: c.companyId, number: c.contractNumber })));
+        res.json({ success: true, data: contracts });
       } else if (user.role === 'client_manager' && user.company) {
         // Client managers só veem contratos da própria empresa
         // Primeiro buscar empresa por nome para obter o ID

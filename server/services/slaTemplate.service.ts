@@ -13,7 +13,7 @@ export class SlaTemplateService {
       .select()
       .from(slaTemplates)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(slaTemplates.type, slaTemplates.name);
+      .orderBy(slaTemplates.name);
 
     return templates.map(this.parseTemplateRules);
   }
@@ -21,7 +21,7 @@ export class SlaTemplateService {
   /**
    * Buscar template por ID
    */
-  async getById(id: string): Promise<SlaTemplateWithParsedRules | null> {
+  async getById(id: number): Promise<SlaTemplateWithParsedRules | null> {
     const [template] = await db
       .select()
       .from(slaTemplates)
@@ -50,14 +50,13 @@ export class SlaTemplateService {
   /**
    * Criar novo template
    */
-  async create(data: Omit<InsertSlaTemplate, 'id'>): Promise<SlaTemplateWithParsedRules> {
-    const id = `template_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-    
+  async create(data: Omit<InsertSlaTemplate, 'id' | 'createdAt' | 'updatedAt'>): Promise<SlaTemplateWithParsedRules> {
     const [newTemplate] = await db
       .insert(slaTemplates)
       .values({
         ...data,
-        id,
+        type: data.contractType, // Manter compatibilidade
+        isActive: data.isActive ?? 1,
         createdAt: new Date(),
         updatedAt: new Date()
       })
@@ -69,11 +68,13 @@ export class SlaTemplateService {
   /**
    * Atualizar template existente
    */
-  async update(id: string, data: UpdateSlaTemplate): Promise<SlaTemplateWithParsedRules | null> {
+  async update(id: number, data: Partial<UpdateSlaTemplate>): Promise<SlaTemplateWithParsedRules | null> {
     const [updated] = await db
       .update(slaTemplates)
       .set({
         ...data,
+        type: data.contractType ?? data.type, // Manter compatibilidade se contractType ou type for fornecido
+        isActive: data.isActive ?? 1,
         updatedAt: new Date()
       })
       .where(eq(slaTemplates.id, id))
@@ -85,7 +86,7 @@ export class SlaTemplateService {
   /**
    * Desativar template (soft delete)
    */
-  async deactivate(id: string): Promise<boolean> {
+  async deactivate(id: number): Promise<boolean> {
     const [updated] = await db
       .update(slaTemplates)
       .set({ 
@@ -101,13 +102,23 @@ export class SlaTemplateService {
   /**
    * Deletar template permanentemente
    */
-  async delete(id: string): Promise<boolean> {
-    const result = await db
-      .delete(slaTemplates)
-      .where(eq(slaTemplates.id, id))
-      .returning();
+  async delete(id: number): Promise<boolean> {
+    console.log(`🗑️ [SlaTemplateService] Deletando template ID: ${id}`);
+    
+    try {
+      const result = await db
+        .delete(slaTemplates)
+        .where(eq(slaTemplates.id, id))
+        .returning({ id: slaTemplates.id });
 
-    return result.length > 0;
+      const success = result.length > 0;
+      console.log(`📊 [SlaTemplateService] Delete result: ${success} (${result.length} rows affected)`);
+      
+      return success;
+    } catch (error) {
+      console.error(`🚨 [SlaTemplateService] Erro ao deletar template ${id}:`, error);
+      throw error;
+    }
   }
 
   /**

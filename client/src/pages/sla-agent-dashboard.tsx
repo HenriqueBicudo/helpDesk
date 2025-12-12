@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import SlaStatusBadge from '@/components/sla/sla-status-badge';
@@ -11,17 +10,26 @@ import { AppLayout } from '@/components/layout/app-layout';
 import { 
   Clock, 
   AlertTriangle, 
-  Search, 
   RefreshCw,
   CheckCircle2,
   User,
   Calendar,
   MessageSquare,
   Target,
-  Bell
+  Bell,
+  Search
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useSlaAlerts, slaUtils } from '@/hooks/use-sla';
+import { 
+  useSlaV2Calculations, 
+  useSlaV2Recalculate,
+  formatSlaTime,
+  getSlaStatus,
+  getSlaStatusColor,
+  getTimeRemaining 
+} from '@/hooks/use-sla-v2';
 
 interface Ticket {
   id: string;
@@ -57,11 +65,15 @@ const SlaAgentDashboard: React.FC = () => {
     refetchInterval: 30000 // Atualizar a cada 30 segundos
   });
 
-  // Buscar alertas SLA para o agente
+  // Buscar alertas SLA para o agente (V1 - Legacy)
   const { data: slaAlerts } = useSlaAlerts({ 
     acknowledged: false,
     limit: 20 
   });
+
+  // SLA V2.0 - Hooks para dados aprimorados
+  const { data: slaV2Calculations } = useSlaV2Calculations({ limit: 50 });
+  const recalculateMutation = useSlaV2Recalculate();
 
   // Filtrar tickets baseado nos filtros ativos
   const filteredTickets = React.useMemo(() => {
@@ -120,22 +132,44 @@ const SlaAgentDashboard: React.FC = () => {
     };
   }, [myTickets]);
 
-  const TicketCard: React.FC<{ ticket: Ticket }> = ({ ticket }) => {
+  // Componente aprimorado de ticket com SLA V2
+  const TicketCardV2: React.FC<{ ticket: Ticket }> = ({ ticket }) => {
+    // Buscar cálculo SLA V2 para este ticket
+    const slaV2Calc = slaV2Calculations?.data?.find(calc => 
+      calc.ticketId.toString() === ticket.id && calc.isCurrent
+    );
+
+    const handleRecalculateSla = () => {
+      if (ticket.id) {
+        recalculateMutation.mutate({
+          ticketId: parseInt(ticket.id),
+          reason: 'Recálculo manual solicitado pelo agente'
+        });
+      }
+    };
+
     return (
-      <Card className="hover:shadow-md transition-shadow">
+      <Card className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <CardTitle className="text-base line-clamp-1">
-                {ticket.title}
-              </CardTitle>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <CardTitle className="text-base line-clamp-1">
+                  #{ticket.id} {ticket.title}
+                </CardTitle>
+                {slaV2Calc && (
+                  <Badge className="bg-blue-600 text-white text-xs">SLA V2.0</Badge>
+                )}
+              </div>
               <CardDescription className="line-clamp-2">
                 {ticket.description}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <Badge 
-                variant={ticket.priority === 'critical' ? 'destructive' : 'secondary'}
+                variant={ticket.priority === 'critical' ? 'destructive' : 
+                        ticket.priority === 'high' ? 'default' :
+                        ticket.priority === 'medium' ? 'secondary' : 'outline'}
                 className="text-xs"
               >
                 {ticket.priority}
@@ -156,33 +190,136 @@ const SlaAgentDashboard: React.FC = () => {
             <span>{ticket.customer.email}</span>
           </div>
 
-          {/* Status SLA */}
+          {/* Status SLA V2.0 Aprimorado */}
           <div className="space-y-3">
-            {(ticket.responseDueAt || ticket.solutionDueAt) ? (
-              <div className="space-y-2">
-                <SlaStatusBadge
-                  responseDueAt={ticket.responseDueAt}
-                  solutionDueAt={ticket.solutionDueAt}
-                  priority={ticket.priority}
-                  status={ticket.status}
-                  size="sm"
-                />
-                <SlaCountdown
-                  responseDueAt={ticket.responseDueAt}
-                  solutionDueAt={ticket.solutionDueAt}
-                  priority={ticket.priority}
-                  status={ticket.status}
-                  size="sm"
-                  showProgressBar={true}
-                />
+            {slaV2Calc ? (
+              <div className="space-y-3">
+                {/* Header SLA V2 */}
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <Target className="h-4 w-4 text-blue-500" />
+                    SLA V2.0 - {slaV2Calc.template?.name}
+                  </h4>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleRecalculateSla}
+                    disabled={recalculateMutation.isPending}
+                    className="h-6 px-2 text-xs"
+                  >
+                    <RefreshCw className={cn(
+                      "h-3 w-3", 
+                      recalculateMutation.isPending && "animate-spin"
+                    )} />
+                  </Button>
+                </div>
+
+                {/* Prazos SLA V2 */}
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Prazo de Resposta */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>Resposta</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium">
+                        {formatSlaTime(slaV2Calc.responseTimeMinutes)}
+                      </div>
+                      {slaV2Calc.responseDueDate && (() => {
+                        const timeRemaining = getTimeRemaining(slaV2Calc.responseDueDate);
+                        const colors = getSlaStatusColor(getSlaStatus(slaV2Calc));
+                        return (
+                          <Badge className={cn(colors.bg, colors.text, "text-xs")}>
+                            {timeRemaining.formatted}
+                          </Badge>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Prazo de Solução */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <CheckCircle2 className="h-3 w-3" />
+                      <span>Solução</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium">
+                        {formatSlaTime(slaV2Calc.solutionTimeMinutes)}
+                      </div>
+                      {slaV2Calc.solutionDueDate && (() => {
+                        const timeRemaining = getTimeRemaining(slaV2Calc.solutionDueDate);
+                        const colors = getSlaStatusColor(getSlaStatus(slaV2Calc));
+                        return (
+                          <Badge className={cn(colors.bg, colors.text, "text-xs")}>
+                            {timeRemaining.formatted}
+                          </Badge>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Geral SLA */}
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    const status = getSlaStatus(slaV2Calc);
+                    const colors = getSlaStatusColor(status);
+                    const statusLabels = {
+                      'ok': 'Em Conformidade',
+                      'warning': 'Próximo do Vencimento',
+                      'critical': 'SLA Violado'
+                    };
+                    
+                    return (
+                      <Badge className={cn(colors.bg, colors.text, "text-xs flex items-center gap-1")}>
+                        {status === 'ok' && <CheckCircle2 className="h-3 w-3" />}
+                        {status === 'warning' && <AlertTriangle className="h-3 w-3" />}
+                        {status === 'critical' && <Bell className="h-3 w-3" />}
+                        {statusLabels[status]}
+                      </Badge>
+                    );
+                  })()}
+                  <span className="text-xs text-muted-foreground">
+                    Calculado em {new Date(slaV2Calc.calculatedAt).toLocaleString('pt-BR')}
+                  </span>
+                </div>
               </div>
             ) : (
-              <Alert>
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription className="text-xs">
-                  SLA não configurado para este ticket
-                </AlertDescription>
-              </Alert>
+              /* Fallback para SLA V1 ou sem SLA */
+              <div className="space-y-2">
+                {(ticket.responseDueAt || ticket.solutionDueAt) ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-orange-600">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span>SLA V1 (Legacy)</span>
+                    </div>
+                    <SlaStatusBadge
+                      responseDueAt={ticket.responseDueAt}
+                      solutionDueAt={ticket.solutionDueAt}
+                      priority={ticket.priority}
+                      status={ticket.status}
+                      size="sm"
+                    />
+                    <SlaCountdown
+                      responseDueAt={ticket.responseDueAt}
+                      solutionDueAt={ticket.solutionDueAt}
+                      priority={ticket.priority}
+                      status={ticket.status}
+                      size="sm"
+                      showProgressBar={true}
+                    />
+                  </div>
+                ) : (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription className="text-xs">
+                      SLA não configurado para este ticket. Configure um contrato com template SLA V2.0.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
             )}
           </div>
 
@@ -326,7 +463,7 @@ const SlaAgentDashboard: React.FC = () => {
                 <Input
                   placeholder="Buscar por título ou cliente..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
                   className="pl-10"
                 />
               </div>
@@ -377,7 +514,7 @@ const SlaAgentDashboard: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
               {filteredTickets.map((ticket) => (
-                <TicketCard key={ticket.id} ticket={ticket} />
+                <TicketCardV2 key={ticket.id} ticket={ticket} />
               ))}
             </div>
           )}

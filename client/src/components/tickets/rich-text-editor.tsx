@@ -555,42 +555,16 @@ export function RichTextEditor({
             </div>
             
             {showTimeTracking && (
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  <Input
-                    type="time"
-                    value={timeSpent}
-                    onChange={(e) => setTimeSpent(e.target.value || '00:00')}
-                    className="w-24 h-9"
-                    step="900" // 15 minutos em segundos
-                  />
-                  <Label className="text-sm">horas</Label>
-                </div>
-                
-                {/* Seletor de Contrato */}
-                {availableContracts.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    <Select
-                      value={selectedContractId}
-                      onValueChange={setSelectedContractId}
-                    >
-                      <SelectTrigger className="w-56 h-9">
-                        <SelectValue placeholder="Selecionar contrato" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Sem contrato específico</SelectItem>
-                        {availableContracts.map((contract: any) => (
-                          <SelectItem key={contract.id} value={contract.id?.toString?.() ?? String(contract.id)}>
-                            {contract.contractNumber} - {contract.type} 
-                            ({contract.usedHours}h/{contract.includedHours}h)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                <Input
+                  type="time"
+                  value={timeSpent}
+                  onChange={(e) => setTimeSpent(e.target.value || '00:00')}
+                  className="w-24 h-9"
+                  step="900" // 15 minutos em segundos
+                />
+                <Label className="text-sm">horas</Label>
               </div>
             )}
             {/* Status change selector: se vazio = sem alteração */}

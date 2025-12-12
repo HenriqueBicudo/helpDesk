@@ -319,14 +319,17 @@ export class PostgresStorage implements IStorage {
               }
 
             if (companyId) {
+              // Buscar contratos ativos da empresa
               const activeContracts = await db.select().from(contracts)
                 .where(and(eq(contracts.companyId, companyId), eq(contracts.status, 'active')))
-                .orderBy(desc(contracts.createdAt))
-                .limit(1);
+                .orderBy(desc(contracts.createdAt));
 
               if (activeContracts && activeContracts.length > 0) {
-                contractId = activeContracts[0].id;
-                console.log(`🔗 Auto-linked ticket to contract ${contractId} for company ${companyId}`);
+                // Priorizar contrato de "support" se existir; caso contrário, usar o mais recente
+                const supportContract = activeContracts.find(c => c.type === 'support');
+                const selectedContract = supportContract || activeContracts[0];
+                contractId = selectedContract.id;
+                console.log(`🔗 Auto-linked ticket to contract ${contractId} (type: ${selectedContract.type}) for company ${companyId}`);
               }
             }
           }
@@ -496,10 +499,126 @@ export class PostgresStorage implements IStorage {
       .orderBy(desc(schema.tickets.createdAt)) as Ticket[];
   }
 
-  async getTicketsByRequester(requesterId: number): Promise<Ticket[]> {
-    return await db.select().from(schema.tickets)
+  async getTicketsByRequester(requesterId: number): Promise<TicketWithRelations[]> {
+    const result = await db
+      .select({
+        id: schema.tickets.id,
+        subject: schema.tickets.subject,
+        description: schema.tickets.description,
+        status: schema.tickets.status,
+        priority: schema.tickets.priority,
+        category: schema.tickets.category,
+        requesterId: schema.tickets.requesterId,
+        assigneeId: schema.tickets.assigneeId,
+        companyId: schema.tickets.companyId,
+        contractId: schema.tickets.contractId,
+        responseDueAt: schema.tickets.responseDueAt,
+        solutionDueAt: schema.tickets.solutionDueAt,
+        createdAt: schema.tickets.createdAt,
+        updatedAt: schema.tickets.updatedAt,
+        requester: {
+          id: schema.requesters.id,
+          fullName: schema.requesters.fullName,
+          email: schema.requesters.email,
+          company: schema.requesters.company,
+          avatarInitials: schema.requesters.avatarInitials,
+          planType: schema.requesters.planType,
+          monthlyHours: schema.requesters.monthlyHours,
+          usedHours: schema.requesters.usedHours,
+          resetDate: schema.requesters.resetDate,
+          createdAt: schema.requesters.createdAt,
+        },
+        assignee: {
+          id: schema.users.id,
+          username: schema.users.username,
+          fullName: schema.users.fullName,
+          email: schema.users.email,
+          role: schema.users.role,
+          company: schema.users.company,
+          avatarInitials: schema.users.avatarInitials,
+          isActive: schema.users.isActive,
+          createdAt: schema.users.createdAt,
+        },
+        company: {
+          id: schema.companies.id,
+          name: schema.companies.name,
+          email: schema.companies.email,
+          isActive: schema.companies.isActive,
+        }
+      })
+      .from(schema.tickets)
+      .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
+      .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .leftJoin(schema.companies, eq(schema.tickets.companyId, schema.companies.id))
       .where(eq(schema.tickets.requesterId, requesterId))
-      .orderBy(desc(schema.tickets.createdAt)) as Ticket[];
+      .orderBy(desc(schema.tickets.createdAt));
+
+    return result.map(ticket => ({
+      ...ticket,
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined,
+      company: ticket.company?.id ? ticket.company : undefined
+    })) as TicketWithRelations[];
+  }
+
+  async getTicketsByRequesterEmail(email: string): Promise<TicketWithRelations[]> {
+    const result = await db
+      .select({
+        id: schema.tickets.id,
+        subject: schema.tickets.subject,
+        description: schema.tickets.description,
+        status: schema.tickets.status,
+        priority: schema.tickets.priority,
+        category: schema.tickets.category,
+        requesterId: schema.tickets.requesterId,
+        assigneeId: schema.tickets.assigneeId,
+        companyId: schema.tickets.companyId,
+        contractId: schema.tickets.contractId,
+        responseDueAt: schema.tickets.responseDueAt,
+        solutionDueAt: schema.tickets.solutionDueAt,
+        createdAt: schema.tickets.createdAt,
+        updatedAt: schema.tickets.updatedAt,
+        requester: {
+          id: schema.requesters.id,
+          fullName: schema.requesters.fullName,
+          email: schema.requesters.email,
+          company: schema.requesters.company,
+          avatarInitials: schema.requesters.avatarInitials,
+          planType: schema.requesters.planType,
+          monthlyHours: schema.requesters.monthlyHours,
+          usedHours: schema.requesters.usedHours,
+          resetDate: schema.requesters.resetDate,
+          createdAt: schema.requesters.createdAt,
+        },
+        assignee: {
+          id: schema.users.id,
+          username: schema.users.username,
+          fullName: schema.users.fullName,
+          email: schema.users.email,
+          role: schema.users.role,
+          company: schema.users.company,
+          avatarInitials: schema.users.avatarInitials,
+          isActive: schema.users.isActive,
+          createdAt: schema.users.createdAt,
+        },
+        company: {
+          id: schema.companies.id,
+          name: schema.companies.name,
+          email: schema.companies.email,
+          isActive: schema.companies.isActive,
+        }
+      })
+      .from(schema.tickets)
+      .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
+      .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .leftJoin(schema.companies, eq(schema.tickets.companyId, schema.companies.id))
+      .where(eq(schema.requesters.email, email))
+      .orderBy(desc(schema.tickets.createdAt));
+
+    return result.map(ticket => ({
+      ...ticket,
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined,
+      company: ticket.company?.id ? ticket.company : undefined
+    })) as TicketWithRelations[];
   }
 
   async getTicketsByCompany(company: string): Promise<TicketWithRelations[]> {
@@ -563,6 +682,67 @@ export class PostgresStorage implements IStorage {
     })) as TicketWithRelations[];
   }
 
+  async getTicketsByCompanyId(companyId: number): Promise<TicketWithRelations[]> {
+    const result = await db
+      .select({
+        id: schema.tickets.id,
+        subject: schema.tickets.subject,
+        description: schema.tickets.description,
+        status: schema.tickets.status,
+        priority: schema.tickets.priority,
+        category: schema.tickets.category,
+        requesterId: schema.tickets.requesterId,
+        assigneeId: schema.tickets.assigneeId,
+        companyId: schema.tickets.companyId,
+        contractId: schema.tickets.contractId,
+        responseDueAt: schema.tickets.responseDueAt,
+        solutionDueAt: schema.tickets.solutionDueAt,
+        createdAt: schema.tickets.createdAt,
+        updatedAt: schema.tickets.updatedAt,
+        requester: {
+          id: schema.requesters.id,
+          fullName: schema.requesters.fullName,
+          email: schema.requesters.email,
+          company: schema.requesters.company,
+          avatarInitials: schema.requesters.avatarInitials,
+          planType: schema.requesters.planType,
+          monthlyHours: schema.requesters.monthlyHours,
+          usedHours: schema.requesters.usedHours,
+          resetDate: schema.requesters.resetDate,
+          createdAt: schema.requesters.createdAt,
+        },
+        assignee: {
+          id: schema.users.id,
+          username: schema.users.username,
+          fullName: schema.users.fullName,
+          email: schema.users.email,
+          role: schema.users.role,
+          company: schema.users.company,
+          avatarInitials: schema.users.avatarInitials,
+          isActive: schema.users.isActive,
+          createdAt: schema.users.createdAt,
+        },
+        company: {
+          id: schema.companies.id,
+          name: schema.companies.name,
+          email: schema.companies.email,
+          isActive: schema.companies.isActive,
+        }
+      })
+      .from(schema.tickets)
+      .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
+      .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .leftJoin(schema.companies, eq(schema.tickets.companyId, schema.companies.id))
+      .where(eq(schema.tickets.companyId, companyId))
+      .orderBy(desc(schema.tickets.createdAt));
+
+    return result.map(ticket => ({
+      ...ticket,
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined,
+      company: ticket.company?.id ? ticket.company : undefined
+    })) as TicketWithRelations[];
+  }
+
   async getTicketsByUserCompany(userId: number): Promise<TicketWithRelations[]> {
     // Primeiro buscar a empresa do usuário
     const user = await this.getUser(userId);
@@ -570,8 +750,18 @@ export class PostgresStorage implements IStorage {
       return [];
     }
     
-    // Depois buscar tickets da empresa
-    return this.getTicketsByCompany(user.company);
+    // Se user.company for um ID numérico, buscar o nome da empresa
+    let companyName = user.company;
+    if (!isNaN(parseInt(user.company, 10))) {
+      const companyId = parseInt(user.company, 10);
+      const company = await this.getCompanyById(companyId);
+      if (company?.name) {
+        companyName = company.name;
+      }
+    }
+    
+    // Depois buscar tickets da empresa pelo nome
+    return this.getTicketsByCompany(companyName);
   }
 
   async assignTicket(ticketId: number, assigneeId: number): Promise<Ticket | undefined> {
@@ -1238,6 +1428,16 @@ export class PostgresStorage implements IStorage {
     }
   }
 
+  async getCompanyByName(name: string): Promise<any | undefined> {
+    try {
+      const result = await db.select().from(schema.companies).where(eq(schema.companies.name, name));
+      return result[0];
+    } catch (error) {
+      console.error('Error getting company by name:', error);
+      return undefined;
+    }
+  }
+
   async createCompany(company: any): Promise<any> {
     try {
       const result = await db.insert(schema.companies).values(company).returning();
@@ -1488,6 +1688,7 @@ export class PostgresStorage implements IStorage {
           allowOverage: contracts.allowOverage,
           description: contracts.description,
           slaRuleId: contracts.servicePackageId,
+          slaTemplateId: contracts.slaTemplateId,
           createdAt: contracts.createdAt,
           updatedAt: contracts.updatedAt,
         })
@@ -1512,6 +1713,7 @@ export class PostgresStorage implements IStorage {
         allowOverage: row.allowOverage || false,
         description: row.description || undefined,
         slaRuleId: row.slaRuleId || undefined,
+        slaTemplateId: row.slaTemplateId || undefined,
         createdAt: row.createdAt!.toISOString(),
         updatedAt: row.updatedAt!.toISOString(),
       }));
@@ -1541,6 +1743,7 @@ export class PostgresStorage implements IStorage {
           allowOverage: contracts.allowOverage,
           description: contracts.description,
           slaRuleId: contracts.servicePackageId,
+          slaTemplateId: contracts.slaTemplateId,
           createdAt: contracts.createdAt,
           updatedAt: contracts.updatedAt,
         })
@@ -1569,6 +1772,7 @@ export class PostgresStorage implements IStorage {
         allowOverage: row.allowOverage || false,
         description: row.description || undefined,
         slaRuleId: row.slaRuleId || undefined,
+        slaTemplateId: row.slaTemplateId || undefined,
         createdAt: row.createdAt!.toISOString(),
         updatedAt: row.updatedAt!.toISOString(),
       };
@@ -1617,6 +1821,7 @@ export class PostgresStorage implements IStorage {
         autoRenewal: false,
         notifyThreshold: null,
         description: contract.description || null,
+        slaTemplateId: contract.slaTemplateId || null,  // Salvar template SLA selecionado
         createdAt: new Date(),
         updatedAt: new Date(),
         calendarId: null,
@@ -1639,6 +1844,7 @@ export class PostgresStorage implements IStorage {
         allowOverage: created.allowOverage!,
         description: created.description || undefined,
         slaRuleId: created.servicePackageId || undefined,
+        slaTemplateId: created.slaTemplateId || undefined,  // Retornar template SLA associado
         createdAt: created.createdAt!.toISOString(),
         updatedAt: created.updatedAt!.toISOString(),
       } as ContractUI;
@@ -1656,16 +1862,27 @@ export class PostgresStorage implements IStorage {
       };
 
       // Converter campos que precisam de transformação
-      if (updates.startDate) updateData.startDate = new Date(updates.startDate);
-      if (updates.endDate) updateData.endDate = new Date(updates.endDate);
+      if (updates.startDate) {
+        updateData.startDate = updates.startDate instanceof Date
+          ? updates.startDate
+          : new Date(updates.startDate);
+      }
+      if (updates.endDate) {
+        updateData.endDate = updates.endDate instanceof Date
+          ? updates.endDate
+          : new Date(updates.endDate);
+      }
       if (updates.monthlyValue !== undefined) updateData.monthlyValue = updates.monthlyValue?.toString() || '0';
       if (updates.hourlyRate !== undefined) updateData.hourlyRate = updates.hourlyRate?.toString() || '0';
       if (updates.usedHours !== undefined) updateData.usedHours = updates.usedHours.toString();
       if (updates.slaRuleId !== undefined) updateData.servicePackageId = updates.slaRuleId;
+      if (updates.slaTemplateId !== undefined) updateData.slaTemplateId = updates.slaTemplateId;
 
       // Remover campos que não existem na tabela
       delete updateData.slaRuleId;
       delete updateData.companyName;
+      delete updateData.createdAt;
+      delete updateData.id;
 
       console.log(`📝 [Storage] Atualizando contrato ${id} com dados:`, updateData);
 
@@ -1706,7 +1923,13 @@ export class PostgresStorage implements IStorage {
     try {
       // Primeiro buscar o ticket para pegar a empresa
       const ticket = await this.getTicket(ticketId);
+      console.log(`🎫 [getContractsForTicket] Ticket ${ticketId}:`, { 
+        companyId: ticket?.companyId, 
+        company: ticket?.company 
+      });
+      
       if (!ticket || !ticket.companyId) {
+        console.log(`❌ [getContractsForTicket] Ticket sem companyId`);
         return [];
       }
 
@@ -1730,6 +1953,11 @@ export class PostgresStorage implements IStorage {
           )
         )
         .orderBy(desc(contracts.createdAt));
+
+      console.log(`✅ [getContractsForTicket] Encontrados ${result.length} contratos ativos para empresa ${ticket.companyId}`);
+      if (result.length > 0) {
+        console.log(`   Contratos:`, result.map(c => ({ id: c.id, number: c.contractNumber, type: c.type })));
+      }
 
       return result.map(row => ({
         id: row.id,

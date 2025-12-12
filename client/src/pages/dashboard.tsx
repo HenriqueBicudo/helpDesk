@@ -9,6 +9,7 @@ import { ChartVolume } from '@/components/dashboard/chart-volume';
 import { TicketTable } from '@/components/tickets/ticket-table';
 import { TicketFilters } from '@/components/tickets/ticket-filters';
 import { NewTicketDialog } from '@/components/tickets/new-ticket-dialog';
+import { SlaV2MetricsGrid } from '@/components/sla/sla-metrics-grid';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { 
@@ -21,9 +22,103 @@ import {
   BarChart3,
   Settings,
   Shield,
-  TrendingUp
+  TrendingUp,
+  AlertTriangle
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+
+// Componente para mostrar tickets com SLA crítico
+const CriticalSlaTickets = ({ userId }: { userId?: string }) => {
+  const [, setLocation] = useLocation();
+  
+  const { data: tickets, isLoading } = useQuery({
+    queryKey: ['/api/tickets', 'critical-sla', userId],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        assigneeId: userId
+      });
+      const res = await fetch(`/api/tickets?${params}`);
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json) ? json : json?.tickets || [];
+    },
+    enabled: !!userId,
+    refetchInterval: 30000, // Atualizar a cada 30 segundos
+  });
+
+  // Filtrar tickets com SLA crítico (resposta vencida ou próxima do vencimento)
+  const criticalTickets = (tickets || []).filter((ticket: any) => {
+    if (!ticket.responseDueAt || ['resolved', 'closed'].includes(ticket.status)) return false;
+    
+    const now = new Date();
+    const responseDue = new Date(ticket.responseDueAt);
+    const timeRemaining = responseDue.getTime() - now.getTime();
+    
+    // Consideramos crítico se vencido ou faltam menos de 30 minutos
+    return timeRemaining <= 1800000; // 30 minutos
+  });
+
+  if (isLoading || criticalTickets.length === 0) return null;
+
+  return (
+    <Card className="mb-6 border-red-200 bg-red-50">
+      <div className="p-5 border-b border-red-200">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-red-600" />
+          <h3 className="text-lg font-medium text-red-800">
+            Tickets com SLA Crítico ({criticalTickets.length})
+          </h3>
+        </div>
+        <p className="text-sm text-red-600 mt-1">
+          Tickets atribuídos a você com prazo de resposta vencido ou próximo do vencimento
+        </p>
+      </div>
+      <div className="p-5">
+        <div className="space-y-3">
+          {criticalTickets.map((ticket: any) => {
+            const now = new Date();
+            const responseDue = new Date(ticket.responseDueAt);
+            const timeRemaining = responseDue.getTime() - now.getTime();
+            const isOverdue = timeRemaining <= 0;
+            
+            return (
+              <div 
+                key={ticket.id}
+                className="flex items-center justify-between p-3 bg-white border border-red-200 rounded-lg cursor-pointer hover:bg-red-50 transition-colors"
+                onClick={() => setLocation(`/tickets/${ticket.id}`)}
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium">#{ticket.id}</span>
+                    <Badge variant={ticket.priority === 'critical' ? 'destructive' : 'secondary'} className="text-xs">
+                      {ticket.priority}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-700 truncate">{ticket.subject}</p>
+                  <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                    <Clock className="h-3 w-3" />
+                    <span>
+                      {isOverdue 
+                        ? `Vencido há ${Math.abs(Math.floor(timeRemaining / (1000 * 60)))} min`
+                        : `Vence em ${Math.floor(timeRemaining / (1000 * 60))} min`
+                      }
+                    </span>
+                  </div>
+                </div>
+                <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  isOverdue ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
+                }`}>
+                  {isOverdue ? 'VENCIDO' : 'URGENTE'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+};
 
 // Componente específico para dashboard dos clientes
 const ClientDashboard = ({ user, stats, isLoadingStats, onNavigate, onNewTicket }: any) => {
@@ -135,6 +230,7 @@ export default function Dashboard() {
   // Fetch tickets with related data
   const { data: tickets, isLoading: isLoadingTickets } = useQuery({
     queryKey: ['/api/tickets'],
+    refetchInterval: 30000,
   });
 
   // Fetch volume (tickets per date) to compute deltas
@@ -164,30 +260,36 @@ export default function Dashboard() {
     const slaCards = [
       {
         title: 'SLA Agente',
-        description: 'Gerencie seus tickets e prazos SLA',
+        description: 'Gerencie tickets com sistema SLA aprimorado',
         icon: <Target className="h-6 w-6" />,
         path: '/sla/agent',
         roles: ['agent', 'manager', 'admin'],
-        color: 'bg-blue-100 text-blue-600',
-        bgHover: 'hover:bg-blue-50'
+        color: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300',
+        bgHover: 'hover:bg-blue-50 dark:hover:bg-blue-900/50',
+        badge: 'Ativo',
+        badgeColor: 'bg-blue-600 text-white'
       },
       {
         title: 'SLA Gerente',
-        description: 'Analytics e performance da equipe',
+        description: 'Analytics avançados e performance da equipe',
         icon: <BarChart3 className="h-6 w-6" />,
         path: '/sla/manager',
         roles: ['manager', 'admin'],
-        color: 'bg-green-100 text-green-600',
-        bgHover: 'hover:bg-green-50'
+        color: 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-300',
+        bgHover: 'hover:bg-green-50 dark:hover:bg-green-900/50',
+        badge: 'Ativo',
+        badgeColor: 'bg-green-600 text-white'
       },
       {
         title: 'SLA Admin',
-        description: 'Configuração e monitoramento do sistema',
+        description: 'Templates, calendários e monitoramento avançado',
         icon: <Settings className="h-6 w-6" />,
         path: '/sla/admin',
         roles: ['admin'],
-        color: 'bg-purple-100 text-purple-600',
-        bgHover: 'hover:bg-purple-50'
+        color: 'bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300',
+        bgHover: 'hover:bg-purple-50 dark:hover:bg-purple-900/50',
+        badge: 'Ativo',
+        badgeColor: 'bg-purple-600 text-white'
       }
     ];
 
@@ -199,15 +301,23 @@ export default function Dashboard() {
 
     return (
       <div className="mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">Sistema SLA</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">Sistema SLA</h2>
+            <div className="px-2 py-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs font-medium rounded-full">
+              NOVO
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Sistema redesenhado com templates e calendários de negócio
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {availableCards.map((card) => (
             <Card 
               key={card.path}
-              className={`p-4 cursor-pointer transition-all duration-200 ${card.bgHover} border-border hover:shadow-md`}
+              className={`p-4 cursor-pointer transition-all duration-200 ${card.bgHover} border-border hover:shadow-lg hover:scale-105`}
               onClick={() => setLocation(card.path)}
             >
               <div className="flex items-start gap-3">
@@ -215,10 +325,18 @@ export default function Dashboard() {
                   {card.icon}
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-medium text-foreground mb-1">{card.title}</h3>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-medium text-foreground">{card.title}</h3>
+                    <div className={`px-2 py-0.5 text-xs font-medium rounded-full ${card.badgeColor}`}>
+                      {card.badge}
+                    </div>
+                  </div>
                   <p className="text-sm text-muted-foreground">{card.description}</p>
+                  <div className="mt-2 flex items-center text-xs text-primary">
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    <span>Sistema aprimorado</span>
+                  </div>
                 </div>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
               </div>
             </Card>
           ))}
@@ -365,17 +483,17 @@ export default function Dashboard() {
         />
       )}
 
-      {/* SLA Access Cards - Apenas para equipe helpdesk */}
-      {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
-        <SlaAccessCards />
-      )}
-      
       {/* Dashboard Charts - Apenas para usuários não clientes */}
       {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <ChartCategory />
           <ChartVolume />
         </div>
+      )}
+
+      {/* Tickets SLA Crítico - Apenas para helpdesk */}
+      {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
+        <CriticalSlaTickets userId={user?.id} />
       )}
       
       {/* Recent Tickets */}
@@ -399,6 +517,17 @@ export default function Dashboard() {
           isLoading={isLoadingTickets}
         />
       </Card>
+
+      {/* SLA Section - Apenas para equipe helpdesk */}
+      {user?.role !== 'client_user' && user?.role !== 'client_manager' && (
+        <div className="space-y-6">
+          {/* SLA Access Cards */}
+          <SlaAccessCards />
+          
+          {/* SLA Metrics */}
+          <SlaV2MetricsGrid />
+        </div>
+      )}
       
       {/* New Ticket Dialog */}
       <NewTicketDialog
