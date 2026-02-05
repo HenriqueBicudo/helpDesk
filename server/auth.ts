@@ -8,6 +8,7 @@ import { storage } from "./storage-interface";
 import { User as UserSchema, InsertUser } from "@shared/schema";
 import connectPg from "connect-pg-simple";
 import { Pool } from "pg";
+import { generateRandomPassword, sendPasswordEmail } from "./utils/password";
 
 const scryptAsync = promisify(scrypt);
 
@@ -63,7 +64,9 @@ export function setupAuth(app: Express) {
     store: sessionStore,
     cookie: {
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 1000 * 60 * 60 * 24 * 7 // 7 dias
+      httpOnly: true,
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
+      sameSite: 'lax' // Permite cookies em navegação normal
     }
   };
 
@@ -161,23 +164,38 @@ export function setupAuth(app: Express) {
 
   // Rota de login
   app.post("/api/auth/login", (req, res, next) => {
+    console.log('🔐 [Auth] Tentativa de login:', { username: req.body.username });
+    
     passport.authenticate("local", (err: any, user: UserSchema | false, info: { message: string }) => {
       if (err) {
+        console.error('❌ [Auth] Erro no login:', err);
         return next(err);
       }
       
       if (!user) {
+        console.warn('⚠️ [Auth] Login falhou:', info?.message);
         return res.status(401).json({ message: info?.message || "Credenciais inválidas" });
       }
       
+      console.log('✅ [Auth] Usuário autenticado:', { id: user.id, username: user.username });
+      
       req.login(user, (err) => {
         if (err) {
+          console.error('❌ [Auth] Erro ao criar sessão:', err);
           return next(err);
         }
         
+        console.log('✅ [Auth] Sessão criada com sucesso:', { sessionID: req.sessionID });
+        
+        // Verificar se é primeiro login (nova flag no banco)
+        const requiresPasswordChange = user.firstLogin === true;
+        
         // Remover senha do objeto retornado
         const { password, ...userWithoutPassword } = user;
-        return res.json(userWithoutPassword);
+        return res.json({
+          ...userWithoutPassword,
+          requiresPasswordChange
+        });
       });
     })(req, res, next);
   });
@@ -194,9 +212,19 @@ export function setupAuth(app: Express) {
 
   // Rota para obter usuário atual
   app.get("/api/auth/current-user", (req, res) => {
+    console.log('🔍 [Auth] Verificando autenticação:', { 
+      authenticated: req.isAuthenticated(), 
+      sessionID: req.sessionID,
+      session: req.session ? 'exists' : 'missing',
+      user: req.user ? (req.user as any).username : 'none'
+    });
+    
     if (!req.isAuthenticated()) {
+      console.warn('⚠️ [Auth] Usuário não autenticado');
       return res.status(401).json({ message: "Não autenticado" });
     }
+    
+    console.log('✅ [Auth] Usuário autenticado:', { id: (req.user as any).id });
     
     // Remover senha do objeto retornado
     const { password, ...userWithoutPassword } = req.user as UserSchema;
@@ -269,6 +297,52 @@ export function setupAuth(app: Express) {
       res.json(userWithoutPassword);
     } catch (error) {
       console.error("Erro ao atualizar perfil:", error);
+      res.status(500).json({ message: "Erro interno do servidor" });
+    }
+  });
+
+  // Rota para forçar troca de senha (sem precisar da senha atual)
+  app.post("/api/auth/force-change-password", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Não autenticado" });
+    }
+    
+    try {
+      const userId = (req.user as UserSchema).id;
+      const { newPassword } = req.body;
+      
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ message: "Nova senha deve ter pelo menos 6 caracteres" });
+      }
+      
+      // Hash da nova senha
+      const hashedPassword = await hashPassword(newPassword);
+      
+      // Atualizar senha e desativar flag de primeiro login
+      const updated = await storage.updateUser(userId!, { 
+        password: hashedPassword,
+        firstLogin: false 
+      } as any);
+      const refreshedUser = updated || await storage.getUser(userId!);
+      
+      if (!refreshedUser) {
+        return res.status(500).json({ message: 'Falha ao atualizar senha' });
+      }
+      
+      // Atualizar sessão
+      req.login(refreshedUser, (err) => {
+        if (err) {
+          console.error('Erro ao atualizar sessão:', err);
+        }
+        
+        const { password, ...userWithoutPassword } = refreshedUser as UserSchema;
+        return res.json({ 
+          ...userWithoutPassword,
+          message: "Senha alterada com sucesso"
+        });
+      });
+    } catch (error) {
+      console.error("Erro ao trocar senha:", error);
       res.status(500).json({ message: "Erro interno do servidor" });
     }
   });

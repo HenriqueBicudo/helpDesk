@@ -1,14 +1,15 @@
-import { Search, Menu, Bell, User, LogOut, Settings as SettingsIcon } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { Menu, Bell, User, LogOut, Settings as SettingsIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
-import { SlaNotifications } from '@/components/notifications/sla-notifications';
+import { NotificationsPopover } from '@/components/notifications/notifications-popover';
 import { SlaNotificationBadge } from '@/components/notifications/sla-notification-badge';
+import { GlobalSearch } from '@/components/layout/global-search';
 import { useAuth } from '@/hooks/use-auth';
 import { Link, useLocation } from 'wouter';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getInitials } from '@/lib/utils';
+import { useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 type HeaderProps = {
   onMenuClick: () => void;
@@ -25,6 +31,7 @@ type HeaderProps = {
 export function Header({ onMenuClick }: HeaderProps) {
   const { user, isLoading, logoutMutation } = useAuth();
   const [, navigate] = useLocation();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   
   const handleLogout = () => {
     logoutMutation.mutate(undefined, {
@@ -48,24 +55,26 @@ export function Header({ onMenuClick }: HeaderProps) {
               <Menu className="h-5 w-5" />
             </Button>
             
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <Input 
-                className="pl-10 w-full md:w-80 bg-background border-input focus:ring-2 focus:ring-primary focus:border-primary transition-all"
-                placeholder="Buscar chamados, clientes..."
-              />
-            </div>
+            <GlobalSearch />
           </div>
           
           <div className="flex items-center gap-3">
             <ThemeToggle />
             
-            <Button variant="ghost" size="icon" className="relative hover:bg-primary/10">
-              <Bell className="h-5 w-5 text-foreground" />
-              <SlaNotificationBadge />
-            </Button>
+            <Popover open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative hover:bg-primary/10">
+                  <Bell className="h-5 w-5 text-foreground" />
+                  <SlaNotificationBadge />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-96 p-0 bg-card">
+                <div className="flex items-center justify-between p-4 border-b">
+                  <h3 className="font-semibold text-foreground">Notificações</h3>
+                </div>
+                <NotificationsPopover />
+              </PopoverContent>
+            </Popover>
           
             <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -125,9 +134,6 @@ export function Header({ onMenuClick }: HeaderProps) {
           </div>
         </div>
       </header>
-      
-      {/* Notificações SLA - controladas internamente */}
-      <SlaNotifications />
     </>
   );
 }

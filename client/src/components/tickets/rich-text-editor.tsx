@@ -311,15 +311,18 @@ export function RichTextEditor({
   }
 
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-3">
+    <Card className="w-full shadow-xl hover:shadow-2xl transition-all border-4 border-l-8 border-l-blue-600 dark:border-l-blue-400 bg-gradient-to-br from-white via-blue-50/30 to-white dark:from-gray-800 dark:via-blue-950/20 dark:to-gray-800">
+      <CardHeader className="pb-3 pt-4 bg-gradient-to-r from-blue-50/80 to-transparent dark:from-blue-950/30 dark:to-transparent border-b-2 border-blue-100 dark:border-blue-900">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-lg">Nova Interação</CardTitle>
+          <CardTitle className="text-lg font-bold flex items-center gap-2">
+            <Send className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            Nova Interação
+          </CardTitle>
           {customerHours && (
             <div className="flex items-center gap-2 text-sm">
-              <Clock className="h-4 w-4" />
-              <span>Horas sobrantes: </span>
-              <Badge variant={customerHours.remaining < 2 ? "destructive" : customerHours.remaining < 5 ? "secondary" : "default"}>
+              <Clock className="h-4.5 w-4.5" />
+              <span className="text-sm font-medium">Horas Disponíveis: </span>
+              <Badge variant={customerHours.remaining < 2 ? "destructive" : customerHours.remaining < 5 ? "secondary" : "default"} className="text-sm px-3 py-1">
                 {customerHours.remaining.toFixed(1)}h / {customerHours.monthly}h
               </Badge>
             </div>
@@ -327,13 +330,13 @@ export function RichTextEditor({
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 pb-4">
         {/* Templates */}
         {showTemplates && templates.length > 0 && (
           <div className="space-y-2">
-            <Label>Template de Resposta</Label>
+            <Label className="text-sm font-medium">Template de Resposta</Label>
             <Select value={selectedTemplate} onValueChange={handleTemplateSelect}>
-              <SelectTrigger>
+              <SelectTrigger className="h-10 text-sm">
                 <SelectValue placeholder="Selecione um template..." />
               </SelectTrigger>
               <SelectContent>
@@ -483,22 +486,22 @@ export function RichTextEditor({
           <div onDrop={handleDrop} onDragOver={handleDragOver} onPaste={handlePaste}>
             <EditorContent 
               editor={editor} 
-              className="prose prose-sm max-w-none p-4 min-h-[220px] focus-within:outline-none [&_.ProseMirror]:min-h-[220px] [&_.ProseMirror]:outline-none [&_.ProseMirror]:w-full [&_.ProseMirror]:resize-none rounded-md bg-card/5 shadow-sm"
+              className="prose prose-sm max-w-none p-4 min-h-[200px] focus-within:outline-none [&_.ProseMirror]:min-h-[200px] [&_.ProseMirror]:outline-none [&_.ProseMirror]:w-full [&_.ProseMirror]:resize-none rounded-md bg-card/5 shadow-sm"
             />
           </div>
         </div>
 
         {/* Anexos */}
         <div className="space-y-2">
-            <div className="flex items-center gap-2">
-            <Label>Anexos</Label>
+            <div className="flex items-center gap-2.5">
+            <Label className="text-sm font-medium">Anexos</Label>
             <Button
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              className="h-9 px-3"
+              className="h-9 px-3 text-sm"
             >
-              <Paperclip className="h-4 w-4 mr-1" />
+              <Paperclip className="h-4 w-4 mr-1.5" />
               Adicionar Arquivo
             </Button>
             <Input
@@ -540,14 +543,13 @@ export function RichTextEditor({
         </div>
 
         {/* Configurações */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center space-x-3">
+        <div className="flex items-center justify-between flex-wrap gap-3 pt-3 border-t">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center space-x-2.5">
               <Checkbox 
                 id="internal" 
                 checked={isInternal}
                 onCheckedChange={(checked) => setIsInternal(checked === true)}
-                className="scale-95"
               />
               <Label htmlFor="internal" className="text-sm">
                 Nota interna (não visível ao cliente)
@@ -561,7 +563,7 @@ export function RichTextEditor({
                   type="time"
                   value={timeSpent}
                   onChange={(e) => setTimeSpent(e.target.value || '00:00')}
-                  className="w-24 h-9"
+                  className="w-24 h-10 text-sm"
                   step="900" // 15 minutos em segundos
                 />
                 <Label className="text-sm">horas</Label>
@@ -571,7 +573,7 @@ export function RichTextEditor({
             <div className="flex items-center gap-2">
               <Label className="text-sm">Alterar status</Label>
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger className="w-44 h-9 text-sm">
+                <SelectTrigger className="w-40 h-10 text-sm">
                   <SelectValue placeholder="Sem alteração" />
                 </SelectTrigger>
                 <SelectContent>
@@ -583,7 +585,7 @@ export function RichTextEditor({
             </div>
           </div>
           
-          <Button onClick={handleSubmit} className="ml-auto h-9 px-4 rounded-md bg-primary text-white hover:bg-primary/90 shadow-md flex items-center gap-2">
+          <Button onClick={handleSubmit} className="ml-auto h-10 px-6 rounded-md bg-primary text-white hover:bg-primary/90 shadow-md flex items-center gap-2 text-base font-medium">
             <Send className="h-4 w-4" />
             <span>Enviar Resposta</span>
           </Button>

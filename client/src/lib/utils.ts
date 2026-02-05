@@ -27,13 +27,18 @@ export function truncateText(text: string, maxLength: number): string {
   return text.slice(0, maxLength) + "...";
 }
 
-export function translateStatus(status: string): string {
+export function translateStatus(status: string, customName?: string): string {
+  // Se tiver nome customizado, usa ele
+  if (customName) return customName;
+  
+  // Fallback para nomes padrão
   const statusMap: Record<string, string> = {
     open: "Aberto",
     in_progress: "Em andamento",
     pending: "Pendente",
     resolved: "Resolvido",
-    closed: "Fechado"
+    closed: "Fechado",
+    waiting_customer: "Aguardando Cliente"
   };
   return statusMap[status] || status;
 }
@@ -58,13 +63,18 @@ export function translateCategory(category: string): string {
   return categoryMap[category] || category;
 }
 
-export function statusToColor(status: string): string {
+export function statusToColor(status: string, customColor?: string): string {
+  // Se tiver cor customizada, usa ela  
+  if (customColor) return customColor;
+  
+  // Fallback para cores padrão
   const statusColorMap: Record<string, string> = {
     open: "blue",
     in_progress: "yellow", 
     pending: "red",
     resolved: "green",
-    closed: "gray"
+    closed: "gray",
+    waiting_customer: "purple"
   };
   return statusColorMap[status] || "gray";
 }

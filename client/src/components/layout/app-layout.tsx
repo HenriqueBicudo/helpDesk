@@ -5,9 +5,10 @@ import { Header } from "@/components/layout/header";
 type AppLayoutProps = {
   children: React.ReactNode;
   title: string;
+  fullWidth?: boolean;
 };
 
-export function AppLayout({ children, title }: AppLayoutProps) {
+export function AppLayout({ children, title, fullWidth = false }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const toggleSidebar = () => {
@@ -22,7 +23,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
         <Header onMenuClick={toggleSidebar} />
         
         <main className="flex-1 relative overflow-y-auto focus:outline-none bg-background">
-          <div className="py-6 max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+          <div className={fullWidth ? "max-w-full" : "py-6 max-w-7xl mx-auto px-4 sm:px-6 md:px-8"}>
             {children}
           </div>
         </main>

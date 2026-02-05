@@ -205,6 +205,31 @@ export function UserManagement() {
     }
   });
 
+  // Mutation para resetar senha do usuário
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const response = await apiRequest('POST', '/api/auth/reset-user-password', { userId });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast({
+        title: "Senha resetada com sucesso!",
+        description: data.emailSent 
+          ? "Uma nova senha foi enviada para o email do usuário." 
+          : `Email não configurado. Senha temporária: ${data.tempPassword}`,
+        duration: data.tempPassword ? 10000 : 3000,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Erro ao resetar senha",
+        description: error.message || "Ocorreu um erro ao tentar resetar a senha.",
+      });
+    }
+  });
+
   // Mutation para excluir usuário
   const deleteUserMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -580,20 +605,35 @@ export function UserManagement() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-4">
+              <div className="flex justify-between items-center gap-2 pt-4 border-t mt-4">
                 <Button 
                   type="button" 
                   variant="outline"
-                  onClick={() => setIsEditDialogOpen(false)}
+                  onClick={() => {
+                    if (editingUser && confirm(`Tem certeza que deseja resetar a senha de ${editingUser.fullName}?\n\nUma nova senha será gerada e enviada por email.`)) {
+                      resetPasswordMutation.mutate(editingUser.id!);
+                    }
+                  }}
+                  disabled={resetPasswordMutation.isPending}
                 >
-                  Cancelar
+                  {resetPasswordMutation.isPending ? "Resetando..." : "🔄 Resetar Senha"}
                 </Button>
-                <Button 
-                  type="submit"
-                  disabled={editUserMutation.isPending}
-                >
-                  {editUserMutation.isPending ? "Atualizando..." : "Atualizar Usuário"}
-                </Button>
+                
+                <div className="flex gap-2">
+                  <Button 
+                    type="button" 
+                    variant="outline"
+                    onClick={() => setIsEditDialogOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    type="submit"
+                    disabled={editUserMutation.isPending}
+                  >
+                    {editUserMutation.isPending ? "Atualizando..." : "Atualizar Usuário"}
+                  </Button>
+                </div>
               </div>
             </form>
           </DialogContent>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Ticket, User, Requester } from "@shared/schema";
@@ -8,7 +8,8 @@ import {
   Search, 
   Filter, 
   MoreVertical, 
-  CalendarDays
+  CalendarDays,
+  RefreshCw
 } from "lucide-react";
 import {
   DndContext,
@@ -25,8 +26,6 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -60,6 +59,70 @@ import { SlaInfoCapsule } from "@/components/tickets/sla-info-capsule";
 import { SlaDueWarning } from "@/components/tickets/sla-due-warning";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useClientRestrictions } from '@/hooks/use-client-restrictions';
+import { useTicketStatusConfig } from '@/hooks/use-ticket-status-config';
+import { useAuth } from '@/hooks/use-auth';
+
+// Estilos customizados para scroll horizontal suave
+const kanbanScrollStyles = `
+  .kanban-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+    position: relative;
+  }
+  
+  .kanban-scroll::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  .kanban-scroll::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+  }
+  
+  .kanban-scroll::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+  }
+  
+  .kanban-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Indicador de scroll (gradiente nas bordas) */
+  .kanban-scroll-container {
+    position: relative;
+  }
+  
+  .kanban-scroll-container::before,
+  .kanban-scroll-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 8px;
+    width: 40px;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.3s ease;
+  }
+  
+  .kanban-scroll-container::before {
+    left: 0;
+    background: linear-gradient(to right, rgba(255,255,255,0.95), transparent);
+  }
+  
+  .kanban-scroll-container::after {
+    right: 0;
+    background: linear-gradient(to left, rgba(255,255,255,0.95), transparent);
+  }
+  
+  .kanban-scroll-container.at-start::before {
+    opacity: 0;
+  }
+  
+  .kanban-scroll-container.at-end::after {
+    opacity: 0;
+  }
+`;
 
 type TicketWithRelations = Ticket & {
   requester: Requester;
@@ -69,6 +132,7 @@ type TicketWithRelations = Ticket & {
 type KanbanColumn = {
   title: string;
   status: string;
+  color: string;
   tickets: TicketWithRelations[];
 }
 
@@ -113,18 +177,24 @@ function TicketCard({ ticket, groupId, disableDrag }: { ticket: TicketWithRelati
     }
   };
 
+  const handleCardClick = () => {
+    if (!isDragging) {
+      navigateToTicket(ticket.id || 0);
+    }
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...listeners}
+      {...(!disableDrag ? listeners : {})}
     >
       <Card 
         className={`shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer select-none relative group ${
           ticket.priority === 'critical' ? 'ring-2 ring-red-500 ring-opacity-50' : ''
-        }`}
-        onClick={() => navigateToTicket(ticket.id || 0)}
+        } ${!disableDrag ? 'cursor-grab active:cursor-grabbing' : ''}`}
+        onClick={handleCardClick}
       >
         {/* Flag de alerta SLA */}
         <SlaWarningFlag
@@ -132,104 +202,35 @@ function TicketCard({ ticket, groupId, disableDrag }: { ticket: TicketWithRelati
           solutionDueAt={ticket.solutionDueAt || undefined}
           status={ticket.status}
           priority={ticket.priority}
-          hasFirstResponse={false} // TODO: verificar se há primeira resposta
+          hasFirstResponse={false}
         />
         
-        <CardHeader className="p-3 pb-0">
-          <div className="flex justify-between items-start">
-            <CardTitle className="text-sm font-medium line-clamp-2">
-              {ticket.subject}
-            </CardTitle>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={(e) => {
-                  e.stopPropagation();
-                  navigateToTicket(ticket.id || 0);
-                }}>
-                  Ver detalhes
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                  Atribuir
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                  Mudar status
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-          
-          {/* Aviso de vencimento SLA */}
-          <SlaDueWarning
-            responseDueAt={ticket.responseDueAt || undefined}
-            solutionDueAt={ticket.solutionDueAt || undefined}
-            hasFirstResponse={false} // TODO: verificar se há primeira resposta
-            compact={true}
-            className="mt-2"
-          />
+        <CardHeader className="p-3 pb-2">
+          <CardTitle className="text-sm font-medium line-clamp-2">
+            {ticket.subject}
+          </CardTitle>
           
           <div className="flex gap-1 mt-2 flex-wrap">
-            <TicketStatusBadge status={ticket.status} />
-            <Badge variant="outline" className="bg-muted/30 border-border text-muted-foreground">
+            <Badge variant="outline" className="text-xs">
               #{ticket.id}
             </Badge>
-            {/* Alerta de SLA inline */}
-            <SlaAlert
-              responseDueAt={ticket.responseDueAt || undefined}
-              solutionDueAt={ticket.solutionDueAt || undefined}
-              status={ticket.status}
-              priority={ticket.priority}
-              hasFirstResponse={false} // TODO: verificar se há primeira resposta
-              showLabel={false}
-            />
+            <TicketStatusBadge status={ticket.status} />
+            <TicketPriorityBadge priority={ticket.priority} />
           </div>
         </CardHeader>
         
         <CardContent className="p-3 pt-2">
-          {/* Cápsula de informações SLA */}
-          {(ticket.responseDueAt || ticket.solutionDueAt) && (
-            <div className="mb-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground">Informações SLA</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowSlaInfo(!showSlaInfo);
-                  }}
-                >
-                  {showSlaInfo ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </Button>
-              </div>
-              
-              {showSlaInfo && (
-                <SlaInfoCapsule
-                  responseDueAt={ticket.responseDueAt || undefined}
-                  solutionDueAt={ticket.solutionDueAt || undefined}
-                  status={ticket.status}
-                  priority={ticket.priority}
-                  hasFirstResponse={false} // TODO: verificar se há primeira resposta
-                  createdAt={ticket.createdAt || new Date()}
-                  className="mb-3"
-                />
-              )}
-            </div>
-          )}
-          
           <p className="text-xs text-muted-foreground line-clamp-2">
             {ticket.description}
           </p>
+          
+          <SlaDueWarning
+            responseDueAt={ticket.responseDueAt || undefined}
+            solutionDueAt={ticket.solutionDueAt || undefined}
+            hasFirstResponse={false}
+            compact={true}
+            className="mt-2"
+          />
         </CardContent>
         
         <CardFooter className="p-3 pt-0 flex justify-between items-center text-xs text-muted-foreground">
@@ -239,18 +240,12 @@ function TicketCard({ ticket, groupId, disableDrag }: { ticket: TicketWithRelati
                 {getInitials(ticket.requester.fullName)}
               </AvatarFallback>
             </Avatar>
-            <div className="flex flex-col">
-              <span className="text-xs font-medium">{ticket.requester.fullName}</span>
-              <span className="text-xs text-muted-foreground">{ticket.requester.company || ''}</span>
-            </div>
+            <span className="font-medium truncate">{ticket.requester.fullName}</span>
           </div>
           
-          <div className="flex flex-col items-end">
-            <div className="flex items-center gap-1">
-              <CalendarDays className="h-3 w-3" />
-              <span>{formatDate(ticket.createdAt || new Date(), "dd/MM/yyyy")}</span>
-            </div>
-            <TicketPriorityBadge priority={ticket.priority} />
+          <div className="flex items-center gap-1">
+            <CalendarDays className="h-3 w-3" />
+            <span>{formatDate(ticket.createdAt || new Date(), "dd/MM/yy")}</span>
           </div>
         </CardFooter>
       </Card>
@@ -258,15 +253,72 @@ function TicketCard({ ticket, groupId, disableDrag }: { ticket: TicketWithRelati
   );
 }
 
+// Componente para container com scroll horizontal inteligente
+function ScrollableKanbanContainer({ children }: { children: React.ReactNode }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollState, setScrollState] = useState({ atStart: true, atEnd: false });
+
+  const updateScrollState = () => {
+    if (!scrollRef.current) return;
+    
+    const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+    const atStart = scrollLeft === 0;
+    const atEnd = scrollLeft + clientWidth >= scrollWidth - 5; // 5px de tolerância
+    
+    setScrollState({ atStart, atEnd });
+  };
+
+  useEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return;
+
+    // Verificar estado inicial
+    updateScrollState();
+
+    // Adicionar listener de scroll
+    scrollElement.addEventListener('scroll', updateScrollState);
+    
+    // Adicionar listener de resize para recalcular
+    const resizeObserver = new ResizeObserver(updateScrollState);
+    resizeObserver.observe(scrollElement);
+
+    return () => {
+      scrollElement.removeEventListener('scroll', updateScrollState);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  return (
+    <div 
+      className={`kanban-scroll-container ${scrollState.atStart ? 'at-start' : ''} ${scrollState.atEnd ? 'at-end' : ''}`}
+    >
+      <div ref={scrollRef} className="overflow-x-auto kanban-scroll">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function TicketsKanban() {
   const queryClient = useQueryClient();
   const clientRestrictions = useClientRestrictions();
+  const [, setLocation] = useLocation();
+  const { user, isLoading: authLoading } = useAuth();
+
+  // Buscar configurações de status
+  const { statuses, isLoading: statusLoading } = useTicketStatusConfig();
+  const activeStatuses = useMemo(() => {
+    return statuses
+      .filter(s => !s.isClosedStatus)
+      .sort((a, b) => a.order - b.order);
+  }, [statuses]);
 
   // Estados para controle
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
   const [kanbanGroups, setKanbanGroups] = useState<KanbanGroup[]>([]);
   const [activeTicket, setActiveTicket] = useState<TicketWithRelations | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   // Configurar sensores para drag and drop
   const sensors = useSensors(
@@ -288,6 +340,7 @@ export default function TicketsKanban() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(updates),
       });
       
@@ -303,9 +356,13 @@ export default function TicketsKanban() {
   });
 
   // Buscar todos os tickets
-  const { data: tickets, isLoading } = useQuery<TicketWithRelations[]>({ 
+  const { data: tickets, isLoading, refetch, isFetching } = useQuery<TicketWithRelations[]>({ 
     queryKey: ["/api/tickets"],
-    refetchInterval: 30000, // Atualiza automaticamente a cada 30 segundos
+    refetchInterval: 10000, // Atualiza automaticamente a cada 10 segundos
+    refetchOnWindowFocus: true, // Atualiza quando a janela recebe foco
+    onSuccess: () => {
+      setLastUpdate(new Date());
+    },
   });
 
   // Buscar todos os usuários
@@ -315,7 +372,7 @@ export default function TicketsKanban() {
 
   // Agrupar tickets por responsáveis quando os dados forem carregados
   useEffect(() => {
-    if (tickets && users) {
+    if (tickets && users && activeStatuses.length > 0) {
       const agentGroups: KanbanGroup[] = [];
       
       // Filtra apenas usuários do helpdesk
@@ -325,10 +382,24 @@ export default function TicketsKanban() {
         user.role === 'helpdesk_agent'
       );
       
-      // Filtra os tickets ativos (excluindo resolvidos e fechados)
+      // Filtra os tickets ativos (baseado nas configurações)
+      const closedStatusIds = activeStatuses
+        .filter(s => s.isClosedStatus)
+        .map(s => s.id);
+      
       const activeTickets = tickets.filter(ticket => 
-        ticket.status !== "resolved" && ticket.status !== "closed"
+        !closedStatusIds.includes(ticket.status)
       );
+      
+      // Criar colunas dinamicamente baseado nos status configurados
+      const createColumns = (ticketsList: TicketWithRelations[]): KanbanColumn[] => {
+        return activeStatuses.map(status => ({
+          title: status.name,
+          status: status.id,
+          color: status.color,
+          tickets: ticketsList.filter(t => t.status === status.id)
+        }));
+      };
       
       // Criar um grupo para tickets não atribuídos
       const unassignedTickets = activeTickets.filter(ticket => !ticket.assigneeId);
@@ -336,11 +407,7 @@ export default function TicketsKanban() {
         agentGroups.push({
           title: "Não atribuídos",
           collapsed: false,
-          columns: [
-            { title: "Aberto", status: "open", tickets: unassignedTickets.filter(t => t.status === "open") },
-            { title: "Em Andamento", status: "in_progress", tickets: unassignedTickets.filter(t => t.status === "in_progress") },
-            { title: "Pendente", status: "pending", tickets: unassignedTickets.filter(t => t.status === "pending") },
-          ]
+          columns: createColumns(unassignedTickets)
         });
       }
       
@@ -353,18 +420,14 @@ export default function TicketsKanban() {
             title: agent.fullName,
             id: agent.id,
             collapsed: false,
-            columns: [
-              { title: "Aberto", status: "open", tickets: agentTickets.filter(t => t.status === "open") },
-              { title: "Em Andamento", status: "in_progress", tickets: agentTickets.filter(t => t.status === "in_progress") },
-              { title: "Pendente", status: "pending", tickets: agentTickets.filter(t => t.status === "pending") },
-            ]
+            columns: createColumns(agentTickets)
           });
         }
       });
       
       setKanbanGroups(agentGroups);
     }
-  }, [tickets, users]);
+  }, [tickets, users, activeStatuses]);
 
   // Alternar colapso de um grupo
   const toggleGroupCollapse = (index: number) => {
@@ -445,6 +508,10 @@ export default function TicketsKanban() {
 
   // Total de tickets
   const totalTickets = tickets?.length || 0;
+  
+  // Loading quando autenticação ou status estão carregando
+  const isLoadingData = isLoading || authLoading || statusLoading;
+
 function DroppableColumn({ 
   column, 
   groupId, 
@@ -469,18 +536,32 @@ function DroppableColumn({
   return (
     <div 
       ref={setNodeRef} 
-      className={`flex-1 min-w-[250px] ${isOver ? 'bg-blue-50 border-2 border-blue-200 border-dashed rounded-lg' : ''}`}
+      className={`flex-1 min-w-[320px] ${isOver ? 'bg-blue-50 border-2 border-blue-200 border-dashed rounded-lg' : ''}`}
     >
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="font-medium text-sm">{column.title}</h3>
-        <Badge variant="outline">{column.tickets.length}</Badge>
+      <div 
+        className="flex justify-between items-center mb-3 pb-2 border-b-2"
+        style={{ borderColor: column.color }}
+      >
+        <div className="flex items-center gap-2">
+          <div 
+            className="w-3 h-3 rounded-full"
+            style={{ backgroundColor: column.color }}
+          />
+          <h3 className="font-semibold text-sm">{column.title}</h3>
+        </div>
+        <Badge 
+          variant="secondary"
+          className="font-medium"
+        >
+          {column.tickets.length}
+        </Badge>
       </div>
       
       <SortableContext 
         items={column.tickets.map(ticket => `ticket-${ticket.id}`)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="space-y-3 min-h-[100px]">
+        <div className="space-y-2 min-h-[120px]">
           {column.tickets.map((ticket) => (
             <TicketCard 
               key={ticket.id} 
@@ -491,10 +572,10 @@ function DroppableColumn({
           ))}
           
           {column.tickets.length === 0 && (
-            <div className={`border border-dashed rounded-md p-4 text-center text-muted-foreground text-sm transition-colors ${
-              isOver ? 'border-blue-300 bg-blue-50' : ''
+            <div className={`border-2 border-dashed rounded-md p-6 text-center text-muted-foreground text-sm transition-all ${
+              isOver ? 'border-blue-400 bg-blue-50 scale-105' : 'border-gray-200'
             }`}>
-              {isOver ? 'Solte o ticket aqui' : 'Sem tickets'}
+              {isOver ? '📥 Solte o ticket aqui' : 'Sem tickets'}
             </div>
           )}
         </div>
@@ -504,15 +585,28 @@ function DroppableColumn({
 }
 
   return (
-    <AppLayout title="Tickets Kanban">
-      <div className="container mx-auto py-6">
+    <AppLayout title="Tickets Kanban" fullWidth={true}>
+      <style>{kanbanScrollStyles}</style>
+      <div className="w-full py-4 px-6">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h1 className="text-2xl font-bold">Tickets Kanban</h1>
-              <p className="text-muted-foreground">Total de {totalTickets} registros</p>
+              <p className="text-muted-foreground">
+                Total de {totalTickets} registros • 
+                Última atualização: {lastUpdate.toLocaleTimeString('pt-BR')}
+              </p>
             </div>
             
             <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                title="Atualizar agora"
+              >
+                <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+              </Button>
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -561,11 +655,11 @@ function DroppableColumn({
                     Limpar filtro
                   </DropdownMenuItem>
                 </DropdownMenuContent>
-              </DropdownMenu>
+              </DropdownMenu>                            
             </div>
           </div>
           
-          {isLoading ? (
+          {isLoadingData ? (
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="space-y-2">
@@ -580,9 +674,9 @@ function DroppableColumn({
             </div>
           ) : clientRestrictions.isClient ? (
             // Versão sem drag and drop para clientes
-            <div className="space-y-6">
+            <div className="space-y-4">
               {filteredGroups.map((group, groupIndex) => (
-                <div key={groupIndex} className="border rounded-lg overflow-hidden">
+                <div key={groupIndex} className="border-2 rounded-xl overflow-hidden shadow-md">
                   {/* Cabeçalho do Grupo */}
                   <div 
                     className="flex justify-between items-center p-3 bg-muted cursor-pointer"
@@ -594,7 +688,7 @@ function DroppableColumn({
                         {group.columns.reduce((acc, col) => acc + col.tickets.length, 0)}
                       </Badge>
                     </div>
-                    {group.isCollapsed ? (
+                    {group.collapsed ? (
                       <ChevronDown className="h-4 w-4" />
                     ) : (
                       <ChevronUp className="h-4 w-4" />
@@ -602,32 +696,40 @@ function DroppableColumn({
                   </div>
 
                   {/* Conteúdo do Grupo */}
-                  {!group.isCollapsed && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
-                      {group.columns.map((column) => (
-                        <div key={column.status} className="space-y-3">
-                          {/* Cabeçalho da Coluna */}
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-sm">{column.title}</h4>
-                            <Badge variant="outline" className="text-xs">
-                              {column.tickets.length}
-                            </Badge>
-                          </div>
+                  {!group.collapsed && (
+                    <ScrollableKanbanContainer>
+                      <div className="flex gap-3 p-2 min-w-max">
+                        {group.columns.map((column) => (
+                          <div key={column.status} className="flex-shrink-0 w-[280px] space-y-3">
+                            {/* Cabeçalho da Coluna */}
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-medium text-sm">{column.title}</h4>
+                              <Badge variant="outline" className="text-xs">
+                                {column.tickets.length}
+                              </Badge>
+                            </div>
 
-                          {/* Cards dos Tickets */}
-                          <div className="space-y-3 min-h-[100px]">
-                            {column.tickets.map((ticket) => (
-                              <TicketCard 
-                                key={ticket.id} 
-                                ticket={ticket} 
-                                groupId={`${groupIndex}-${column.status}`}
-                                disableDrag={true}
-                              />
-                            ))}
+                            {/* Cards dos Tickets */}
+                            <div className="space-y-2 min-h-[100px]">
+                              {column.tickets.map((ticket) => (
+                                <TicketCard 
+                                  key={ticket.id} 
+                                  ticket={ticket} 
+                                  groupId={`${groupIndex}-${column.status}`}
+                                  disableDrag={true}
+                                />
+                              ))}
+                              
+                              {column.tickets.length === 0 && (
+                                <div className="text-center text-muted-foreground text-sm py-4">
+                                  Sem tickets
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    </ScrollableKanbanContainer>
                   )}
                 </div>
               ))}
@@ -639,9 +741,9 @@ function DroppableColumn({
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
             >
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {filteredGroups.map((group, groupIndex) => (
-                  <div key={groupIndex} className="border rounded-lg overflow-hidden">
+                  <div key={groupIndex} className="border-2 rounded-xl overflow-hidden shadow-md">
                     {/* Cabeçalho do Grupo */}
                     <div 
                       className="flex justify-between items-center p-3 bg-muted cursor-pointer"
@@ -663,16 +765,18 @@ function DroppableColumn({
                     
                     {/* Conteúdo do Grupo (colunas e tickets) */}
                     {!group.collapsed && (
-                      <div className="flex gap-4 p-4">
-                        {group.columns.map((column, colIndex) => (
-                          <DroppableColumn
-                            key={`${groupIndex}-${colIndex}`}
-                            column={column}
-                            groupId={`group-${groupIndex}`}
-                            assigneeId={group.id}
-                          />
-                        ))}
-                      </div>
+                      <ScrollableKanbanContainer>
+                        <div className="flex gap-3 p-2 min-w-max">
+                          {group.columns.map((column, colIndex) => (
+                            <DroppableColumn
+                              key={`${groupIndex}-${colIndex}`}
+                              column={column}
+                              groupId={`group-${groupIndex}`}
+                              assigneeId={group.id}
+                            />
+                          ))}
+                        </div>
+                      </ScrollableKanbanContainer>
                     )}
                   </div>
                 ))}

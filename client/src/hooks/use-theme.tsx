@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // Função para converter HEX para HSL
 function hexToHsl(hex: string): string {
@@ -63,7 +63,10 @@ export interface ThemeColors {
 }
 
 export function useTheme() {
-
+  const [themeColors, setThemeColors] = useState<{
+    light: Record<string, string> | null;
+    dark: Record<string, string> | null;
+  }>({ light: null, dark: null });
 
   // Função para converter HEX para HSL
   const hexToHsl = (hex: string): string => {
@@ -166,6 +169,9 @@ export function useTheme() {
             localStorage.setItem('theme-colors-dark', JSON.stringify(darkTheme));
             localStorage.setItem('current-theme-id', themeId || 'custom');
 
+            // Salvar no estado para reatividade
+            setThemeColors({ light: lightTheme, dark: darkTheme });
+
             // Aplicar tema completo
             applyFullTheme(lightTheme, darkTheme);
             return;
@@ -237,6 +243,7 @@ export function useTheme() {
       try {
         const lightColors = JSON.parse(savedLightTheme);
         const darkColors = JSON.parse(savedDarkTheme);
+        setThemeColors({ light: lightColors, dark: darkColors });
         applyFullTheme(lightColors, darkColors);
       } catch (error) {
         console.warn('Erro ao aplicar tema completo do localStorage:', error);
@@ -256,6 +263,27 @@ export function useTheme() {
     // Depois carrega do servidor (mais atualizado)
     loadSavedTheme();
   }, []);
+
+  // Observa mudanças na classe 'dark' do HTML para reaplicar cores
+  useEffect(() => {
+    if (!themeColors.light || !themeColors.dark) return;
+
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          console.log('🌓 Mudança de tema detectada, reaplicando cores...');
+          applyFullTheme(themeColors.light!, themeColors.dark!);
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => observer.disconnect();
+  }, [themeColors]);
 
   return {
     setTheme,

@@ -174,9 +174,12 @@ export function ClientRichTextEditor({
   }
 
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Adicionar Comentário</CardTitle>
+    <Card className="w-full shadow-xl hover:shadow-2xl transition-all border-4 border-l-8 border-l-emerald-600 dark:border-l-emerald-400 bg-gradient-to-br from-white via-emerald-50/30 to-white dark:from-gray-800 dark:via-emerald-950/20 dark:to-gray-800">
+      <CardHeader className="pb-3 pt-4 bg-gradient-to-r from-emerald-50/80 to-transparent dark:from-emerald-950/30 dark:to-transparent border-b-2 border-emerald-100 dark:border-emerald-900">
+        <CardTitle className="text-lg font-bold flex items-center gap-2">
+          <Send className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          Adicionar Comentário
+        </CardTitle>
       </CardHeader>
       
       <CardContent className="space-y-4">

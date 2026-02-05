@@ -29,6 +29,11 @@ export const PERMISSIONS = {
   'users:delete': 'Deletar usuários',
   'users:manage_roles': 'Gerenciar roles de usuários',
   
+  // Permissões de equipes
+  'teams:view': 'Ver equipes',
+  'teams:manage': 'Gerenciar equipes e categorias',
+  'manage_teams': 'Gerenciar equipes (alias)',
+  
   // Permissões de empresa/clientes
   'companies:view_all': 'Ver todas as empresas',
   'companies:manage': 'Gerenciar empresas',
@@ -80,6 +85,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'users:edit',
     'users:delete',
     'users:manage_roles',
+    'teams:view',
+    'teams:manage',
+    'manage_teams',
     'companies:view_all',
     'companies:manage',
     'requesters:view_all',
@@ -111,6 +119,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'users:view_all',
     'users:create',
     'users:edit',
+    'teams:view',
+    'teams:manage',
+    'manage_teams',
     'companies:view_all',
     'companies:manage',
     'requesters:view_all',

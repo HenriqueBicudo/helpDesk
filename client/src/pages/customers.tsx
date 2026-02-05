@@ -9,12 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, Plus, Pencil, Trash2 } from 'lucide-react';
-import { Label } from '@/components/ui/label';
+import { Loader2, Search, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { getInitials } from '@/lib/utils';
-import { Requester, InsertRequester } from '@shared/schema';
+import { Company, InsertCompany } from '@shared/schema';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,45 +20,57 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { TicketsPagination } from '@/components/tickets/tickets-pagination';
 
 // Extended schema for form validation
-const requesterFormSchema = z.object({
-  fullName: z.string().min(3, { message: "Nome deve ter pelo menos 3 caracteres" }),
+const companyFormSchema = z.object({
+  name: z.string().min(3, { message: "Nome deve ter pelo menos 3 caracteres" }),
   email: z.string().email({ message: "Email inválido" }),
-  company: z.string().optional()
+  cnpj: z.string().optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  isActive: z.boolean().default(true),
+  hasActiveContract: z.boolean().default(false)
 });
 
-type CustomerFormValues = z.infer<typeof requesterFormSchema>;
+type CustomerFormValues = z.infer<typeof companyFormSchema>;
 
 export default function Customers() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<Requester | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Company | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
   // Query for fetching customers
-  const { data: customers, isLoading, error } = useQuery<Requester[]>({
-    queryKey: ['/api/requesters'],
+  const { data: customers, isLoading, error } = useQuery<Company[]>({
+    queryKey: ['/api/companies'],
   });
 
   // Form for adding new customer
   const form = useForm<CustomerFormValues>({
-    resolver: zodResolver(requesterFormSchema),
+    resolver: zodResolver(companyFormSchema),
     defaultValues: {
-      fullName: '',
+      name: '',
       email: '',
-      company: ''
+      cnpj: '',
+      phone: '',
+      address: '',
+      isActive: true,
+      hasActiveContract: false
     }
   });
 
   // Form for editing customer
   const editForm = useForm<CustomerFormValues>({
-    resolver: zodResolver(requesterFormSchema),
+    resolver: zodResolver(companyFormSchema),
     defaultValues: {
-      fullName: selectedCustomer?.fullName || '',
+      name: selectedCustomer?.name || '',
       email: selectedCustomer?.email || '',
-      company: selectedCustomer?.company || ''
+      cnpj: selectedCustomer?.cnpj || '',
+      phone: selectedCustomer?.phone || '',
+      address: selectedCustomer?.address || '',
+      isActive: selectedCustomer?.isActive ?? true,
+      hasActiveContract: selectedCustomer?.hasActiveContract ?? false
     }
   });
 
@@ -71,20 +81,24 @@ export default function Customers() {
   };
 
   // Set up form when opening edit dialog
-  const openEditDialog = (customer: Requester) => {
+  const openEditDialog = (customer: Company) => {
     setSelectedCustomer(customer);
     editForm.reset({
-      fullName: customer.fullName,
+      name: customer.name,
       email: customer.email,
-      company: customer.company || ''
+      cnpj: customer.cnpj || '',
+      phone: customer.phone || '',
+      address: customer.address || '',
+      isActive: customer.isActive ?? true,
+      hasActiveContract: customer.hasActiveContract ?? false
     });
     setIsEditDialogOpen(true);
   };
 
   // Mutation for adding a new customer
   const addCustomerMutation = useMutation({
-    mutationFn: async (data: InsertRequester) => {
-      const response = await fetch('/api/requesters', {
+    mutationFn: async (data: InsertCompany) => {
+      const response = await fetch('/api/companies', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -103,8 +117,72 @@ export default function Customers() {
         title: "Cliente adicionado",
         description: "O cliente foi adicionado com sucesso",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/requesters'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/companies'] });
       setIsAddDialogOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Mutation for editing a customer
+  const editCustomerMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: CustomerFormValues }) => {
+      const response = await fetch(`/api/companies/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erro ao atualizar cliente');
+      }
+      
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Cliente atualizado",
+        description: "O cliente foi atualizado com sucesso",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/companies'] });
+      setIsEditDialogOpen(false);
+      setSelectedCustomer(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Mutation for deleting a customer
+  const deleteCustomerMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/companies/${id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erro ao excluir cliente');
+      }
+      
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Cliente excluído",
+        description: "O cliente foi excluído com sucesso",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/companies'] });
     },
     onError: (error) => {
       toast({
@@ -120,11 +198,26 @@ export default function Customers() {
     addCustomerMutation.mutate(data);
   };
 
+  // Function to handle edit form submission
+  const onEditSubmit = (data: CustomerFormValues) => {
+    if (selectedCustomer) {
+      editCustomerMutation.mutate({ id: selectedCustomer.id!, data });
+    }
+  };
+
+  // Function to handle delete
+  const handleDelete = (customer: Company) => {
+    if (confirm(`Tem certeza que deseja excluir o cliente ${customer.name}?`)) {
+      deleteCustomerMutation.mutate(customer.id!);
+    }
+  };
+
   // Filter customers based on search query
   const filteredCustomers = customers?.filter(customer => 
-    customer.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     customer.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (customer.company && customer.company.toLowerCase().includes(searchQuery.toLowerCase()))
+    (customer.cnpj && customer.cnpj.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (customer.phone && customer.phone.toLowerCase().includes(searchQuery.toLowerCase()))
   ) || [];
 
   // Calculate pagination
@@ -181,12 +274,12 @@ export default function Customers() {
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                     <FormField
                       control={form.control}
-                      name="fullName"
+                      name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nome Completo</FormLabel>
+                          <FormLabel>Nome da Empresa</FormLabel>
                           <FormControl>
-                            <Input placeholder="Digite o nome do cliente" {...field} />
+                            <Input placeholder="Digite o nome da empresa" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -207,12 +300,38 @@ export default function Customers() {
                     />
                     <FormField
                       control={form.control}
-                      name="company"
+                      name="cnpj"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Empresa (opcional)</FormLabel>
+                          <FormLabel>CNPJ (opcional)</FormLabel>
                           <FormControl>
-                            <Input placeholder="Nome da empresa" {...field} />
+                            <Input placeholder="00.000.000/0000-00" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Telefone (opcional)</FormLabel>
+                          <FormControl>
+                            <Input placeholder="(00) 0000-0000" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="address"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Endereço (opcional)</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Endereço completo" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -263,9 +382,10 @@ export default function Customers() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Email</TableHead>
                         <TableHead>Empresa</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>CNPJ</TableHead>
+                        <TableHead>Telefone</TableHead>
                         <TableHead>Data de Cadastro</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
@@ -277,27 +397,42 @@ export default function Customers() {
                             <div className="flex items-center gap-3">
                               <Avatar>
                                 <AvatarFallback className="bg-primary/10">
-                                  {customer.avatarInitials}
+                                  {getInitials(customer.name)}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <p className="font-medium">{customer.fullName}</p>
+                                <p className="font-medium">{customer.name}</p>
                               </div>
                             </div>
                           </TableCell>
                           <TableCell>{customer.email}</TableCell>
                           <TableCell>
-                            {customer.company ? (
-                              <span>{customer.company}</span>
+                            {customer.cnpj ? (
+                              <span>{customer.cnpj}</span>
                             ) : (
                               <span className="text-gray-400">-</span>
                             )}
                           </TableCell>
                           <TableCell>
-                            {format(new Date(customer.createdAt), 'dd/MM/yyyy')}
+                            {customer.phone ? (
+                              <span>{customer.phone}</span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {format(new Date(customer.createdAt!), 'dd/MM/yyyy')}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => window.location.href = `/customers/${customer.id}`}
+                                title="Ver perfil"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -309,8 +444,14 @@ export default function Customers() {
                                 size="icon"
                                 variant="ghost"
                                 className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                                onClick={() => handleDelete(customer)}
+                                disabled={deleteCustomerMutation.isPending}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                {deleteCustomerMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
                               </Button>
                             </div>
                           </TableCell>
@@ -347,15 +488,15 @@ export default function Customers() {
               </DialogDescription>
             </DialogHeader>
             <Form {...editForm}>
-              <form className="space-y-4">
+              <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
                 <FormField
                   control={editForm.control}
-                  name="fullName"
+                  name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nome Completo</FormLabel>
+                      <FormLabel>Nome da Empresa</FormLabel>
                       <FormControl>
-                        <Input placeholder="Digite o nome do cliente" {...field} />
+                        <Input placeholder="Digite o nome da empresa" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -376,19 +517,51 @@ export default function Customers() {
                 />
                 <FormField
                   control={editForm.control}
-                  name="company"
+                  name="cnpj"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Empresa (opcional)</FormLabel>
+                      <FormLabel>CNPJ (opcional)</FormLabel>
                       <FormControl>
-                        <Input placeholder="Nome da empresa" {...field} />
+                        <Input placeholder="00.000.000/0000-00" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Telefone (opcional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="(00) 0000-0000" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="address"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Endereço (opcional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Endereço completo" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
                 <DialogFooter>
-                  <Button type="submit">
+                  <Button 
+                    type="submit"
+                    disabled={editCustomerMutation.isPending}
+                  >
+                    {editCustomerMutation.isPending && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
                     Atualizar Cliente
                   </Button>
                 </DialogFooter>

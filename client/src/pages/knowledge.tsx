@@ -10,12 +10,13 @@ import { Badge } from '@/components/ui/badge';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
+import { SimpleRichEditor } from '@/components/knowledge/simple-rich-editor';
+import { useAuth } from '@/hooks/use-auth';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
-import { FileText, Search, Plus, Trash2, Pencil, Clock, FileQuestion, Loader2, Tag, Eye, Save } from 'lucide-react';
+import { FileText, Search, Plus, Trash2, Pencil, Clock, FileQuestion, Loader2, Tag, Eye, Save, MessageSquare, Send } from 'lucide-react';
 
 // Artigos carregados via API em tempo de execução
 
@@ -31,6 +32,7 @@ type ArticleFormValues = z.infer<typeof articleFormSchema>;
 
 export default function Knowledge() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [articles, setArticles] = useState<any[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -38,6 +40,8 @@ export default function Knowledge() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
   const [activeCategory, setActiveCategory] = useState('all');
+  const [newComment, setNewComment] = useState('');
+  const [comments, setComments] = useState<any[]>([]);
   
   // Sempre carregar artigos via API (não usar mocks)
   useEffect(() => {
@@ -123,6 +127,23 @@ export default function Knowledge() {
   const openViewDialog = (article: any) => {
     setSelectedArticle(article);
     setIsViewDialogOpen(true);
+    setNewComment('');
+    
+    // Carregar comentários da API
+    (async () => {
+      try {
+        const resp = await fetch(`/api/knowledge/${article.id}/comments`);
+        if (resp.ok) {
+          const body = await resp.json();
+          setComments(body.data || []);
+        } else {
+          setComments([]);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar comentários:', err);
+        setComments([]);
+      }
+    })();
     
     // Increment view count
     // Chamar API para incrementar views
@@ -156,7 +177,7 @@ export default function Knowledge() {
             content: data.content,
             category: data.category,
             tags: data.tags ? data.tags.split(',').map(t => t.trim()) : [],
-            author: 'Ana Silva'
+            author: user?.name || user?.email || 'Usuário'
           })
         });
 
@@ -233,6 +254,48 @@ export default function Knowledge() {
     });
   };
 
+  // Extract plain text from HTML content
+  const extractPlainText = (html: string, maxLength: number = 100) => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    const text = tempDiv.textContent || tempDiv.innerText || '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  };
+
+  // Handle comment submission
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !user || !selectedArticle) return;
+    
+    try {
+      const resp = await fetch(`/api/knowledge/${selectedArticle.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ content: newComment.trim() })
+      });
+
+      if (!resp.ok) throw new Error('Erro ao adicionar comentário');
+      
+      const body = await resp.json();
+      if (body && body.data) {
+        setComments(prev => [body.data, ...prev]);
+        setNewComment('');
+        
+        toast({
+          title: 'Comentário adicionado',
+          description: 'Seu comentário foi publicado com sucesso'
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao adicionar comentário:', err);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível adicionar o comentário',
+        variant: 'destructive'
+      });
+    }
+  };
+
   return (
     <AppLayout title="Base de Conhecimento">
       <div className="p-6 space-y-6">
@@ -255,7 +318,7 @@ export default function Knowledge() {
                 Novo Artigo
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Criar Novo Artigo</DialogTitle>
                 <DialogDescription>
@@ -326,10 +389,10 @@ export default function Knowledge() {
                       <FormItem>
                         <FormLabel>Conteúdo</FormLabel>
                         <FormControl>
-                          <Textarea
+                          <SimpleRichEditor
+                            content={field.value}
+                            onChange={field.onChange}
                             placeholder="Digite o conteúdo do artigo..."
-                            className="min-h-[200px]"
-                            {...field}
                           />
                         </FormControl>
                         <FormMessage />
@@ -385,7 +448,7 @@ export default function Knowledge() {
                   </div>
                   <CardTitle className="text-lg">{article.title}</CardTitle>
                   <CardDescription className="line-clamp-2">
-                    {article.content}
+                    {extractPlainText(article.content, 150)}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex-grow">
@@ -434,7 +497,7 @@ export default function Knowledge() {
         
         {/* View Article Dialog */}
         <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-          <DialogContent className="sm:max-w-[700px]">
+          <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-xl">{selectedArticle?.title}</DialogTitle>
               <div className="flex items-center gap-2 mt-2">
@@ -444,40 +507,112 @@ export default function Knowledge() {
                 </span>
               </div>
             </DialogHeader>
-            <div className="space-y-4">
-              {/* Article content */}
-              <div className="prose prose-sm max-w-none">
-                {selectedArticle?.content.split('\n').map((paragraph: string, i: number) => (
-                  <p key={i}>{paragraph}</p>
-                ))}
-              </div>
+            <Tabs defaultValue="content" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="content">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Conteúdo
+                </TabsTrigger>
+                <TabsTrigger value="comments">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Comentários ({comments.length})
+                </TabsTrigger>
+              </TabsList>
               
-              <Separator />
-              
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-1">
-                  <Tag className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm text-gray-500">Tags:</span>
-                  <div className="flex flex-wrap gap-1 ml-1">
-                    {(selectedArticle?.tags || []).map((tag: string, index: number) => (
-                      <Badge key={index} variant="outline" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))}
+              <TabsContent value="content" className="space-y-4 mt-4">
+                {/* Article content */}
+                <div 
+                  className="prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ __html: selectedArticle?.content || '' }}
+                />
+                
+                <Separator />
+                
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1">
+                    <Tag className="h-4 w-4 text-gray-500" />
+                    <span className="text-sm text-gray-500">Tags:</span>
+                    <div className="flex flex-wrap gap-1 ml-1">
+                      {(selectedArticle?.tags || []).map((tag: string, index: number) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-sm text-gray-500">
+                    <span>Por:</span>
+                    <span className="font-medium">{selectedArticle?.author}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 text-sm text-gray-500">
-                  <span>Por:</span>
-                  <span className="font-medium">{selectedArticle?.author}</span>
+              </TabsContent>
+              
+              <TabsContent value="comments" className="space-y-4 mt-4">
+                {/* Add comment form */}
+                <div className="space-y-3">
+                  <Label>Adicionar Comentário</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Escreva seu comentário..."
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleAddComment();
+                        }
+                      }}
+                    />
+                    <Button 
+                      onClick={handleAddComment}
+                      disabled={!newComment.trim()}
+                      size="icon"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </div>
+                
+                <Separator />
+                
+                {/* Comments list */}
+                <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                  {comments.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p>Nenhum comentário ainda</p>
+                      <p className="text-sm">Seja o primeiro a comentar!</p>
+                    </div>
+                  ) : (
+                    comments.map((comment) => (
+                      <Card key={comment.id}>
+                        <CardHeader className="pb-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <CardTitle className="text-sm font-medium">
+                                {comment.author}
+                              </CardTitle>
+                              <CardDescription className="text-xs">
+                                {formatDate(comment.createdAt)}
+                              </CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <p className="text-sm">{comment.content}</p>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>
         
         {/* Edit Article Dialog */}
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Editar Artigo</DialogTitle>
               <DialogDescription>
@@ -548,10 +683,10 @@ export default function Knowledge() {
                     <FormItem>
                       <FormLabel>Conteúdo</FormLabel>
                       <FormControl>
-                        <Textarea
+                        <SimpleRichEditor
+                          content={field.value}
+                          onChange={field.onChange}
                           placeholder="Digite o conteúdo do artigo..."
-                          className="min-h-[200px]"
-                          {...field}
                         />
                       </FormControl>
                       <FormMessage />

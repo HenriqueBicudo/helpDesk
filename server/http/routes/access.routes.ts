@@ -3,6 +3,10 @@ import { storage } from '../../storage-interface';
 import { requireAuth, requirePermission } from '../../middleware/auth';
 import { hashPassword } from '../../auth';
 import { z } from 'zod';
+import { db } from '../../db-postgres';
+import { eq, or } from 'drizzle-orm';
+import * as schema from '@shared/drizzle-schema';
+import { userTeams } from '@shared/drizzle-schema';
 
 const router = Router();
 
@@ -511,7 +515,40 @@ router.delete('/teams/:id/members/:userId', requireAuth, requireAdmin, async (re
   }
 });
 
-// Buscar agentes disponíveis para adicionar em equipes
+// Buscar agentes disponíveis para adicionar em uma equipe específica
+router.get('/teams/:id/available-agents', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const teamId = Number(req.params.id);
+    
+    // Buscar todos os agentes helpdesk e managers
+    const allAgents = await db.select()
+      .from(schema.users)
+      .where(
+        or(
+          eq(schema.users.role, 'helpdesk_agent'),
+          eq(schema.users.role, 'helpdesk_manager'),
+          eq(schema.users.role, 'admin')
+        )
+      );
+    
+    // Buscar agentes que já estão nesta equipe
+    const teamMembers = await db.select({ userId: userTeams.userId })
+      .from(userTeams)
+      .where(eq(userTeams.teamId, teamId));
+    
+    const teamMemberIds = new Set(teamMembers.map(m => m.userId));
+    
+    // Retornar agentes que NÃO estão nesta equipe
+    const availableAgents = allAgents.filter(agent => !teamMemberIds.has(agent.id));
+    
+    res.json(availableAgents);
+  } catch (error) {
+    console.error('Erro ao buscar agentes disponíveis:', error);
+    res.status(500).json({ message: 'Erro ao buscar agentes disponíveis' });
+  }
+});
+
+// Buscar agentes disponíveis para adicionar em equipes (endpoint legado)
 router.get('/available-agents', requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {
     const agents = await storage.getAvailableAgents();

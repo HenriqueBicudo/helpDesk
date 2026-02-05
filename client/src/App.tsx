@@ -3,11 +3,12 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/hooks/use-auth";
+import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { ThemeProvider } from "next-themes";
 import { ThemeProvider as CustomThemeProvider } from "@/hooks/use-theme-provider";
 import { ProtectedRoute } from "@/lib/protected-route";
 import { RoleProtectedRoute, HelpdeskRoles, AdminRoles } from "@/lib/role-protected-route";
+import { ForcePasswordChangeDialog } from "@/components/auth/force-password-change-dialog";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Tickets from "@/pages/tickets";
@@ -24,6 +25,9 @@ import SlaManagerDashboard from "@/pages/sla-manager-dashboard";
 import SlaAdminDashboard from "@/pages/sla-admin-dashboard";
 import ClientProfile from "@/pages/client-profile";
 import MyTeam from "@/pages/my-team";
+import ApiDocs from "@/pages/api-docs";
+import Customers from "@/pages/customers";
+import CustomerProfile from "@/pages/customer-profile";
 
 function Router() {
   return (
@@ -75,6 +79,30 @@ function Router() {
       />
       <ProtectedRoute path="/profile" component={ClientProfile} />
       <ProtectedRoute path="/my-team" component={MyTeam} />
+      <ProtectedRoute 
+        path="/docs" 
+        component={() => (
+          <RoleProtectedRoute allowedRoles={HelpdeskRoles}>
+            <ApiDocs />
+          </RoleProtectedRoute>
+        )} 
+      />
+      <ProtectedRoute 
+        path="/customers" 
+        component={() => (
+          <RoleProtectedRoute allowedRoles={HelpdeskRoles}>
+            <Customers />
+          </RoleProtectedRoute>
+        )} 
+      />
+      <ProtectedRoute 
+        path="/customers/:id" 
+        component={() => (
+          <RoleProtectedRoute allowedRoles={HelpdeskRoles}>
+            <CustomerProfile />
+          </RoleProtectedRoute>
+        )} 
+      />
       
       {/* Rotas SLA */}
       <ProtectedRoute 
@@ -119,12 +147,36 @@ function App() {
           <AuthProvider>
             <TooltipProvider>
               <Toaster />
-              <Router />
+              <AppContent />
             </TooltipProvider>
           </AuthProvider>
         </CustomThemeProvider>
       </ThemeProvider>
     </QueryClientProvider>
+  );
+}
+
+function AppContent() {
+  const { user, isLoading } = useAuth();
+  
+  // Verificar se o usuário precisa trocar a senha
+  // Importante: usar dados do localStorage como fallback caso o user fique null
+  const userRequiresPasswordChange = user && (user as any).requiresPasswordChange === true;
+  
+  // Verificar se há dados de usuário recém-logado no sessionStorage
+  const sessionUser = sessionStorage.getItem('pending-password-change');
+  const hasPendingPasswordChange = sessionUser ? JSON.parse(sessionUser) : false;
+  
+  const requiresPasswordChange = !isLoading && (userRequiresPasswordChange || hasPendingPasswordChange);
+
+  return (
+    <>
+      {requiresPasswordChange ? (
+        <ForcePasswordChangeDialog open={true} />
+      ) : (
+        <Router />
+      )}
+    </>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Redirect } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useMutation } from "@tanstack/react-query";
 
 // Componentes UI
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Loader2, CheckCircle2, Mail } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function AuthPage() {
   // Tab ativa (login ou registro)
@@ -18,21 +20,50 @@ export default function AuthPage() {
   const [loginData, setLoginData] = useState({ username: "", password: "" });
   const [registerData, setRegisterData] = useState({
     username: "",
-    password: "",
-    confirmPassword: "",
     fullName: "",
     email: "",
+    company: "",
   });
+  
+  // Estado de sucesso do registro
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
   
   // Erros de validação
   const [registerErrors, setRegisterErrors] = useState<Record<string, string>>({});
   
-  // Hook de autenticação
-  const { user, isLoading, loginMutation, registerMutation } = useAuth();
+  // Hook de autenticação (DEVE vir antes de qualquer return condicional)
+  const { user, isLoading, loginMutation } = useAuth();
   
-  // Se já estiver autenticado, redireciona para a home
+  // Mutation para enviar solicitação de acesso
+  const requestAccessMutation = useMutation({
+    mutationFn: async (data: typeof registerData) => {
+      const response = await fetch('/api/request-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao enviar solicitação');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      setRegistrationSuccess(true);
+    },
+  });
+  
+  // Se já estiver autenticado, verificar se precisa trocar senha antes de redirecionar
   if (user && !isLoading) {
-    return <Redirect to="/" />;
+    const requiresPasswordChange = (user as any).requiresPasswordChange;
+    
+    // Só redirecionar se NÃO precisar trocar senha
+    if (!requiresPasswordChange) {
+      return <Redirect to="/" />;
+    }
+    // Se precisar trocar senha, ficar na página de auth para mostrar o dialog
   }
   
   // Função para fazer login
@@ -40,8 +71,6 @@ export default function AuthPage() {
     e.preventDefault();
     loginMutation.mutate(loginData);
   };
-  
-  // Função para validar o formulário de registro
   const validateRegisterForm = (): boolean => {
     const errors: Record<string, string> = {};
     
@@ -59,27 +88,20 @@ export default function AuthPage() {
       errors.email = "E-mail inválido";
     }
     
-    if (!registerData.password) {
-      errors.password = "Senha é obrigatória";
-    } else if (registerData.password.length < 6) {
-      errors.password = "Senha deve ter pelo menos 6 caracteres";
-    }
-    
-    if (registerData.password !== registerData.confirmPassword) {
-      errors.confirmPassword = "Senhas não conferem";
+    if (!registerData.company) {
+      errors.company = "Empresa é obrigatória";
     }
     
     setRegisterErrors(errors);
     return Object.keys(errors).length === 0;
   };
   
-  // Função para fazer registro
+  // Função para enviar solicitação de registro
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (validateRegisterForm()) {
-      const { confirmPassword, ...registrationData } = registerData;
-      registerMutation.mutate(registrationData);
+      requestAccessMutation.mutate(registerData);
     }
   };
   
@@ -89,7 +111,7 @@ export default function AuthPage() {
       <div className="w-full md:w-1/2 flex items-center justify-center p-5">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold">HelpDesk</h1>
+            <h1 className="text-3xl font-bold">SCC - TOTVS Curitiba</h1>
             <p className="text-muted-foreground">Sistema de gerenciamento de chamados</p>
           </div>
           
@@ -153,101 +175,154 @@ export default function AuthPage() {
             <TabsContent value="register">
               <Card>
                 <CardHeader>
-                  <CardTitle>Crie sua conta</CardTitle>
+                  <CardTitle>Solicite seu acesso</CardTitle>
                   <CardDescription>
-                    Registre-se para acessar o sistema
+                    Preencha os dados abaixo e aguarde a aprovação por email
                   </CardDescription>
                 </CardHeader>
-                <form onSubmit={handleRegister}>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="register-username">Nome de usuário</Label>
-                      <Input
-                        id="register-username"
-                        type="text"
-                        placeholder="Digite um nome de usuário"
-                        value={registerData.username}
-                        onChange={(e) => setRegisterData({ ...registerData, username: e.target.value })}
-                        required
-                      />
-                      {registerErrors.username && (
-                        <p className="text-sm text-destructive">{registerErrors.username}</p>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="register-fullname">Nome completo</Label>
-                      <Input
-                        id="register-fullname"
-                        type="text"
-                        placeholder="Digite seu nome completo"
-                        value={registerData.fullName}
-                        onChange={(e) => setRegisterData({ ...registerData, fullName: e.target.value })}
-                        required
-                      />
-                      {registerErrors.fullName && (
-                        <p className="text-sm text-destructive">{registerErrors.fullName}</p>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="register-email">E-mail</Label>
-                      <Input
-                        id="register-email"
-                        type="email"
-                        placeholder="Digite seu e-mail"
-                        value={registerData.email}
-                        onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
-                        required
-                      />
-                      {registerErrors.email && (
-                        <p className="text-sm text-destructive">{registerErrors.email}</p>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="register-password">Senha</Label>
-                      <Input
-                        id="register-password"
-                        type="password"
-                        placeholder="Digite uma senha"
-                        value={registerData.password}
-                        onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
-                        required
-                      />
-                      {registerErrors.password && (
-                        <p className="text-sm text-destructive">{registerErrors.password}</p>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="register-confirm-password">Confirme a senha</Label>
-                      <Input
-                        id="register-confirm-password"
-                        type="password"
-                        placeholder="Confirme sua senha"
-                        value={registerData.confirmPassword}
-                        onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
-                        required
-                      />
-                      {registerErrors.confirmPassword && (
-                        <p className="text-sm text-destructive">{registerErrors.confirmPassword}</p>
-                      )}
+                
+                {registrationSuccess ? (
+                  // Mensagem de sucesso
+                  <CardContent className="space-y-4 py-8">
+                    <div className="flex flex-col items-center text-center space-y-4">
+                      <div className="rounded-full bg-green-100 p-4">
+                        <CheckCircle2 className="h-12 w-12 text-green-600" />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <h3 className="text-xl font-semibold">Solicitação Enviada!</h3>
+                        <p className="text-muted-foreground">
+                          Recebemos sua solicitação de acesso ao sistema.
+                        </p>
+                      </div>
+                      
+                      <Alert className="text-left">
+                        <Mail className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>Aguarde o contato:</strong> Você receberá um email com suas 
+                          credenciais de acesso assim que sua conta for aprovada e criada pelo administrador.
+                        </AlertDescription>
+                      </Alert>
+                      
+                      <div className="pt-4 space-y-2 text-sm text-muted-foreground">
+                        <p>
+                          <strong>Dados enviados:</strong>
+                        </p>
+                        <ul className="space-y-1">
+                          <li>👤 {registerData.fullName}</li>
+                          <li>📧 {registerData.email}</li>
+                          <li>🏢 {registerData.company}</li>
+                        </ul>
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setRegistrationSuccess(false);
+                          setActiveTab("login");
+                          setRegisterData({ username: "", fullName: "", email: "", company: "" });
+                        }}
+                        className="mt-4"
+                      >
+                        Voltar para Login
+                      </Button>
                     </div>
                   </CardContent>
-                  <CardFooter>
-                    <Button type="submit" className="w-full" disabled={registerMutation.isPending}>
-                      {registerMutation.isPending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Registrando...
-                        </>
-                      ) : (
-                        "Registrar"
+                ) : (
+                  // Formulário de registro
+                  <form onSubmit={handleRegister}>
+                    <CardContent className="space-y-4">
+                      {requestAccessMutation.isError && (
+                        <Alert variant="destructive">
+                          <AlertDescription>
+                            {requestAccessMutation.error instanceof Error 
+                              ? requestAccessMutation.error.message 
+                              : 'Erro ao enviar solicitação'}
+                          </AlertDescription>
+                        </Alert>
                       )}
-                    </Button>
-                  </CardFooter>
-                </form>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="register-fullname">Nome completo *</Label>
+                        <Input
+                          id="register-fullname"
+                          type="text"
+                          placeholder="Digite seu nome completo"
+                          value={registerData.fullName}
+                          onChange={(e) => setRegisterData({ ...registerData, fullName: e.target.value })}
+                          required
+                        />
+                        {registerErrors.fullName && (
+                          <p className="text-sm text-destructive">{registerErrors.fullName}</p>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="register-username">Nome de usuário *</Label>
+                        <Input
+                          id="register-username"
+                          type="text"
+                          placeholder="Digite um nome de usuário"
+                          value={registerData.username}
+                          onChange={(e) => setRegisterData({ ...registerData, username: e.target.value })}
+                          required
+                        />
+                        {registerErrors.username && (
+                          <p className="text-sm text-destructive">{registerErrors.username}</p>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="register-email">E-mail *</Label>
+                        <Input
+                          id="register-email"
+                          type="email"
+                          placeholder="Digite seu e-mail"
+                          value={registerData.email}
+                          onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
+                          required
+                        />
+                        {registerErrors.email && (
+                          <p className="text-sm text-destructive">{registerErrors.email}</p>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="register-company">Empresa vinculada *</Label>
+                        <Input
+                          id="register-company"
+                          type="text"
+                          placeholder="Digite o nome da sua empresa"
+                          value={registerData.company}
+                          onChange={(e) => setRegisterData({ ...registerData, company: e.target.value })}
+                          required
+                        />
+                        {registerErrors.company && (
+                          <p className="text-sm text-destructive">{registerErrors.company}</p>
+                        )}
+                      </div>
+                      
+                      <Alert>
+                        <Mail className="h-4 w-4" />
+                        <AlertDescription>
+                          Após o envio, você receberá suas credenciais de acesso por email.
+                        </AlertDescription>
+                      </Alert>
+                    </CardContent>
+                    <CardFooter>
+                      <Button type="submit" className="w-full" disabled={requestAccessMutation.isPending}>
+                        {requestAccessMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Enviando solicitação...
+                          </>
+                        ) : (
+                          "Solicitar Acesso"
+                        )}
+                      </Button>
+                    </CardFooter>
+                  </form>
+                )}
               </Card>
             </TabsContent>
           </Tabs>
@@ -257,7 +332,7 @@ export default function AuthPage() {
       {/* Seção de apresentação (lado direito) */}
       <div className="hidden md:flex md:w-1/2 bg-primary text-primary-foreground">
         <div className="flex flex-col justify-center px-8 lg:px-16">
-          <h2 className="text-4xl font-bold mb-6">Bem-vindo ao HelpDesk</h2>
+          <h2 className="text-4xl font-bold mb-6">Bem-vindo ao SCC TOTVS Curitiba</h2>
           <p className="text-xl mb-8">
             Gerencie seus chamados de suporte de forma eficiente e organizada.
           </p>

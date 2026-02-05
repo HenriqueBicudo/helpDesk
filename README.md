@@ -104,7 +104,36 @@ Para adicionar novas funcionalidades ao sistema:
 2. **Componentes UI:** Explore os componentes disponíveis em `client/src/components/ui/`
 3. **API:** Expanda as rotas em `server/routes.ts` e implemente novos métodos em `server/storage.ts`
 
-## 📞 Suporte
+## � Google Meet Integration
+
+O sistema possui integração com Google Calendar para criar reuniões agendadas diretamente dos tickets!
+
+### Como configurar:
+
+1. Siga o guia completo em [GOOGLE_MEET_SETUP.md](./GOOGLE_MEET_SETUP.md)
+2. Configure as variáveis de ambiente no arquivo `.env`:
+   ```env
+   GOOGLE_CLIENT_ID=seu_client_id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=seu_client_secret
+   GOOGLE_REDIRECT_URI=http://localhost:5000/api/google/callback
+   GOOGLE_REFRESH_TOKEN=seu_refresh_token
+   ```
+3. Reinicie o servidor
+
+### Como usar:
+
+1. Abra um ticket
+2. Clique no botão **Google Meet** no cabeçalho
+3. Preencha data, horário e duração
+4. Clique em **Criar Reunião**
+5. Pronto! Todos os participantes receberão convites por email 📧
+
+**Participantes incluídos automaticamente:**
+- Solicitante do ticket
+- Agente responsável (se atribuído)
+- Pessoas em cópia (CC)
+
+## �📞 Suporte
 
 Em caso de dúvidas ou problemas, por favor abra uma issue neste repositório ou entre em contato com o administrador do sistema.
 

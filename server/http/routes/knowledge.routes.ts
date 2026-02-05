@@ -1,18 +1,19 @@
 import { Router } from 'express';
+import { db } from '../../db-postgres';
+import { knowledgeArticles, knowledgeComments } from '@shared/drizzle-schema';
+import { eq, desc, sql } from 'drizzle-orm';
 
 export const knowledgeRoutes = Router();
-
-// In-memory store para artigos - substitua por storage/DB em produção
-let articlesStore: any[] = [
-  // Inicialmente vazio para forçar uso via API
-];
-
-let nextId = 1;
 
 // GET /api/knowledge - lista todos os artigos
 knowledgeRoutes.get('/', async (req, res) => {
   try {
-    res.json({ success: true, data: articlesStore });
+    const articles = await db
+      .select()
+      .from(knowledgeArticles)
+      .orderBy(desc(knowledgeArticles.createdAt));
+    
+    res.json({ success: true, data: articles });
   } catch (error) {
     console.error('Erro ao listar artigos:', error);
     res.status(500).json({ success: false, error: 'Erro interno' });
@@ -23,22 +24,24 @@ knowledgeRoutes.get('/', async (req, res) => {
 knowledgeRoutes.post('/', async (req, res) => {
   try {
     const payload = req.body;
+    const user = (req as any).user;
 
-    const newArticle = {
-      id: nextId++,
-      title: payload.title || 'Sem título',
-      content: payload.content || '',
-      category: payload.category || 'Geral',
-      tags: Array.isArray(payload.tags) ? payload.tags : (payload.tags ? String(payload.tags).split(',').map((t: string) => t.trim()) : []),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      author: payload.author || 'Sistema',
-      views: payload.views || 0,
-    };
+    const newArticle = await db
+      .insert(knowledgeArticles)
+      .values({
+        title: payload.title || 'Sem título',
+        content: payload.content || '',
+        category: payload.category || 'Geral',
+        tags: Array.isArray(payload.tags) 
+          ? payload.tags 
+          : (payload.tags ? String(payload.tags).split(',').map((t: string) => t.trim()) : []),
+        author: user?.fullName || payload.author || 'Sistema',
+        authorId: user?.id,
+        views: 0,
+      })
+      .returning();
 
-    articlesStore.push(newArticle);
-
-    res.status(201).json({ success: true, data: newArticle });
+    res.status(201).json({ success: true, data: newArticle[0] });
   } catch (error) {
     console.error('Erro ao criar artigo:', error);
     res.status(500).json({ success: false, error: 'Erro interno' });
@@ -49,21 +52,32 @@ knowledgeRoutes.post('/', async (req, res) => {
 knowledgeRoutes.put('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const idx = articlesStore.findIndex(a => a.id === id);
-    if (idx === -1) return res.status(404).json({ success: false, error: 'Artigo não encontrado' });
-
     const payload = req.body;
-    const updated = {
-      ...articlesStore[idx],
-      title: payload.title ?? articlesStore[idx].title,
-      content: payload.content ?? articlesStore[idx].content,
-      category: payload.category ?? articlesStore[idx].category,
-      tags: Array.isArray(payload.tags) ? payload.tags : (payload.tags ? String(payload.tags).split(',').map((t: string) => t.trim()) : articlesStore[idx].tags),
-      updatedAt: new Date().toISOString(),
+
+    const updateData: any = {
+      updatedAt: new Date(),
     };
 
-    articlesStore[idx] = updated;
-    res.json({ success: true, data: updated });
+    if (payload.title !== undefined) updateData.title = payload.title;
+    if (payload.content !== undefined) updateData.content = payload.content;
+    if (payload.category !== undefined) updateData.category = payload.category;
+    if (payload.tags !== undefined) {
+      updateData.tags = Array.isArray(payload.tags) 
+        ? payload.tags 
+        : (payload.tags ? String(payload.tags).split(',').map((t: string) => t.trim()) : []);
+    }
+
+    const updated = await db
+      .update(knowledgeArticles)
+      .set(updateData)
+      .where(eq(knowledgeArticles.id, id))
+      .returning();
+
+    if (updated.length === 0) {
+      return res.status(404).json({ success: false, error: 'Artigo não encontrado' });
+    }
+
+    res.json({ success: true, data: updated[0] });
   } catch (error) {
     console.error('Erro ao atualizar artigo:', error);
     res.status(500).json({ success: false, error: 'Erro interno' });
@@ -74,10 +88,16 @@ knowledgeRoutes.put('/:id', async (req, res) => {
 knowledgeRoutes.delete('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const idx = articlesStore.findIndex(a => a.id === id);
-    if (idx === -1) return res.status(404).json({ success: false, error: 'Artigo não encontrado' });
 
-    articlesStore.splice(idx, 1);
+    const deleted = await db
+      .delete(knowledgeArticles)
+      .where(eq(knowledgeArticles.id, id))
+      .returning();
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ success: false, error: 'Artigo não encontrado' });
+    }
+
     res.status(204).end();
   } catch (error) {
     console.error('Erro ao deletar artigo:', error);
@@ -89,15 +109,110 @@ knowledgeRoutes.delete('/:id', async (req, res) => {
 knowledgeRoutes.patch('/:id/views', async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const idx = articlesStore.findIndex(a => a.id === id);
-    if (idx === -1) return res.status(404).json({ success: false, error: 'Artigo não encontrado' });
 
-    articlesStore[idx].views = (articlesStore[idx].views || 0) + 1;
-    articlesStore[idx].updatedAt = new Date().toISOString();
+    const updated = await db
+      .update(knowledgeArticles)
+      .set({ 
+        views: sql`${knowledgeArticles.views} + 1`,
+        updatedAt: new Date()
+      })
+      .where(eq(knowledgeArticles.id, id))
+      .returning();
 
-    res.json({ success: true, data: articlesStore[idx] });
+    if (updated.length === 0) {
+      return res.status(404).json({ success: false, error: 'Artigo não encontrado' });
+    }
+
+    res.json({ success: true, data: updated[0] });
   } catch (error) {
     console.error('Erro ao incrementar views:', error);
+    res.status(500).json({ success: false, error: 'Erro interno' });
+  }
+});
+
+// GET /api/knowledge/:id/comments - lista comentários de um artigo
+knowledgeRoutes.get('/:id/comments', async (req, res) => {
+  try {
+    const articleId = Number(req.params.id);
+
+    const comments = await db
+      .select()
+      .from(knowledgeComments)
+      .where(eq(knowledgeComments.articleId, articleId))
+      .orderBy(desc(knowledgeComments.createdAt));
+
+    res.json({ success: true, data: comments });
+  } catch (error) {
+    console.error('Erro ao listar comentários:', error);
+    res.status(500).json({ success: false, error: 'Erro interno' });
+  }
+});
+
+// POST /api/knowledge/:id/comments - adiciona um comentário
+knowledgeRoutes.post('/:id/comments', async (req, res) => {
+  try {
+    const articleId = Number(req.params.id);
+    const user = (req as any).user;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, error: 'Conteúdo do comentário é obrigatório' });
+    }
+
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Usuário não autenticado' });
+    }
+
+    const newComment = await db
+      .insert(knowledgeComments)
+      .values({
+        articleId,
+        authorId: user.id,
+        author: user.fullName || user.username,
+        content: content.trim(),
+      })
+      .returning();
+
+    res.status(201).json({ success: true, data: newComment[0] });
+  } catch (error) {
+    console.error('Erro ao criar comentário:', error);
+    res.status(500).json({ success: false, error: 'Erro interno' });
+  }
+});
+
+// DELETE /api/knowledge/:articleId/comments/:commentId - remove um comentário
+knowledgeRoutes.delete('/:articleId/comments/:commentId', async (req, res) => {
+  try {
+    const commentId = Number(req.params.commentId);
+    const user = (req as any).user;
+
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Usuário não autenticado' });
+    }
+
+    // Buscar o comentário para verificar se o usuário é o autor
+    const [comment] = await db
+      .select()
+      .from(knowledgeComments)
+      .where(eq(knowledgeComments.id, commentId))
+      .limit(1);
+
+    if (!comment) {
+      return res.status(404).json({ success: false, error: 'Comentário não encontrado' });
+    }
+
+    // Apenas o autor ou admin pode deletar
+    if (comment.authorId !== user.id && user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Sem permissão para deletar este comentário' });
+    }
+
+    await db
+      .delete(knowledgeComments)
+      .where(eq(knowledgeComments.id, commentId));
+
+    res.status(204).end();
+  } catch (error) {
+    console.error('Erro ao deletar comentário:', error);
     res.status(500).json({ success: false, error: 'Erro interno' });
   }
 });

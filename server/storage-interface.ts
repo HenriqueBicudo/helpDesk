@@ -149,6 +149,7 @@ export interface IStorage {
   getRequesterByEmail(email: string): Promise<Requester | undefined>;
   createRequester(requester: InsertRequester): Promise<Requester>;
   updateRequester(id: number, updates: Partial<Requester>): Promise<Requester | undefined>;
+  deleteRequester(id: number): Promise<void>;
   getAllRequesters(): Promise<Requester[]>;
   
   // Ticket methods
@@ -239,6 +240,12 @@ export interface IStorage {
   deleteContract(id: string): Promise<boolean>;
   getContractsForTicket(ticketId: number): Promise<ContractUI[]>;
   getContractsByCompany(companyId: number): Promise<ContractUI[]>;
+  
+  // Requester notes methods
+  getRequesterNotes(requesterId: number): Promise<any[]>;
+  createRequesterNote(note: { requesterId: number; content: string; authorId: number; isImportant?: boolean }): Promise<any>;
+  updateRequesterNote(id: number, updates: { content?: string; isImportant?: boolean }): Promise<any | undefined>;
+  deleteRequesterNote(id: number): Promise<void>;
 }
 
 // Import storage implementations

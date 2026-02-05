@@ -5,13 +5,17 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage-interface";
+import { db } from "./db-postgres";
+import { eq } from "drizzle-orm";
+import { userTeams, teams } from "@shared/drizzle-schema";
 import { 
   insertTicketSchema, 
   insertRequesterSchema, 
   insertUserSchema, 
   insertEmailTemplateSchema,
   emailTemplateTypeSchema,
-  updateSystemSettingsSchema
+  updateSystemSettingsSchema,
+  insertCompanySchema
 } from "@shared/schema";
 import { z } from "zod";
 import { setupAuth } from "./auth";
@@ -27,12 +31,22 @@ import { emailService } from "./email-service";
 import { ContractService } from "./services/contract.service";
 import { slaEngineService } from "./services/slaEngine.service";
 import { slaV2Service } from "./services/slaV2.service";
+import { automationService } from "./services/automation.service";
 import { contractSimpleRoutes } from "./http/routes/contract-simple.routes";
 import { slaRoutes } from "./http/routes/sla.routes";
 import slaTemplateRoutes from "./http/routes/sla-templates.routes";
 import { slaV2Routes } from "./http/routes/sla-v2.routes";
 import { accessRoutes } from "./http/routes/access.routes";
 import { knowledgeRoutes } from './http/routes/knowledge.routes';
+import ticketParticipantsRoutes from './http/routes/ticket-participants.routes';
+import emailWebhookRoutes from './http/routes/email-webhook.routes';
+import { settingsRoutes } from './http/routes/settings.routes';
+import { tagsRoutes } from './http/routes/tags.routes';
+import automationTriggersRoutes from './http/routes/automation-triggers.routes';
+import teamCategoriesRoutes from './http/routes/team-categories.routes';
+import servicesRoutes from './http/routes/services.routes';
+import { resetUserPassword } from './routes/auth-reset';
+// import googleMeetRoutes from './http/routes/google-meet.routes'; // DESABILITADO
 
 // Configurar multer para upload de arquivos
 const uploadDir = path.join(process.cwd(), 'uploads');
@@ -76,6 +90,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Configurar autenticação
   setupAuth(app);
   
+  // Rota adicional para resetar senha de usuário (admin/manager)
+  app.post('/api/auth/reset-user-password', resetUserPassword);
+  
   // API routes prefix
   const apiPrefix = '/api';
 
@@ -85,6 +102,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
   app.get(`${apiPrefix}/health`, (req: Request, res: Response) => {
     res.json({ status: 'OK', timestamp: new Date() });
+  });
+
+  // Rota para solicitação de registro (sem criar conta)
+  app.post(`${apiPrefix}/request-access`, async (req: Request, res: Response) => {
+    try {
+      const { username, fullName, email, company } = req.body;
+      
+      // Validações básicas
+      if (!username || !fullName || !email || !company) {
+        return res.status(400).json({ 
+          message: 'Todos os campos são obrigatórios' 
+        });
+      }
+      
+      if (!/\S+@\S+\.\S+/.test(email)) {
+        return res.status(400).json({ 
+          message: 'E-mail inválido' 
+        });
+      }
+      
+      // Verificar se já existe usuário com esse email ou username
+      const existingUsers = await storage.getAllUsers();
+      const emailExists = existingUsers.some((u: any) => u.email === email);
+      const usernameExists = existingUsers.some((u: any) => u.username === username);
+      
+      if (emailExists || usernameExists) {
+        return res.status(409).json({ 
+          message: emailExists 
+            ? 'Este e-mail já está em uso. Entre em contato com o administrador.' 
+            : 'Este nome de usuário já está em uso. Tente outro.'
+        });
+      }
+      
+      // Enviar email para o administrador
+      const adminEmail = 'henrique.bicudo@totvs.com.br';
+      const timestamp = new Date().toLocaleString('pt-BR');
+      
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+            🔔 Nova Solicitação de Acesso - HelpDesk
+          </h2>
+          
+          <p>Uma nova solicitação de acesso ao sistema foi recebida:</p>
+          
+          <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold; width: 150px;">👤 Nome Completo:</td>
+                <td style="padding: 8px 0;">${fullName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">🔑 Usuário:</td>
+                <td style="padding: 8px 0;">${username}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">📧 E-mail:</td>
+                <td style="padding: 8px 0;">${email}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">🏢 Empresa:</td>
+                <td style="padding: 8px 0;">${company}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">🕐 Data/Hora:</td>
+                <td style="padding: 8px 0;">${timestamp}</td>
+              </tr>
+            </table>
+          </div>
+          
+          <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0;"><strong>⚠️ Ação Necessária:</strong></p>
+            <p style="margin: 10px 0 0 0;">
+              Para conceder acesso a este usuário, você precisa:
+              <ol style="margin: 10px 0;">
+                <li>Criar a conta manualmente no sistema</li>
+                <li>Definir uma senha temporária</li>
+                <li>Enviar as credenciais para o usuário</li>
+              </ol>
+            </p>
+          </div>
+          
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+          
+          <p style="color: #6b7280; font-size: 12px; text-align: center;">
+            Este é um email automático do Sistema HelpDesk TOTVS Curitiba<br>
+            Enviado em ${timestamp}
+          </p>
+        </div>
+      `;
+      
+      const emailSent = await emailService.sendEmail({
+        to: adminEmail,
+        from: adminEmail,
+        subject: `🔔 Nova Solicitação de Acesso - ${fullName}`,
+        html: emailHtml
+      });
+      
+      if (emailSent) {
+        console.log(`✅ Solicitação de acesso recebida de ${fullName} (${email})`);
+        res.json({ 
+          success: true,
+          message: 'Solicitação enviada com sucesso!' 
+        });
+      } else {
+        throw new Error('Falha ao enviar email');
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao processar solicitação de acesso:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Erro ao processar solicitação. Tente novamente mais tarde.' 
+      });
+    }
   });
 
   // Contract routes (modular) 
@@ -102,6 +234,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Knowledge (Base de Conhecimento) routes
   app.use(`${apiPrefix}/knowledge`, knowledgeRoutes);
+
+  // Tags routes
+  app.use(`${apiPrefix}/tags`, tagsRoutes);
+
+  // Google Meet routes (criar reuniões para tickets) - DESABILITADO
+  // app.use(`${apiPrefix}`, googleMeetRoutes);
+
+  // Ticket participants routes (solicitantes e CC)
+  app.use(`${apiPrefix}/tickets`, ticketParticipantsRoutes);
+
+  // Email webhook routes (receber respostas via email)
+  app.use(`${apiPrefix}/email-webhook`, emailWebhookRoutes);
+
+  // Settings routes (configurações do sistema)
+  app.use(`${apiPrefix}/settings`, settingsRoutes);
+
+  // Automation triggers routes (gatilhos personalizados)
+  app.use(`${apiPrefix}/automation-triggers`, automationTriggersRoutes);
+
+  // Team categories routes (categorias hierárquicas de equipes)
+  app.use(`${apiPrefix}/team-categories`, teamCategoriesRoutes);
+
+  // Services routes (serviços hierárquicos)
+  app.use(`${apiPrefix}/services`, servicesRoutes);
 
   // Rota específica para contratos ativos de um solicitante (para uso no frontend)
   app.get(`${apiPrefix}/requesters/:requesterId/contracts`, async (req: Request, res: Response) => {
@@ -156,6 +312,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching users:', error);
       res.status(500).json({ message: 'An error occurred fetching users' });
+    }
+  });
+  
+  // Endpoint para retornar as equipes de um usuário específico
+  app.get(`${apiPrefix}/users/:userId/teams`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const user = req.user as any;
+      
+      // Verificar permissões: usuário pode ver apenas suas próprias equipes, 
+      // a menos que seja admin ou manager
+      if (userId !== user.id && user.role !== 'admin' && user.role !== 'helpdesk_manager') {
+        return res.status(403).json({ message: 'Sem permissão para visualizar equipes de outros usuários' });
+      }
+      
+      const result = await db.select({
+        id: teams.id,
+        name: teams.name,
+        description: teams.description,
+        isActive: teams.isActive,
+        isPrimary: userTeams.isPrimary,
+        joinedAt: userTeams.joinedAt
+      })
+      .from(userTeams)
+      .innerJoin(teams, eq(userTeams.teamId, teams.id))
+      .where(eq(userTeams.userId, userId));
+      
+      res.json(result);
+    } catch (error) {
+      console.error('Error fetching user teams:', error);
+      res.status(500).json({ message: 'An error occurred fetching user teams' });
     }
   });
   
@@ -252,6 +439,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         res.status(500).json({ message: 'An error occurred creating the requester' });
       }
+    }
+  });
+
+  app.get(`${apiPrefix}/requesters/:id`, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const requester = await storage.getRequester(id);
+      
+      if (!requester) {
+        return res.status(404).json({ message: 'Requester not found' });
+      }
+      
+      res.json(requester);
+    } catch (error) {
+      console.error('Error fetching requester:', error);
+      res.status(500).json({ message: 'An error occurred fetching the requester' });
+    }
+  });
+
+  app.put(`${apiPrefix}/requesters/:id`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const data = insertRequesterSchema.partial().parse(req.body);
+      const requester = await storage.updateRequester(id, data);
+      res.json(requester);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: 'Validation error', errors: error.errors });
+      } else {
+        res.status(500).json({ message: 'An error occurred updating the requester' });
+      }
+    }
+  });
+
+  app.delete(`${apiPrefix}/requesters/:id`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteRequester(id);
+      res.json({ message: 'Requester deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ message: 'An error occurred deleting the requester' });
+    }
+  });
+
+  // Requester notes routes (apenas para helpdesk)
+  app.get(`${apiPrefix}/requesters/:id/notes`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const requesterId = parseInt(req.params.id);
+      const user = req.user as any;
+
+      // Apenas helpdesk pode ver anotações
+      if (!['admin', 'helpdesk_manager', 'helpdesk_agent'].includes(user.role)) {
+        return res.status(403).json({ message: 'Acesso negado' });
+      }
+
+      const notes = await storage.getRequesterNotes(requesterId);
+      res.json(notes);
+    } catch (error) {
+      console.error('Error fetching requester notes:', error);
+      res.status(500).json({ message: 'An error occurred fetching notes' });
+    }
+  });
+
+  app.post(`${apiPrefix}/requesters/:id/notes`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const requesterId = parseInt(req.params.id);
+      const user = req.user as any;
+      const { content, isImportant } = req.body;
+
+      // Apenas helpdesk pode criar anotações
+      if (!['admin', 'helpdesk_manager', 'helpdesk_agent'].includes(user.role)) {
+        return res.status(403).json({ message: 'Acesso negado' });
+      }
+
+      if (!content || content.trim() === '') {
+        return res.status(400).json({ message: 'Content is required' });
+      }
+
+      const note = await storage.createRequesterNote({
+        requesterId,
+        content: content.trim(),
+        authorId: user.id,
+        isImportant: isImportant || false,
+      });
+
+      res.status(201).json(note);
+    } catch (error) {
+      console.error('Error creating requester note:', error);
+      res.status(500).json({ message: 'An error occurred creating the note' });
+    }
+  });
+
+  app.put(`${apiPrefix}/requesters/notes/:noteId`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const noteId = parseInt(req.params.noteId);
+      const user = req.user as any;
+      const { content, isImportant } = req.body;
+
+      // Apenas helpdesk pode editar anotações
+      if (!['admin', 'helpdesk_manager', 'helpdesk_agent'].includes(user.role)) {
+        return res.status(403).json({ message: 'Acesso negado' });
+      }
+
+      const updates: any = {};
+      if (content !== undefined) updates.content = content.trim();
+      if (isImportant !== undefined) updates.isImportant = isImportant;
+
+      const note = await storage.updateRequesterNote(noteId, updates);
+      
+      if (!note) {
+        return res.status(404).json({ message: 'Note not found' });
+      }
+
+      res.json(note);
+    } catch (error) {
+      console.error('Error updating requester note:', error);
+      res.status(500).json({ message: 'An error occurred updating the note' });
+    }
+  });
+
+  app.delete(`${apiPrefix}/requesters/notes/:noteId`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const noteId = parseInt(req.params.noteId);
+      const user = req.user as any;
+
+      // Apenas helpdesk pode deletar anotações
+      if (!['admin', 'helpdesk_manager', 'helpdesk_agent'].includes(user.role)) {
+        return res.status(403).json({ message: 'Acesso negado' });
+      }
+
+      await storage.deleteRequesterNote(noteId);
+      res.json({ message: 'Note deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting requester note:', error);
+      res.status(500).json({ message: 'An error occurred deleting the note' });
     }
   });
 
@@ -356,6 +678,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Global search endpoint
+  app.get(`${apiPrefix}/search`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { q } = req.query;
+      const user = req.user as any;
+
+      if (!q || typeof q !== 'string' || q.length < 2) {
+        return res.json([]);
+      }
+
+      const searchTerm = q.toLowerCase();
+      const results: any[] = [];
+
+      // Buscar tickets
+      try {
+        let tickets;
+        
+        // Filtrar tickets baseado no role do usuário
+        if (user.role === 'admin' || user.role === 'helpdesk_manager' || user.role === 'helpdesk_agent') {
+          tickets = await storage.getAllTicketsWithRelations();
+        } else if (user.role === 'client_manager') {
+          const companyId = !isNaN(parseInt(user.company, 10)) 
+            ? parseInt(user.company, 10) 
+            : null;
+          
+          if (companyId) {
+            tickets = await storage.getTicketsByCompanyId(companyId);
+          } else {
+            tickets = await storage.getTicketsByCompany(user.company);
+          }
+        } else if (user.role === 'client_user') {
+          tickets = await storage.getTicketsByRequesterEmail(user.email);
+        } else {
+          tickets = [];
+        }
+
+        // Filtrar tickets pela busca
+        const filteredTickets = tickets
+          .filter(ticket => {
+            const matchesId = ticket.id.toString().includes(searchTerm);
+            const matchesSubject = ticket.subject.toLowerCase().includes(searchTerm);
+            const matchesDescription = ticket.description?.toLowerCase().includes(searchTerm);
+            const matchesRequester = ticket.requester?.fullName?.toLowerCase().includes(searchTerm) ||
+                                    ticket.requester?.email?.toLowerCase().includes(searchTerm);
+            
+            return matchesId || matchesSubject || matchesDescription || matchesRequester;
+          })
+          .slice(0, 5); // Limitar a 5 resultados por tipo
+
+        filteredTickets.forEach(ticket => {
+          results.push({
+            type: 'ticket',
+            id: ticket.id,
+            title: `#${ticket.id} - ${ticket.subject}`,
+            subtitle: ticket.requester?.fullName || ticket.requester?.email,
+            url: `/tickets/${ticket.id}`
+          });
+        });
+      } catch (error) {
+        console.error('Error searching tickets:', error);
+      }
+
+      // Buscar empresas (apenas para helpdesk)
+      if (user.role === 'admin' || user.role === 'helpdesk_manager' || user.role === 'helpdesk_agent') {
+        try {
+          const companies = await storage.getAllCompanies();
+          const filteredCompanies = companies
+            .filter(company => 
+              company.name.toLowerCase().includes(searchTerm) ||
+              company.email?.toLowerCase().includes(searchTerm) ||
+              company.cnpj?.includes(searchTerm)
+            )
+            .slice(0, 5);
+
+          filteredCompanies.forEach(company => {
+            results.push({
+              type: 'company',
+              id: company.id,
+              title: company.name,
+              subtitle: company.email || company.cnpj,
+              url: `/customers?company=${company.id}`
+            });
+          });
+        } catch (error) {
+          console.error('Error searching companies:', error);
+        }
+
+        // Buscar clientes/requesters
+        try {
+          const requesters = await storage.getAllRequesters();
+          const filteredRequesters = requesters
+            .filter(requester =>
+              requester.fullName.toLowerCase().includes(searchTerm) ||
+              requester.email.toLowerCase().includes(searchTerm) ||
+              requester.company?.toLowerCase().includes(searchTerm)
+            )
+            .slice(0, 5);
+
+          filteredRequesters.forEach(requester => {
+            results.push({
+              type: 'requester',
+              id: requester.id,
+              title: requester.fullName,
+              subtitle: `${requester.email}${requester.company ? ` - ${requester.company}` : ''}`,
+              url: `/customers?requester=${requester.id}`
+            });
+          });
+        } catch (error) {
+          console.error('Error searching requesters:', error);
+        }
+      }
+
+      // Ordenar resultados: tickets primeiro, depois empresas, depois requesters
+      results.sort((a, b) => {
+        const typeOrder = { ticket: 0, company: 1, requester: 2 };
+        return typeOrder[a.type as keyof typeof typeOrder] - typeOrder[b.type as keyof typeof typeOrder];
+      });
+
+      res.json(results.slice(0, 10)); // Limitar a 10 resultados no total
+    } catch (error) {
+      console.error('Error performing search:', error);
+      res.status(500).json({ message: 'Erro ao realizar busca' });
+    }
+  });
+
   // Ticket routes
   app.get(`${apiPrefix}/tickets`, requireAuth, async (req: Request, res: Response) => {
     try {
@@ -381,6 +828,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (user.role === 'client_manager') {
         // Client managers veem tickets da própria empresa
         if (!user.company) {
+          console.error(`❌ [Tickets] client_manager ${user.id} não tem empresa!`);
           return res.status(403).json({ message: 'Usuário não está associado a uma empresa' });
         }
         
@@ -399,20 +847,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           tickets = await storage.getTicketsByCompany(user.company);
         }
         
-        console.log(`🏢 [Tickets] encontrados ${tickets?.length ?? 0} tickets para empresa`);
+        console.log(`🏢 [Tickets] encontrados ${tickets?.length ?? 0} tickets para empresa ${user.company}`);
+        console.log(`🏢 [Tickets] IDs dos tickets:`, tickets?.map(t => ({ id: t.id, companyId: t.companyId, company: t.company?.name })));
       } else if (user.role === 'client_user') {
         // Client users só veem seus próprios tickets (associados ao e-mail do requester)
         console.log(`👤 [Tickets] client_user ${user.id} (${user.email}) buscando seus próprios tickets por e-mail...`);
+        if (!user.email) {
+          console.error(`❌ [Tickets] client_user ${user.id} não tem email!`);
+          return res.status(403).json({ message: 'Usuário sem email configurado' });
+        }
         tickets = await storage.getTicketsByRequesterEmail(user.email);
         console.log(`👤 [Tickets] encontrados ${tickets?.length ?? 0} tickets para requesterEmail=${user.email}`);
+        console.log(`👤 [Tickets] IDs dos tickets:`, tickets?.map(t => ({ id: t.id, requesterEmail: t.requester?.email })));
       } else {
         return res.status(403).json({ message: 'Acesso negado aos tickets' });
       }
       
       // Filtrar tickets baseado nas permissões do usuário
-      // Para clientes comuns, já limitamos a consulta ao próprio requester no storage,
+      // Para clientes (client_user e client_manager), já limitamos a consulta corretamente,
       // então podemos liberar sem filtro adicional para evitar falsos negativos.
-      const accessibleTickets = (user.role === 'client_user')
+      const accessibleTickets = (user.role === 'client_user' || user.role === 'client_manager')
         ? tickets
         : tickets.filter(ticket => canUserAccessTicket(user, ticket));
       console.log(`🔒 [Tickets] Após filtro de acesso, restaram ${accessibleTickets.length} tickets para usuário ${user.id} (${user.role})`);
@@ -464,6 +918,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Ticket not found' });
       }
       
+      // Log para debug
+      console.log(`📋 [GET Ticket] ID: ${id}, serviceId: ${ticket.serviceId}, teamId: ${ticket.teamId}`);
+      
       // Verificar se o usuário tem permissão para acessar este ticket
       if (!canUserAccessTicket(user, ticket)) {
         return res.status(403).json({ message: 'Acesso negado a este ticket' });
@@ -490,6 +947,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = insertTicketSchema.parse(req.body);
       const user = req.user as any;
+      
+      console.log(`🎫 [Criar Ticket] Dados recebidos:`, {
+        requesterId: data.requesterId,
+        companyId: data.companyId,
+        contractId: data.contractId,
+        subject: data.subject,
+        userRole: user?.role
+      });
 
       // Para clientes (user ou manager), forçar solicitante e empresa vinculada
       if (user && (user.role === 'client_user' || user.role === 'client_manager')) {
@@ -592,25 +1057,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
         */
       }
       
-      // Preencher companyId com base no requester se ainda não definido
-      if (!data.companyId && data.requesterId) {
+      // Estratégia 1: Se usuário é client_manager/client_user, usar empresa dele
+      if (!data.companyId && user && 
+          (user.role === 'client_manager' || user.role === 'client_user') && 
+          user.company) {
         try {
-          const requester = await storage.getRequester(data.requesterId);
-          if (requester?.company) {
-            // Tentar encontrar empresa pelo nome
-            const companies = await storage.getAllCompanies();
-            const matchingCompany = companies.find(c => c.name === requester.company);
-            if (matchingCompany) {
-              (data as any).companyId = matchingCompany.id;
-              console.log(`🏢 [Auto-link] Empresa ${matchingCompany.name} (ID: ${matchingCompany.id}) vinculada ao ticket via requester`);
+          console.log(`🔍 [Auto-link via User] Vinculando empresa do usuário ${user.role}: "${user.company}"`);
+          // Se user.company for ID numérico, usar diretamente
+          if (!isNaN(parseInt(user.company, 10))) {
+            (data as any).companyId = parseInt(user.company, 10);
+            console.log(`✅ [Auto-link via User] Empresa ID ${user.company} vinculada via usuário`);
+          } else {
+            // Caso contrário, buscar por nome
+            const company = await storage.getCompanyByName(user.company);
+            if (company?.id) {
+              (data as any).companyId = company.id;
+              console.log(`✅ [Auto-link via User] Empresa ${company.name} (ID: ${company.id}) vinculada via usuário`);
             }
           }
-        } catch (err) {
-          console.warn('Não foi possível auto-detectar companyId via requester:', err);
+        } catch (cmpErr) {
+          console.warn('❌ [Auto-link via User] Erro ao vincular empresa via usuário:', cmpErr);
         }
       }
       
+      // Preencher companyId com base no requester se ainda não definido
+      if (!data.companyId && data.requesterId) {
+        try {
+          console.log(`🔍 [Auto-link] Buscando requester ${data.requesterId}...`);
+          const requester = await storage.getRequester(data.requesterId);
+          console.log(`🔍 [Auto-link] Requester encontrado:`, {
+            id: requester?.id,
+            name: requester?.fullName,
+            email: requester?.email,
+            company: requester?.company
+          });
+          
+          if (requester?.company) {
+            // Tentar encontrar empresa pelo nome
+            console.log(`🔍 [Auto-link] Buscando empresa com nome "${requester.company}"...`);
+            const companies = await storage.getAllCompanies();
+            console.log(`🔍 [Auto-link] Empresas disponíveis:`, companies.map(c => ({ id: c.id, name: c.name })));
+            
+            const matchingCompany = companies.find(c => c.name === requester.company);
+            if (matchingCompany) {
+              (data as any).companyId = matchingCompany.id;
+              console.log(`✅ [Auto-link] Empresa ${matchingCompany.name} (ID: ${matchingCompany.id}) vinculada ao ticket via requester`);
+            } else {
+              console.log(`❌ [Auto-link] Nenhuma empresa encontrada com nome "${requester.company}"`);
+            }
+          } else {
+            console.log(`⚠️ [Auto-link] Requester não tem campo "company" preenchido`);
+            
+            // Estratégia alternativa: buscar empresa através de usuários da empresa
+            if (requester?.email) {
+              console.log(`🔍 [Auto-link] Tentando encontrar empresa via email do requester: ${requester.email}`);
+              try {
+                // Buscar se existe um usuário com esse email
+                const userByEmail = await storage.getUserByEmail(requester.email);
+                if (userByEmail?.company) {
+                  console.log(`🔍 [Auto-link] Usuário encontrado com empresa: ${userByEmail.company}`);
+                  // Se user.company for ID numérico, usar diretamente
+                  if (!isNaN(parseInt(userByEmail.company, 10))) {
+                    (data as any).companyId = parseInt(userByEmail.company, 10);
+                    console.log(`✅ [Auto-link] Empresa ID ${userByEmail.company} vinculada via usuário do requester`);
+                  } else {
+                    // Buscar por nome
+                    const companies = await storage.getAllCompanies();
+                    const matchingCompany = companies.find(c => c.name === userByEmail.company);
+                    if (matchingCompany) {
+                      (data as any).companyId = matchingCompany.id;
+                      console.log(`✅ [Auto-link] Empresa ${matchingCompany.name} (ID: ${matchingCompany.id}) vinculada via usuário do requester`);
+                    }
+                  }
+                }
+              } catch (emailErr) {
+                console.log(`⚠️ [Auto-link] Não foi possível buscar usuário por email:`, emailErr);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('❌ [Auto-link] Erro ao auto-detectar companyId via requester:', err);
+        }
+      }
+      
+      // Alternativa: Se tem contractId mas não tem companyId, buscar empresa pelo contrato
+      if (!data.companyId && data.contractId) {
+        try {
+          console.log(`🔍 [Auto-link via Contrato] Buscando empresa pelo contrato ${data.contractId}...`);
+          const contract = await storage.getContract(data.contractId);
+          if (contract?.companyId) {
+            (data as any).companyId = contract.companyId;
+            console.log(`✅ [Auto-link via Contrato] Empresa ID ${contract.companyId} vinculada ao ticket via contrato`);
+          } else {
+            console.log(`❌ [Auto-link via Contrato] Contrato não tem companyId`);
+          }
+        } catch (err) {
+          console.warn('❌ [Auto-link via Contrato] Erro ao buscar empresa via contrato:', err);
+        }
+      }
+      
+      console.log(`📝 [Criar Ticket] Dados finais antes de criar:`, {
+        requesterId: data.requesterId,
+        companyId: data.companyId,
+        contractId: data.contractId,
+        subject: data.subject
+      });
+      
+      console.log('🚀🚀🚀 [DEBUG] CÓDIGO ATUALIZADO - VERSÃO COM AUTOMAÇÃO 🚀🚀🚀');
+      
       const ticket = await storage.createTicket(data);
+      
+      console.log(`✅ [Ticket Criado] Ticket #${ticket.id} criado com:`, {
+        id: ticket.id,
+        requesterId: ticket.requesterId,
+        companyId: ticket.companyId,
+        contractId: ticket.contractId
+      });
+      
+      // Executar gatilhos de automação para ticket_created
+      console.log('\n🎯 [Automation] Iniciando execução de gatilhos para ticket_created...');
+      try {
+        await automationService.executeTriggers('ticket_created', ticket, {});
+        console.log('✅ [Automation] Gatilhos processados com sucesso\n');
+      } catch (autoError) {
+        console.error('❌ [Automation] Erro ao executar gatilhos:', autoError);
+        // Não bloquear a criação do ticket por erro nos gatilhos
+      }
       
       // Calcular e aplicar SLA V2.0 automaticamente
       if (ticket && ticket.id) {
@@ -684,6 +1256,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = Number(req.params.id);
       const updates = req.body;
       
+      // Log para debug
+      console.log(`🔄 [PATCH Ticket] ID: ${id}, updates:`, { serviceId: updates.serviceId, teamId: updates.teamId, ...updates });
+      
       // Se está tentando atualizar assigneeId, validar se é usuário do helpdesk
       if (updates.assigneeId !== undefined) {
         const assignee = await storage.getUserById(updates.assigneeId);
@@ -729,6 +1304,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!ticket) {
         return res.status(404).json({ message: 'Ticket not found' });
+      }
+      
+      // Executar gatilhos de automação
+      try {
+        // Gatilho genérico de atualização
+        await automationService.executeTriggers('ticket_updated', ticket, updates);
+        
+        // Gatilhos específicos
+        if (updates.status) {
+          await automationService.executeTriggers('status_changed', ticket, { oldStatus: updates._oldStatus, newStatus: updates.status });
+        }
+        if (updates.priority) {
+          await automationService.executeTriggers('priority_changed', ticket, { oldPriority: updates._oldPriority, newPriority: updates.priority });
+        }
+      } catch (autoError) {
+        console.error('❌ [Automation] Erro ao executar gatilhos:', autoError);
+        // Não bloquear a atualização do ticket por erro nos gatilhos
       }
       
       // Recalcular SLA se a prioridade, contrato ou status foram alterados
@@ -783,6 +1375,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!ticket) {
         return res.status(404).json({ message: 'Ticket not found' });
+      }
+      
+      // Executar gatilhos de automação para ticket atribuído
+      try {
+        await automationService.executeTriggers('assigned', ticket, { assigneeId });
+      } catch (autoError) {
+        console.error('❌ [Automation] Erro ao executar gatilhos:', autoError);
       }
       
       // Se o usuário tem um teamId, atualizar a categoria automaticamente
@@ -876,8 +1475,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get(`${apiPrefix}/statistics`, requireAuth, async (req: Request, res: Response) => {
     try {
       const user = (req as any).user as any;
+      console.log('📊 [Statistics] Requisição de:', { id: user?.id, role: user?.role });
+      
       // If user can view full dashboard, return global stats
-      if (user && (user.role === 'admin' || user.role === 'helpdesk_manager')) {
+      if (user && (user.role === 'admin' || user.role === 'helpdesk_manager' || user.role === 'helpdesk_agent')) {
         const stats = await storage.getTicketStatistics();
         return res.json(stats);
       }
@@ -915,7 +1516,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // allow helpdesk/admin to get global categories, company users get scoped
       const user = (req as any).user as any;
-      if (user && (user.role === 'admin' || user.role === 'helpdesk_manager')) {
+      if (user && (user.role === 'admin' || user.role === 'helpdesk_manager' || user.role === 'helpdesk_agent')) {
         const categoryStats = await storage.getTicketCategoriesCount();
         return res.json(categoryStats);
       }
@@ -941,7 +1542,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get(`${apiPrefix}/statistics/volume`, requireAuth, async (req: Request, res: Response) => {
     try {
       const user = (req as any).user as any;
-      if (user && (user.role === 'admin' || user.role === 'helpdesk_manager')) {
+      if (user && (user.role === 'admin' || user.role === 'helpdesk_manager' || user.role === 'helpdesk_agent')) {
         const volumeStats = await storage.getTicketVolumeByDate();
         return res.json(volumeStats);
       }
@@ -1150,6 +1751,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: (req as any).user?.id || 1, // TODO: get from auth
       });
 
+      // Executar gatilhos de automação para comentário adicionado
+      if (ticket) {
+        try {
+          await automationService.executeTriggers('comment_added', ticket, { 
+            interactionType: type, 
+            isInternal: isInternalBool 
+          });
+        } catch (autoError) {
+          console.error('❌ [Automation] Erro ao executar gatilhos:', autoError);
+        }
+      }
+
       // Processar anexos se existirem
       const files = req.files as Express.Multer.File[];
       const createdAttachments: Array<any> = [];
@@ -1176,6 +1789,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Atualizar as horas utilizadas já é feito dentro de createTicketInteraction
       // O método createTicketInteraction já debita automaticamente do contrato
       // quando há contractId ou quando o ticket tem um contrato vinculado
+
+      // Enviar notificação por email para solicitantes e pessoas em cópia (apenas se não for interna)
+      if (!isInternalBool) {
+        try {
+          // Buscar ticket completo com relações
+          const fullTicket = await storage.getTicketWithRelations(ticketId);
+          
+          if (fullTicket) {
+            // Se o ticket ainda não tem emailThreadId, criar e salvar
+            if (!fullTicket.emailThreadId) {
+              const domain = process.env.SMTP_FROM_EMAIL?.split('@')[1] || 'helpdesk.local';
+              const emailThreadId = `<ticket-${ticketId}@${domain}>`;
+              
+              // Atualizar ticket com o emailThreadId
+              await storage.updateTicket(ticketId, { emailThreadId });
+              fullTicket.emailThreadId = emailThreadId;
+            }
+            
+            // Buscar todos os solicitantes do ticket
+            const requestersResponse = await fetch(`http://localhost:3000${apiPrefix}/tickets/${ticketId}/requesters`);
+            const ticketRequesters = requestersResponse.ok ? await requestersResponse.json() : [];
+            
+            // Buscar pessoas em cópia
+            const ccResponse = await fetch(`http://localhost:3000${apiPrefix}/tickets/${ticketId}/cc`);
+            const ticketCc = ccResponse.ok ? await ccResponse.json() : [];
+            
+            // Buscar autor da interação
+            const author = await storage.getUserById((req as any).user?.id || 1);
+            
+            if (author && (ticketRequesters.length > 0 || ticketCc.length > 0)) {
+              // Enviar notificações de forma assíncrona (não bloquear a resposta)
+              emailService.sendTicketInteractionNotification(
+                fullTicket,
+                { ...interaction, id: interaction.id },
+                author,
+                ticketRequesters.map((tr: any) => ({
+                  email: tr.requester.email,
+                  fullName: tr.requester.fullName
+                })),
+                ticketCc
+              ).catch(error => {
+                console.error('Erro ao enviar notificação de interação:', error);
+              });
+            }
+          }
+        } catch (emailError) {
+          console.error('Erro ao processar envio de email:', emailError);
+          // Não falhar a requisição se o email falhar
+        }
+      }
 
       // Se o campo `status` foi enviado junto com a interação, aplicar alteração de status
       let updatedTicket: any = null;
@@ -1921,6 +2584,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching companies:', error);
       res.status(500).json({ message: 'An error occurred fetching companies' });
+    }
+  });
+
+  app.post(`${apiPrefix}/companies`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const data = insertCompanySchema.parse(req.body);
+      const company = await storage.createCompany(data);
+      res.status(201).json(company);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: 'Validation error', errors: error.errors });
+      } else {
+        res.status(500).json({ message: 'An error occurred creating the company' });
+      }
+    }
+  });
+
+  app.get(`${apiPrefix}/companies/:id`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const company = await storage.getCompanyById(id);
+      if (!company) {
+        return res.status(404).json({ message: 'Company not found' });
+      }
+      res.json(company);
+    } catch (error) {
+      res.status(500).json({ message: 'An error occurred fetching the company' });
+    }
+  });
+
+  app.put(`${apiPrefix}/companies/:id`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const data = insertCompanySchema.partial().parse(req.body);
+      const company = await storage.updateCompany(id, data);
+      if (!company) {
+        return res.status(404).json({ message: 'Company not found' });
+      }
+      res.json(company);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: 'Validation error', errors: error.errors });
+      } else {
+        res.status(500).json({ message: 'An error occurred updating the company' });
+      }
+    }
+  });
+
+  app.delete(`${apiPrefix}/companies/:id`, requireAuth, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCompany(id);
+      res.json({ message: 'Company deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ message: 'An error occurred deleting the company' });
     }
   });
 

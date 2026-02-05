@@ -143,9 +143,9 @@ export function TicketLinks({ ticketId, linkedTickets }: TicketLinksProps) {
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
+    <Card className="shadow-md hover:shadow-lg transition-all border-2 border-l-4 border-l-orange-500 dark:border-l-orange-400 bg-white dark:bg-gray-800">
+      <CardHeader className="pb-3 bg-orange-50/50 dark:bg-orange-950/20">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <Link2 className="w-4 h-4" />
           Tickets Vinculados ({linkedTickets.length})
         </CardTitle>

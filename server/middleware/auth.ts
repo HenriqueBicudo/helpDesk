@@ -16,7 +16,17 @@ interface AuthenticatedRequest extends Request {
 
 // Middleware para verificar autenticação (versão simples para Express)
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+  console.log('🔒 [Auth Middleware]', {
+    path: req.path,
+    authenticated: req.isAuthenticated(),
+    hasUser: !!req.user,
+    userId: req.user ? (req.user as any).id : null,
+    userRole: req.user ? (req.user as any).role : null,
+    sessionID: req.sessionID
+  });
+  
   if (!req.isAuthenticated() || !req.user) {
+    console.warn('⚠️ [Auth Middleware] Acesso negado - não autenticado');
     return res.status(401).json({ message: 'Não autenticado' });
   }
   next();

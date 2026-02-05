@@ -40,6 +40,7 @@ export const userSchema = z.object({
   teamId: z.number().nullable().optional(), // ID do team do usuário
   avatarInitials: z.string().nullable().optional(),
   isActive: z.boolean().default(true),
+  firstLogin: z.boolean().default(false), // Flag para indicar se precisa trocar senha no primeiro login
   createdAt: z.date().optional()
 });
 
@@ -77,6 +78,25 @@ export const insertCompanySchema = companySchema.omit({
   updatedAt: true
 });
 
+// Esquema de serviço para validação com Zod
+export const serviceSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().min(1),
+  description: z.string().optional().nullable(),
+  parentId: z.number().optional().nullable(),
+  teamId: z.number().optional().nullable(), // Equipe padrão opcional
+  order: z.number().default(0),
+  isActive: z.boolean().default(true),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
+});
+
+export const insertServiceSchema = serviceSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
 // Esquema de ticket para validação com Zod
 export const ticketSchema = z.object({
   id: z.number().optional(),
@@ -84,7 +104,10 @@ export const ticketSchema = z.object({
   description: z.string().min(10),
   status: ticketStatusSchema.default('open'),
   priority: ticketPrioritySchema.default('medium'),
-  category: z.string().min(1), // Agora permite qualquer string (nomes dos teams)
+  category: z.string().min(1), // Nome da categoria (mantido para compatibilidade)
+  teamId: z.number().optional().nullable(), // ID da equipe selecionada (opcional)
+  categoryId: z.number().optional().nullable(), // ID da categoria hierárquica selecionada
+  serviceId: z.number(), // ID do serviço selecionado (obrigatório)
   requesterId: z.number(),
   assigneeId: z.number().optional().nullable(),
   companyId: z.number().optional().nullable(), // Campo para empresa solicitante
@@ -123,6 +146,9 @@ export type InsertRequester = z.infer<typeof insertRequesterSchema>;
 
 export type Company = z.infer<typeof companySchema>;
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
+
+export type Service = z.infer<typeof serviceSchema>;
+export type InsertService = z.infer<typeof insertServiceSchema>;
 
 export type Ticket = z.infer<typeof ticketSchema>;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
@@ -203,7 +229,7 @@ export const ticketInteractionSchema = z.object({
   isInternal: z.boolean().default(false),
   timeSpent: z.number().min(0).default(0), // Tempo gasto em horas (decimal)
   contractId: z.string().optional().nullable(), // Contrato específico para débito de horas
-  createdBy: z.number(),
+  createdBy: z.number().nullable(), // null = interação automática do sistema
   createdAt: z.date().optional(),
   updatedAt: z.date().optional()
 });

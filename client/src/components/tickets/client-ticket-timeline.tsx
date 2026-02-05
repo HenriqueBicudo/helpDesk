@@ -1,6 +1,7 @@
 import { formatDate, getInitials } from '@/lib/utils'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { 
   MessageCircle, 
   User, 
@@ -114,8 +115,18 @@ export function ClientTicketTimeline({ interactions }: ClientTicketTimelineProps
             </CardContent>
           </Card>
         ) : (
-          filteredInteractions.map((interaction, index) => (
-            <Card key={interaction.id} className="relative">
+          filteredInteractions.map((interaction, index) => {
+            // Definir cor baseada em quem fez a interação
+            const isAgent = interaction.user && ['admin', 'helpdesk_agent', 'helpdesk_manager'].includes(interaction.user.role)
+            const isClient = interaction.user && ['client_user', 'client_manager'].includes(interaction.user.role)
+            const cardClasses = isAgent
+              ? 'relative border-blue-300 bg-blue-50/70 dark:bg-blue-950/30 dark:border-blue-700'
+              : isClient
+                ? 'relative border-green-300 bg-green-50/70 dark:bg-green-950/30 dark:border-green-700'
+                : 'relative border-gray-200 bg-gray-50/50 dark:bg-gray-950/20 dark:border-gray-800'
+            
+            return (
+            <Card key={interaction.id} className={cardClasses}>
               {/* Linha conectora */}
               {index < filteredInteractions.length - 1 && (
                 <div className="absolute left-[43px] top-16 bottom-0 w-px bg-border" />
@@ -135,15 +146,31 @@ export function ClientTicketTimeline({ interactions }: ClientTicketTimelineProps
                   {/* Conteúdo do cabeçalho */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      {getInteractionIcon(interaction.type)}
-                      <span className="font-medium text-sm">
-                        {getInteractionTitle(interaction)}
-                      </span>
+                      {interaction.user ? (
+                        <>
+                          <span className="font-semibold text-sm">
+                            {interaction.user.fullName}
+                          </span>
+                          {['client_user', 'client_manager'].includes(interaction.user.role) && (
+                            <Badge variant="outline" className="text-xs bg-green-100 dark:bg-green-900/30 border-green-300">
+                              Cliente
+                            </Badge>
+                          )}
+                          {['admin', 'helpdesk_agent', 'helpdesk_manager'].includes(interaction.user.role) && (
+                            <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 border-blue-300">
+                              Agente
+                            </Badge>
+                          )}
+                        </>
+                      ) : (
+                        <span className="font-semibold text-sm">Sistema</span>
+                      )}
                     </div>
                     
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {getInteractionIcon(interaction.type)}
                       <span>
-                        {interaction.user ? interaction.user.fullName : 'Sistema'}
+                        {getInteractionTitle(interaction)}
                       </span>
                       <span>•</span>
                       <span>
@@ -208,7 +235,8 @@ export function ClientTicketTimeline({ interactions }: ClientTicketTimelineProps
                 </CardContent>
               )}
             </Card>
-          ))
+          )
+          })
         )}
       </div>
     </div>

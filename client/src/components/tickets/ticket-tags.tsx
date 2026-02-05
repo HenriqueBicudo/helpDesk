@@ -97,9 +97,9 @@ export function TicketTags({ ticketId, tags }: TicketTagsProps) {
   ];
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
+    <Card className="shadow-md hover:shadow-lg transition-all border-2 border-l-4 border-l-pink-500 dark:border-l-pink-400 bg-white dark:bg-gray-800">
+      <CardHeader className="pb-3 bg-pink-50/50 dark:bg-pink-950/20">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <Tag className="w-4 h-4" />
           Tags ({tags.length})
         </CardTitle>
@@ -145,7 +145,7 @@ export function TicketTags({ ticketId, tags }: TicketTagsProps) {
                 </SelectContent>
               </Select>
 
-              <Button onClick={handleAddTag} disabled={addTagMutation.isPending || !selectedTagId}>
+              <Button onClick={handleAddTag} disabled={addTagMutation.isPending || !selectedTagId} className="shadow-sm hover:shadow-md">
                 <Plus className="w-4 h-4 mr-2" />Adicionar
               </Button>
             </div>

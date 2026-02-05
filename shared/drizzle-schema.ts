@@ -1,10 +1,13 @@
-import { pgTable, integer, varchar, text, timestamp, boolean, pgEnum, numeric, json } from 'drizzle-orm/pg-core';
+import { pgTable, integer, varchar, text, timestamp, boolean, pgEnum, numeric, json, jsonb } from 'drizzle-orm/pg-core';
 
 // Import SLA schemas
 export * from './schema/sla_rules';
 export * from './schema/contracts';
 export * from './schema/calendars';
 export * from './schema/sla_templates';
+export * from './schema/ticket-status';
+export * from './schema/team-categories';
+export * from './schema/user-teams';
 
 // Enum definitions for PostgreSQL
 export const statusEnum = pgEnum('status', ['open', 'in_progress', 'pending', 'resolved', 'closed']);
@@ -48,6 +51,7 @@ export const users = pgTable('users', {
   teamId: integer('team_id'), // Referência para equipes (será adicionada após criação da tabela teams)
   avatarInitials: varchar('avatar_initials', { length: 10 }),
   isActive: boolean('is_active').notNull().default(true), // Para desativar usuários
+  firstLogin: boolean('first_login').notNull().default(false), // Flag para indicar se precisa trocar senha no primeiro login
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -76,6 +80,22 @@ export const teams = pgTable('teams', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// Tabela de serviços hierárquica
+export const services = pgTable('services', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: varchar('description', { length: 500 }),
+  parentId: integer('parent_id').references((): any => services.id, { onDelete: 'cascade' }),
+  teamId: integer('team_id').references(() => teams.id, { onDelete: 'set null' }), // Equipe padrão opcional
+  order: integer('order').default(0),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export type Service = typeof services.$inferSelect;
+export type NewService = typeof services.$inferInsert;
+
 // Tabela de solicitantes (clientes)
 export const requesters = pgTable('requesters', {
   id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -98,10 +118,14 @@ export const tickets = pgTable('tickets', {
   status: statusEnum('status').notNull().default('open'),
   priority: priorityEnum('priority').notNull().default('medium'),
   category: categoryEnum('category').notNull(),
+  teamId: integer('team_id').references(() => teams.id), // ID da equipe (categoria principal)
+  categoryId: integer('category_id').references(() => teamCategories.id), // ID da categoria hierárquica
+  serviceId: integer('service_id'), // ID do serviço (será referenciado quando a tabela services for criada)
   requesterId: integer('requester_id').notNull().references(() => requesters.id),
   assigneeId: integer('assignee_id').references(() => users.id),
   companyId: integer('company_id').references(() => companies.id), // Referência para empresa solicitante
   contractId: varchar('contract_id', { length: 255 }), // Referência nullable ao contrato UUID
+  emailThreadId: varchar('email_thread_id', { length: 255 }), // Message-ID inicial da thread de email
   // Campos de prazos SLA calculados pelo motor de SLA
   responseDueAt: timestamp('response_due_at'), // Prazo para primeira resposta
   solutionDueAt: timestamp('solution_due_at'), // Prazo para solução definitiva
@@ -202,6 +226,35 @@ export const linkedTickets = pgTable('linked_tickets', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+// Tabela de solicitantes adicionais do ticket (múltiplos solicitantes)
+export const ticketRequesters = pgTable('ticket_requesters', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  ticketId: integer('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+  requesterId: integer('requester_id').notNull().references(() => requesters.id),
+  isPrimary: boolean('is_primary').notNull().default(false), // Indica se é o solicitante principal
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// Tabela de pessoas em cópia (CC) do ticket
+export const ticketCc = pgTable('ticket_cc', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  ticketId: integer('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+  email: varchar('email', { length: 100 }).notNull(),
+  name: varchar('name', { length: 100 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// Tabela de anotações sobre clientes/solicitantes
+export const requesterNotes = pgTable('requester_notes', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  requesterId: integer('requester_id').notNull().references(() => requesters.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  authorId: integer('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  isImportant: boolean('is_important').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -241,3 +294,76 @@ export type NewTicketTag = typeof ticketTags.$inferInsert;
 
 export type LinkedTicket = typeof linkedTickets.$inferSelect;
 export type NewLinkedTicket = typeof linkedTickets.$inferInsert;
+
+export type TicketRequester = typeof ticketRequesters.$inferSelect;
+export type NewTicketRequester = typeof ticketRequesters.$inferInsert;
+
+export type TicketCc = typeof ticketCc.$inferSelect;
+export type NewTicketCc = typeof ticketCc.$inferInsert;
+
+export type RequesterNote = typeof requesterNotes.$inferSelect;
+export type NewRequesterNote = typeof requesterNotes.$inferInsert;
+
+// Tabela de configuração de status de tickets
+export const ticketStatusConfig = pgTable('ticket_status_config', {
+  id: varchar('id', { length: 50 }).primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  color: varchar('color', { length: 7 }).notNull(),
+  order: integer('order').notNull(),
+  isClosedStatus: boolean('is_closed_status').notNull().default(false),
+  pauseSla: boolean('pause_sla').notNull().default(false),
+  autoCloseAfterDays: integer('auto_close_after_days'),
+  requiresResponse: boolean('requires_response').notNull().default(true),
+  notifyCustomer: boolean('notify_customer').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export type TicketStatusConfig = typeof ticketStatusConfig.$inferSelect;
+export type NewTicketStatusConfig = typeof ticketStatusConfig.$inferInsert;
+
+// Tabela de base de conhecimento (Knowledge Base)
+export const knowledgeArticles = pgTable('knowledge_articles', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  title: varchar('title', { length: 255 }).notNull(),
+  content: text('content').notNull(),
+  category: varchar('category', { length: 100 }).notNull(),
+  tags: json('tags').$type<string[]>().notNull().default([]),
+  views: integer('views').notNull().default(0),
+  authorId: integer('author_id').references(() => users.id),
+  author: varchar('author', { length: 100 }).notNull(), // Nome do autor para exibição
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export type KnowledgeArticle = typeof knowledgeArticles.$inferSelect;
+export type NewKnowledgeArticle = typeof knowledgeArticles.$inferInsert;
+// Tabela de comentários da base de conhecimento
+export const knowledgeComments = pgTable('knowledge_comments', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  articleId: integer('article_id').notNull().references(() => knowledgeArticles.id, { onDelete: 'cascade' }),
+  authorId: integer('author_id').notNull().references(() => users.id),
+  author: varchar('author', { length: 100 }).notNull(), // Nome do autor para exibição
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export type KnowledgeComment = typeof knowledgeComments.$inferSelect;
+export type NewKnowledgeComment = typeof knowledgeComments.$inferInsert;
+// Tabela de gatilhos de automa��o
+export const automationTriggers = pgTable('automation_triggers', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  triggerType: varchar('trigger_type', { length: 50 }).notNull(),
+  conditions: jsonb('conditions'),
+  actions: jsonb('actions'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export type AutomationTrigger = typeof automationTriggers.$inferSelect;
+export type NewAutomationTrigger = typeof automationTriggers.$inferInsert;
