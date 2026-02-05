@@ -1,11 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Mail, Building2, Calendar, AlertCircle, Ticket, Phone, MapPin } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Loader2, Mail, Building2, Calendar, AlertCircle, Ticket, Phone, MapPin, Edit, Star, Plus, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { getInitials } from '@/lib/utils';
@@ -30,6 +35,13 @@ export default function CustomerProfile() {
   const [, params] = useRoute('/customers/:id');
   const customerId = parseInt(params?.id || '0');
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Estados para anotações
+  const [noteContent, setNoteContent] = useState('');
+  const [isImportant, setIsImportant] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingNote, setEditingNote] = useState<any>(null);
 
   // Query para buscar dados do cliente
   const { data: customer, isLoading: loadingCustomer } = useQuery({
@@ -59,6 +71,109 @@ export default function CustomerProfile() {
     },
     enabled: !!customerId,
   });
+
+  // Query para buscar anotações do cliente
+  const { data: notes = [], isLoading: loadingNotes } = useQuery({
+    queryKey: [`/api/companies/${customerId}/notes`],
+    queryFn: async () => {
+      const response = await fetch(`/api/companies/${customerId}/notes`);
+      if (!response.ok) throw new Error('Erro ao carregar anotações');
+      return response.json();
+    },
+    enabled: !!customerId,
+  });
+
+  // Mutation para criar anotação
+  const createNoteMutation = useMutation({
+    mutationFn: async (data: { content: string; isImportant: boolean }) => {
+      const response = await fetch(`/api/companies/${customerId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Erro ao criar anotação');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${customerId}/notes`] });
+      setNoteContent('');
+      setIsImportant(false);
+      toast({ title: 'Anotação criada com sucesso' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao criar anotação', variant: 'destructive' });
+    },
+  });
+
+  // Mutation para atualizar anotação
+  const updateNoteMutation = useMutation({
+    mutationFn: async (data: { id: number; content: string; isImportant: boolean }) => {
+      const response = await fetch(`/api/companies/${customerId}/notes/${data.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: data.content, isImportant: data.isImportant }),
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Erro ao atualizar anotação');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${customerId}/notes`] });
+      setIsEditDialogOpen(false);
+      setEditingNote(null);
+      toast({ title: 'Anotação atualizada com sucesso' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao atualizar anotação', variant: 'destructive' });
+    },
+  });
+
+  // Mutation para deletar anotação
+  const deleteNoteMutation = useMutation({
+    mutationFn: async (noteId: number) => {
+      const response = await fetch(`/api/companies/${customerId}/notes/${noteId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Erro ao deletar anotação');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${customerId}/notes`] });
+      toast({ title: 'Anotação deletada com sucesso' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao deletar anotação', variant: 'destructive' });
+    },
+  });
+
+  // Handlers
+  const handleCreateNote = () => {
+    if (noteContent.trim()) {
+      createNoteMutation.mutate({ content: noteContent, isImportant });
+    }
+  };
+
+  const handleEditNote = (note: any) => {
+    setEditingNote(note);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateNote = () => {
+    if (editingNote && editingNote.content.trim()) {
+      updateNoteMutation.mutate({
+        id: editingNote.id,
+        content: editingNote.content,
+        isImportant: editingNote.isImportant,
+      });
+    }
+  };
+
+  const handleDeleteNote = (noteId: number) => {
+    if (confirm('Tem certeza que deseja deletar esta anotação?')) {
+      deleteNoteMutation.mutate(noteId);
+    }
+  };
 
   if (loadingCustomer) {
     return (
@@ -184,11 +299,7 @@ export default function CustomerProfile() {
               )}
             </CardContent>
           </Card>
-        </div>
-      </div>
-    </AppLayout>
-  );
-}
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

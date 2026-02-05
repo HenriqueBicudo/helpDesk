@@ -1,50 +1,99 @@
 # HelpDesk - Sistema de Gerenciamento de Chamados
 
-Olá
-
 Um sistema completo de gerenciamento de chamados (tickets) inspirado no Movidesk, com interface moderna e dashboard analítico.
 
 ![HelpDesk Screenshot](./screenshot.png)
 
-## 🚀 Como Iniciar o HelpDesk
+## 🚀 Início Rápido
 
-## 🚀 Como executar em desenvolvimento
+### Pré-requisitos
+- Node.js (>= 18)
+- PostgreSQL (>= 13)
+- npm ou yarn
 
-Pré-requisitos:
-- Node.js (>= 18 recomendado)
-- PostgreSQL acessível (uma instância local ou de desenvolvimento)
-- Variável de ambiente `DATABASE_URL` apontando para o banco (ex.: postgresql://user:pass@host:5432/dbname)
-- (Opcional) `SESSION_SECRET` para sessões em desenvolvimento/produção
+### Configuração em Novo Ambiente
 
-1) Instalar dependências (na raiz do projeto):
+```bash
+# 1. Clone o repositório
+git clone https://github.com/HenriqueBicudo/helpDesk.git
+cd helpDesk
 
-```powershell
+# 2. Instale as dependências
 npm install
-```
+cd client && npm install && cd ..
 
-2) Preparar o banco de dados:
+# 3. Configure o ambiente
+cp .env.example .env
+# Edite o .env com suas credenciais do PostgreSQL
 
-- Se preferir resetar e popular com dados de exemplo (dev), use:
+# 4. Crie e popule o banco de dados
+npm run db:seed
 
-```powershell
-# reset via SQL (destrutivo):
-psql "${env:DATABASE_URL}" -f .\scripts\reset_db.sql
-
-# ou (recomendado) usar o seed via Drizzle/TS para criar users com senha hasheada:
-npx tsx .\scripts\seed.ts
-```
-
-Observação: as migrations Drizzle estão em `migrations/` e o schema fonte em `drizzle.config.ts` -> `shared/drizzle-schema.ts`. Use `drizzle-kit` para gerar/aplicar migrations quando precisar sincronizar o schema.
-
-3) Iniciar aplicação (client + server):
-
-```powershell
+# 5. Inicie a aplicação
 npm run dev
 ```
 
-Isso inicia o backend e o frontend em modo de desenvolvimento. O frontend (Vite) normalmente abre em `http://localhost:5173` e o backend em `http://localhost:3000` (ou porta configurada).
+Acesse em: http://localhost:5173
 
-## 📱 Funcionalidades Principais
+**Credenciais padrão:**
+- Admin: `admin` / `admin123`
+- Agente: `agent1` / `agent123`
+- Cliente: `client1` / `client123`
+
+📖 **[Guia Completo de Seed e Migração](./QUICK_START.md)**
+
+## 🗄️ Scripts do Banco de Dados
+
+| Comando | Descrição |
+|---------|-----------|
+| `npm run seed` | Popula o banco com dados de exemplo |
+| `npm run db:push` | Aplica o schema ao banco |
+| `npm run db:fresh` | Limpa e popula com dados novos |
+| `npm run db:export` | Exporta dados atuais para backup |
+| `npm run db:import <arquivo>` | Importa dados de backup |
+
+## 🚀 Como executar em desenvolvimento
+
+### Opção 1: Setup Automático (Recomendado)
+
+```bash
+npm run db:seed  # Cria tabelas e popula dados
+npm run dev      # Inicia client + server
+```
+
+### Opção 2: Setup Manual
+
+1. **Instalar dependências**
+```bash
+npm install
+```
+
+2. **Configurar banco de dados**
+```bash
+# Resetar banco (se necessário)
+psql "${env:DATABASE_URL}" -f .\scripts\reset_db.sql
+
+# Popular com dados
+npx tsx .\scripts\seed.ts
+```
+
+3. **Iniciar aplicação**
+```bash
+npm run dev
+```
+
+Frontend: http://localhost:5173  
+Backend: http://localhost:5000
+
+## � Documentação
+
+- **[🚀 Guia de Início Rápido](./QUICK_START.md)** - Comandos essenciais e setup rápido
+- **[📦 Documentação da Seed](./SEED_README.md)** - Guia completo do sistema de seed
+- **[🔧 Detalhes de Implementação](./SEED_IMPLEMENTATION.md)** - Resumo técnico da implementação
+- **[🖥️ Guia de Migração](./MIGRATION_GUIDE.md)** - Como migrar o projeto para outro computador
+- **[📞 Google Meet Setup](./GOOGLE_MEET_SETUP.md)** - Configurar integração com Google Calendar
+
+## �📱 Funcionalidades Principais
 
 ### Dashboard
 - Visualização de métricas importantes:
