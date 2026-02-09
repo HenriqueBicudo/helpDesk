@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 import { cn, getInitials } from '@/lib/utils';
-import { ChevronRight, LayoutDashboard, Ticket, Settings, FileBarChart, Database, User, Shield, FileText, Target, BarChart3, Users, BookOpen, PanelLeftClose, PanelLeftOpen, Building2 } from 'lucide-react';
+import { ChevronRight, LayoutDashboard, Ticket, Settings, FileBarChart, Database, User, Shield, FileText, Target, BarChart3, Users, PanelLeftClose, PanelLeftOpen, Building2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/use-auth';
 import { useClientRestrictions } from '@/hooks/use-client-restrictions';
@@ -88,7 +88,7 @@ type SidebarProps = {
 };
 
 export function Sidebar({ isOpen = true }: SidebarProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, isLoading } = useAuth();
   const { isClient } = useClientRestrictions();
   
@@ -103,6 +103,8 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
   });
   
   const [isHovered, setIsHovered] = useState(false);
+  const [ticketsHovered, setTicketsHovered] = useState(false);
+  const ticketsHoverTimer = React.useRef<NodeJS.Timeout | null>(null);
   
   const [expandedSections, setExpandedSections] = useState(() => {
     const saved = localStorage.getItem('sidebar-sections');
@@ -111,7 +113,8 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
       account: true,
       management: true,
       sla: true,
-      system: true
+      system: true,
+      tickets: true
     };
   });
   
@@ -314,36 +317,156 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
                   {isClient ? 'Meus Colegas' : 'Minha Equipe'}
                 </SidebarLink>
           
-                <div>
-                  <SidebarLink 
-                    href="/tickets" 
-                    icon={<Ticket className="h-5 w-5" />} 
-                    active={location === '/tickets' || location.startsWith('/tickets/')}
-                    isExpanded={isExpanded}
-                    collapsed={!isExpanded}
-                  >
-                    Chamados
-                  </SidebarLink>
-            
-                  {isExpanded && (
-                    <div className="ml-10 pl-2 border-l-2 border-white/10 space-y-0.5 mt-1">
-                      <SidebarLink 
-                        href="/tickets" 
-                        level={2}
-                        active={location === '/tickets' && !location.includes('/kanban')}
-                        collapsed={!isExpanded}
+                <div className="relative">
+                  {!isExpanded ? (
+                    <>
+                      <div
+                        id="tickets-icon"
+                        className={cn(
+                          "flex items-center text-sm font-medium rounded-lg group transition-all cursor-pointer relative overflow-hidden",
+                          "p-2.5 justify-center mx-1 my-1",
+                          (location === '/tickets' || location.startsWith('/tickets/'))
+                            ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/30 scale-[1.02]"
+                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-white/10 hover:shadow-md backdrop-blur-sm border border-transparent hover:border-white/20"
+                        )}
+                        onMouseEnter={() => {
+                          if (ticketsHoverTimer.current) {
+                            clearTimeout(ticketsHoverTimer.current);
+                          }
+                          setTicketsHovered(true);
+                        }}
+                        onMouseLeave={() => {
+                          ticketsHoverTimer.current = setTimeout(() => {
+                            setTicketsHovered(false);
+                          }, 300);
+                        }}
                       >
-                        Lista
-                      </SidebarLink>
+                        {!(location === '/tickets' || location.startsWith('/tickets/')) && (
+                          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 to-indigo-500/0 group-hover:from-blue-500/10 group-hover:to-indigo-500/10 transition-all duration-300" />
+                        )}
+                        
+                        <div className="relative z-10 flex items-center">
+                          <Ticket className="h-5 w-5" />
+                        </div>
+                      </div>
+                      
+                      {ticketsHovered && (() => {
+                        const iconRect = document.getElementById('tickets-icon')?.getBoundingClientRect();
+                        if (!iconRect) return null;
+                        
+                        return (
+                          <div 
+                            id="tickets-submenu"
+                            className="fixed bg-sidebar border border-sidebar-border rounded-lg shadow-2xl p-2 space-y-1 min-w-[140px] z-[100]"
+                            style={{
+                              left: `${iconRect.right + 4}px`,
+                              top: `${iconRect.top}px`
+                            }}
+                            onMouseEnter={() => {
+                              if (ticketsHoverTimer.current) {
+                                clearTimeout(ticketsHoverTimer.current);
+                              }
+                              setTicketsHovered(true);
+                            }}
+                            onMouseLeave={() => {
+                              ticketsHoverTimer.current = setTimeout(() => {
+                                setTicketsHovered(false);
+                              }, 200);
+                            }}
+                          >
+                            <div
+                              className={cn(
+                                "py-2 px-3 text-sm font-medium rounded-md cursor-pointer transition-all",
+                                location === '/tickets' && !location.includes('/kanban')
+                                  ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md"
+                                  : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-white/10"
+                              )}
+                              onClick={() => {
+                                if (ticketsHoverTimer.current) {
+                                  clearTimeout(ticketsHoverTimer.current);
+                                }
+                                setLocation('/tickets');
+                                setTimeout(() => setTicketsHovered(false), 150);
+                              }}
+                            >
+                              Lista
+                            </div>
+                            <div
+                              className={cn(
+                                "py-2 px-3 text-sm font-medium rounded-md cursor-pointer transition-all",
+                                location === '/tickets/kanban'
+                                  ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md"
+                                  : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-white/10"
+                              )}
+                              onClick={() => {
+                                if (ticketsHoverTimer.current) {
+                                  clearTimeout(ticketsHoverTimer.current);
+                                }
+                                setLocation('/tickets/kanban');
+                                setTimeout(() => setTicketsHovered(false), 150);
+                              }}
+                            >
+                              Kanban
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    <div
+                      onMouseEnter={() => setTicketsHovered(true)}
+                      onMouseLeave={() => setTicketsHovered(false)}
+                    >
+                      <div
+                        className={cn(
+                          "flex items-center text-sm font-medium rounded-lg group transition-all cursor-pointer relative overflow-hidden",
+                          "py-2.5 px-3 mx-2 my-1",
+                          (location === '/tickets' || location.startsWith('/tickets/'))
+                            ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/30 scale-[1.02]"
+                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-white/10 hover:shadow-md backdrop-blur-sm border border-transparent hover:border-white/20"
+                        )}
+                        onClick={() => toggleSection('tickets')}
+                      >
+                        {!(location === '/tickets' || location.startsWith('/tickets/')) && (
+                          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 to-indigo-500/0 group-hover:from-blue-500/10 group-hover:to-indigo-500/10 transition-all duration-300" />
+                        )}
+                        
+                        <div className="relative z-10 flex items-center w-full">
+                          <div className={cn(
+                            "flex items-center justify-center transition-all",
+                            (location === '/tickets' || location.startsWith('/tickets/')) ? "text-white" : "text-sidebar-foreground/70 group-hover:text-sidebar-foreground"
+                          )}>
+                            <Ticket className="h-5 w-5" />
+                          </div>
+                          <span className={cn("ml-3 truncate", (location === '/tickets' || location.startsWith('/tickets/')) && "font-semibold")}>Chamados</span>
+                          <ChevronRight className={cn(
+                            "ml-auto h-4 w-4 transition-transform",
+                            (expandedSections.tickets || ticketsHovered) && "rotate-90"
+                          )} />
+                        </div>
+                      </div>
                 
-                      <SidebarLink 
-                        href="/tickets/kanban" 
-                        level={2}
-                        active={location === '/tickets/kanban'}
-                        collapsed={!isExpanded}
-                      >
-                        Kanban
-                      </SidebarLink>
+                      {(expandedSections.tickets || ticketsHovered) && (
+                        <div className="ml-10 pl-2 border-l-2 border-white/10 space-y-0.5 mt-1">
+                          <SidebarLink 
+                            href="/tickets" 
+                            level={2}
+                            active={location === '/tickets' && !location.includes('/kanban')}
+                            collapsed={!isExpanded}
+                          >
+                            Lista
+                          </SidebarLink>
+                    
+                          <SidebarLink 
+                            href="/tickets/kanban" 
+                            level={2}
+                            active={location === '/tickets/kanban'}
+                            collapsed={!isExpanded}
+                          >
+                            Kanban
+                          </SidebarLink>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

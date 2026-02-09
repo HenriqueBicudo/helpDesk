@@ -460,34 +460,44 @@ export default function Knowledge() {
                     ))}
                   </div>
                 </CardContent>
-                <CardFooter className="pt-2 border-t flex items-center justify-between">
-                  <div className="flex items-center text-xs text-gray-500">
-                    <Clock className="h-3 w-3 mr-1" /> 
-                    Atualizado em {formatDate(article.updatedAt)}
-                  </div>
-                  <div className="flex gap-1">
-                    <Button 
-                      size="sm" 
-                      variant="ghost"
-                      onClick={() => openViewDialog(article)}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="ghost"
-                      onClick={() => openEditDialog(article)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="ghost"
-                      className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => handleDeleteArticle(article.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                <CardFooter className="pt-2 border-t flex flex-col gap-2">
+                  <div className="w-full flex items-center justify-between">
+                    <div className="flex flex-col text-xs text-gray-500">
+                      <div className="flex items-center">
+                        <Clock className="h-3 w-3 mr-1" /> 
+                        Criado em {formatDate(article.createdAt)}
+                      </div>
+                      {article.lastEditedAt && article.lastEditedBy && (
+                        <div className="flex items-center mt-1 text-orange-600">
+                          <Pencil className="h-3 w-3 mr-1" />
+                          Editado em {formatDate(article.lastEditedAt)} por {article.lastEditedBy}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        onClick={() => openViewDialog(article)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        onClick={() => openEditDialog(article)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => handleDeleteArticle(article.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardFooter>
               </Card>
@@ -500,11 +510,21 @@ export default function Knowledge() {
           <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-xl">{selectedArticle?.title}</DialogTitle>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge>{selectedArticle?.category}</Badge>
-                <span className="text-sm text-gray-500">
-                  Atualizado em {selectedArticle ? formatDate(selectedArticle.updatedAt) : ''}
-                </span>
+              <div className="flex flex-col gap-1 mt-2">
+                <div className="flex items-center gap-2">
+                  <Badge>{selectedArticle?.category}</Badge>
+                  <span className="text-sm text-gray-500">
+                    Criado em {selectedArticle ? formatDate(selectedArticle.createdAt) : ''}
+                  </span>
+                </div>
+                {selectedArticle?.lastEditedAt && selectedArticle?.lastEditedBy && (
+                  <div className="flex items-center gap-1 text-sm text-orange-600">
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span>
+                      Editado em {formatDate(selectedArticle.lastEditedAt)} por {selectedArticle.lastEditedBy}
+                    </span>
+                  </div>
+                )}
               </div>
             </DialogHeader>
             <Tabs defaultValue="content" className="w-full">
@@ -528,22 +548,34 @@ export default function Knowledge() {
                 
                 <Separator />
                 
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-1">
-                    <Tag className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm text-gray-500">Tags:</span>
-                    <div className="flex flex-wrap gap-1 ml-1">
-                      {(selectedArticle?.tags || []).map((tag: string, index: number) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-1">
+                      <Tag className="h-4 w-4 text-gray-500" />
+                      <span className="text-sm text-gray-500">Tags:</span>
+                      <div className="flex flex-wrap gap-1 ml-1">
+                        {(selectedArticle?.tags || []).map((tag: string, index: number) => (
+                          <Badge key={index} variant="outline" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-sm text-gray-500">
+                      <span>Criado por:</span>
+                      <span className="font-medium">{selectedArticle?.author}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 text-sm text-gray-500">
-                    <span>Por:</span>
-                    <span className="font-medium">{selectedArticle?.author}</span>
-                  </div>
+                  
+                  {selectedArticle?.lastEditedAt && selectedArticle?.lastEditedBy && (
+                    <div className="flex items-center gap-1 text-sm text-orange-600 justify-end">
+                      <Pencil className="h-3.5 w-3.5" />
+                      <span>
+                        Editado em {formatDate(selectedArticle.lastEditedAt)} por{' '}
+                        <span className="font-medium">{selectedArticle.lastEditedBy}</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
               

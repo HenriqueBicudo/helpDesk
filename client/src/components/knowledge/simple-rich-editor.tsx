@@ -18,7 +18,7 @@ import {
   Code,
   Hash
 } from 'lucide-react'
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 
 interface SimpleRichEditorProps {
   content?: string
@@ -54,10 +54,19 @@ export function SimpleRichEditor({
     },
   })
 
+  // Atualiza o conteúdo do editor quando o prop content muda
+  // Isso corrige o bug de imagens sendo perdidas ao editar
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content)
+    }
+  }, [content, editor])
+
   const addImage = useCallback(() => {
     const url = window.prompt('URL da imagem')
     if (url && editor) {
       editor.chain().focus().setImage({ src: url }).run()
+    }
     }
   }, [editor])
 

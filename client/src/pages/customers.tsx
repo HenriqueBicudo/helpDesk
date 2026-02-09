@@ -392,7 +392,8 @@ export default function Customers() {
                     </TableHeader>
                     <TableBody>
                       {paginatedCustomers.map((customer) => (
-                        <TableRow key={customer.id}>
+                        
+                        <TableRow key={customer.id} onClick={() => window.location.href = `/customers/${customer.id}`} className='cursor-pointer'>
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <Avatar>

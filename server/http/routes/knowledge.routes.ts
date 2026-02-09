@@ -53,9 +53,13 @@ knowledgeRoutes.put('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     const payload = req.body;
+    const user = (req as any).user;
 
     const updateData: any = {
       updatedAt: new Date(),
+      lastEditedAt: new Date(),
+      lastEditedById: user?.id,
+      lastEditedBy: user?.fullName || user?.name || user?.email || 'Sistema',
     };
 
     if (payload.title !== undefined) updateData.title = payload.title;

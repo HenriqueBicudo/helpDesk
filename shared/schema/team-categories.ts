@@ -1,4 +1,6 @@
 import { pgTable, integer, varchar, text, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { teams } from '../drizzle-schema';
+import { users } from '../drizzle-schema';
 
 /**
  * Tabela de categorias hierárquicas de equipes
@@ -11,6 +13,7 @@ import { pgTable, integer, varchar, text, timestamp, boolean } from 'drizzle-orm
  *   ├── Financeiro (categoria pai)
  *   └── Estoque (categoria pai)
  */
+
 export const teamCategories = pgTable('team_categories', {
   id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
   teamId: integer('team_id').notNull().references(() => teams.id, { onDelete: 'cascade' }),
@@ -18,7 +21,7 @@ export const teamCategories = pgTable('team_categories', {
   description: text('description'),
   
   // Hierarquia: null = categoria raiz, valor = subcategoria
-  parentCategoryId: integer('parent_category_id').references(() => teamCategories.id, { onDelete: 'cascade' }),
+  parentCategoryId: integer('parent_category_id').references((): any => teamCategories.id, { onDelete: 'cascade' }),
   
   // Ordenação para controlar a ordem de exibição
   sortOrder: integer('sort_order').notNull().default(0),
@@ -46,11 +49,6 @@ export const teamCategoryUsers = pgTable('team_category_users', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
-// Precisamos importar teams e users para as referências
-import { teams } from '../drizzle-schema';
-import { users } from '../drizzle-schema';
-
-// Tipos TypeScript
 export type TeamCategory = typeof teamCategories.$inferSelect;
 export type NewTeamCategory = typeof teamCategories.$inferInsert;
 export type TeamCategoryUser = typeof teamCategoryUsers.$inferSelect;

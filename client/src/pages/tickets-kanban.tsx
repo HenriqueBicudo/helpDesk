@@ -7,9 +7,9 @@ import {
   ChevronUp, 
   Search, 
   Filter, 
-  MoreVertical, 
   CalendarDays,
-  RefreshCw
+  RefreshCw,
+  Plus
 } from "lucide-react";
 import {
   DndContext,
@@ -53,14 +53,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, getInitials } from "@/lib/utils";
 import { TicketStatusBadge } from "@/components/tickets/ticket-status-badge";
 import { TicketPriorityBadge } from "@/components/tickets/ticket-priority-badge";
-import { SlaAlert } from "@/components/tickets/sla-alert";
 import { SlaWarningFlag } from "@/components/tickets/sla-warning-flag";
-import { SlaInfoCapsule } from "@/components/tickets/sla-info-capsule";
 import { SlaDueWarning } from "@/components/tickets/sla-due-warning";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useClientRestrictions } from '@/hooks/use-client-restrictions';
 import { useTicketStatusConfig } from '@/hooks/use-ticket-status-config';
-import { useAuth } from '@/hooks/use-auth';
+import { NewTicketDialog } from '@/components/tickets/new-ticket-dialog';
 
 // Estilos customizados para scroll horizontal suave
 const kanbanScrollStyles = `
@@ -146,7 +144,6 @@ type KanbanGroup = {
 // Componente do card de ticket com drag and drop
 function TicketCard({ ticket, groupId, disableDrag }: { ticket: TicketWithRelations; groupId: string; disableDrag?: boolean }) {
   const [, setLocation] = useLocation();
-  const [showSlaInfo, setShowSlaInfo] = useState(false);
   
   const {
     attributes,
@@ -299,17 +296,31 @@ function ScrollableKanbanContainer({ children }: { children: React.ReactNode }) 
   );
 }
 
+// Função helper para converter hex em rgba com opacidade configurável
+const hexToRgba = (hex: string, opacity: number = 0.15) => {
+  // Remove # se presente
+  hex = hex.replace('#', '');
+  
+  // Converte para RGB
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
+
+// Chave para localStorage
+const KANBAN_COLLAPSED_KEY = 'kanban-collapsed-groups';
+
 export default function TicketsKanban() {
   const queryClient = useQueryClient();
   const clientRestrictions = useClientRestrictions();
-  const [, setLocation] = useLocation();
-  const { user, isLoading: authLoading } = useAuth();
 
   // Buscar configurações de status
   const { statuses, isLoading: statusLoading } = useTicketStatusConfig();
   const activeStatuses = useMemo(() => {
     return statuses
-      .filter(s => !s.isClosedStatus)
+      .filter(s => !s.isClosedStatus && !s.name.toLowerCase().includes('resolvido'))
       .sort((a, b) => a.order - b.order);
   }, [statuses]);
 
@@ -319,6 +330,7 @@ export default function TicketsKanban() {
   const [kanbanGroups, setKanbanGroups] = useState<KanbanGroup[]>([]);
   const [activeTicket, setActiveTicket] = useState<TicketWithRelations | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [isNewTicketDialogOpen, setIsNewTicketDialogOpen] = useState(false);
 
   // Configurar sensores para drag and drop
   const sensors = useSensors(
@@ -360,10 +372,14 @@ export default function TicketsKanban() {
     queryKey: ["/api/tickets"],
     refetchInterval: 10000, // Atualiza automaticamente a cada 10 segundos
     refetchOnWindowFocus: true, // Atualiza quando a janela recebe foco
-    onSuccess: () => {
-      setLastUpdate(new Date());
-    },
   });
+
+  // Atualizar timestamp quando os dados são recebidos
+  useEffect(() => {
+    if (tickets) {
+      setLastUpdate(new Date());
+    }
+  }, [tickets]);
 
   // Buscar todos os usuários
   const { data: users } = useQuery<User[]>({ 
@@ -372,11 +388,15 @@ export default function TicketsKanban() {
 
   // Agrupar tickets por responsáveis quando os dados forem carregados
   useEffect(() => {
-    if (tickets && users && activeStatuses.length > 0) {
+    if (tickets && Array.isArray(tickets) && users && activeStatuses.length > 0) {
       const agentGroups: KanbanGroup[] = [];
       
+      // Restaurar estado collapsed do localStorage
+      const savedCollapsed = localStorage.getItem(KANBAN_COLLAPSED_KEY);
+      const collapsedMap: Record<string, boolean> = savedCollapsed ? JSON.parse(savedCollapsed) : {};
+      
       // Filtra apenas usuários do helpdesk
-      const helpdeskUsers = users.filter(user => 
+      const helpdeskUsers = users.filter((user: User) => 
         user.role === 'admin' || 
         user.role === 'helpdesk_manager' || 
         user.role === 'helpdesk_agent'
@@ -387,7 +407,7 @@ export default function TicketsKanban() {
         .filter(s => s.isClosedStatus)
         .map(s => s.id);
       
-      const activeTickets = tickets.filter(ticket => 
+      const activeTickets = tickets.filter((ticket: TicketWithRelations) => 
         !closedStatusIds.includes(ticket.status)
       );
       
@@ -397,29 +417,31 @@ export default function TicketsKanban() {
           title: status.name,
           status: status.id,
           color: status.color,
-          tickets: ticketsList.filter(t => t.status === status.id)
+          tickets: ticketsList.filter((t: TicketWithRelations) => t.status === status.id)
         }));
       };
       
       // Criar um grupo para tickets não atribuídos
-      const unassignedTickets = activeTickets.filter(ticket => !ticket.assigneeId);
+      const unassignedTickets = activeTickets.filter((ticket: TicketWithRelations) => !ticket.assigneeId);
       if (unassignedTickets.length > 0) {
+        const groupKey = 'unassigned';
         agentGroups.push({
           title: "Não atribuídos",
-          collapsed: false,
+          collapsed: collapsedMap[groupKey] ?? false,
           columns: createColumns(unassignedTickets)
         });
       }
       
       // Agrupar por responsável
-      helpdeskUsers.forEach(agent => {
-        const agentTickets = activeTickets.filter(ticket => ticket.assigneeId === agent.id);
+      helpdeskUsers.forEach((agent: User) => {
+        const agentTickets = activeTickets.filter((ticket: TicketWithRelations) => ticket.assigneeId === agent.id);
         
         if (agentTickets.length > 0) {
+          const groupKey = `agent-${agent.id}`;
           agentGroups.push({
             title: agent.fullName,
             id: agent.id,
-            collapsed: false,
+            collapsed: collapsedMap[groupKey] ?? false,
             columns: createColumns(agentTickets)
           });
         }
@@ -434,6 +456,15 @@ export default function TicketsKanban() {
     setKanbanGroups(prevGroups => {
       const newGroups = [...prevGroups];
       newGroups[index].collapsed = !newGroups[index].collapsed;
+      
+      // Salvar estado no localStorage
+      const collapsedMap: Record<string, boolean> = {};
+      newGroups.forEach((group) => {
+        const groupKey = group.id ? `agent-${group.id}` : 'unassigned';
+        collapsedMap[groupKey] = group.collapsed;
+      });
+      localStorage.setItem(KANBAN_COLLAPSED_KEY, JSON.stringify(collapsedMap));
+      
       return newGroups;
     });
   };
@@ -507,19 +538,19 @@ export default function TicketsKanban() {
   });
 
   // Total de tickets
-  const totalTickets = tickets?.length || 0;
+  const totalTickets = (tickets && Array.isArray(tickets)) ? tickets.length : 0;
   
   // Loading quando autenticação ou status estão carregando
-  const isLoadingData = isLoading || authLoading || statusLoading;
+  const isLoadingData = isLoading || statusLoading;
 
 function DroppableColumn({ 
   column, 
   groupId, 
-  assigneeId 
+  assigneeId
 }: { 
   column: KanbanColumn; 
   groupId: string; 
-  assigneeId?: number; 
+  assigneeId?: number;
 }) {
   const {
     setNodeRef,
@@ -536,27 +567,8 @@ function DroppableColumn({
   return (
     <div 
       ref={setNodeRef} 
-      className={`flex-1 min-w-[320px] ${isOver ? 'bg-blue-50 border-2 border-blue-200 border-dashed rounded-lg' : ''}`}
+      className={`p-3 ${isOver ? 'bg-blue-50' : ''}`}
     >
-      <div 
-        className="flex justify-between items-center mb-3 pb-2 border-b-2"
-        style={{ borderColor: column.color }}
-      >
-        <div className="flex items-center gap-2">
-          <div 
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: column.color }}
-          />
-          <h3 className="font-semibold text-sm">{column.title}</h3>
-        </div>
-        <Badge 
-          variant="secondary"
-          className="font-medium"
-        >
-          {column.tickets.length}
-        </Badge>
-      </div>
-      
       <SortableContext 
         items={column.tickets.map(ticket => `ticket-${ticket.id}`)}
         strategy={verticalListSortingStrategy}
@@ -567,15 +579,15 @@ function DroppableColumn({
               key={ticket.id} 
               ticket={ticket} 
               groupId={groupId}
-              disableDrag={clientRestrictions.isClient}
+              disableDrag={false}
             />
           ))}
           
           {column.tickets.length === 0 && (
-            <div className={`border-2 border-dashed rounded-md p-6 text-center text-muted-foreground text-sm transition-all ${
-              isOver ? 'border-blue-400 bg-blue-50 scale-105' : 'border-gray-200'
+            <div className={`text-center text-muted-foreground text-xs py-8 transition-all ${
+              isOver ? 'text-blue-600 opacity-100' : 'opacity-50'
             }`}>
-              {isOver ? '📥 Solte o ticket aqui' : 'Sem tickets'}
+              {isOver ? '↓ Solte aqui' : '-'}
             </div>
           )}
         </div>
@@ -598,6 +610,13 @@ function DroppableColumn({
             </div>
             
             <div className="flex items-center gap-2">
+              <Button 
+                onClick={() => setIsNewTicketDialogOpen(true)}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Criar Ticket
+              </Button>
               <Button 
                 variant="outline" 
                 size="icon"
@@ -673,66 +692,134 @@ function DroppableColumn({
               ))}
             </div>
           ) : clientRestrictions.isClient ? (
-            // Versão sem drag and drop para clientes
-            <div className="space-y-4">
-              {filteredGroups.map((group, groupIndex) => (
-                <div key={groupIndex} className="border-2 rounded-xl overflow-hidden shadow-md">
-                  {/* Cabeçalho do Grupo */}
-                  <div 
-                    className="flex justify-between items-center p-3 bg-muted cursor-pointer"
-                    onClick={() => toggleGroupCollapse(groupIndex)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-medium">{group.title}</h3>
-                      <Badge variant="secondary" className="text-xs">
-                        {group.columns.reduce((acc, col) => acc + col.tickets.length, 0)}
-                      </Badge>
-                    </div>
-                    {group.collapsed ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronUp className="h-4 w-4" />
-                    )}
+            // Versão sem drag and drop para clientes - Layout em grade
+            <div className="space-y-6 overflow-x-auto">
+              {/* Cabeçalho fixo com status (compartilhado por todas as linhas) */}
+              <div className="border-2 rounded-xl overflow-hidden shadow-md bg-card sticky top-0 z-10 min-w-max">
+                <div className="flex items-stretch">
+                  {/* Espaço para o nome do agente */}
+                  <div className="w-[200px] flex-shrink-0 bg-muted p-4 font-semibold border-r-2 flex items-center">
+                    Agente / Status
                   </div>
+                  
+                  {/* Cabeçalhos de status */}
+                  <ScrollableKanbanContainer>
+                    <div className="flex min-w-max">
+                      {filteredGroups[0]?.columns.map((column, idx) => (
+                        <div 
+                          key={column.status} 
+                            className={`flex-shrink-0 w-[280px] p-4 ${idx > 0 ? 'border-l-2' : ''}`}
+                            style={{
+                              backgroundColor: hexToRgba(column.color, 0.35)
+                            }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-semibold text-sm truncate">{column.title}</h4>
+                            <Badge 
+                              variant="secondary" 
+                              className="ml-2 text-xs"
+                              style={{ 
+                                backgroundColor: column.color + '20',
+                                borderColor: column.color,
+                                color: column.color
+                              }}
+                            >
+                              {filteredGroups.reduce((total, group) => 
+                                total + (group.columns.find(c => c.status === column.status)?.tickets.length || 0), 0
+                              )}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollableKanbanContainer>
+                </div>
+              </div>
 
-                  {/* Conteúdo do Grupo */}
-                  {!group.collapsed && (
-                    <ScrollableKanbanContainer>
-                      <div className="flex gap-3 p-2 min-w-max">
-                        {group.columns.map((column) => (
-                          <div key={column.status} className="flex-shrink-0 w-[280px] space-y-3">
-                            {/* Cabeçalho da Coluna */}
-                            <div className="flex items-center justify-between">
-                              <h4 className="font-medium text-sm">{column.title}</h4>
-                              <Badge variant="outline" className="text-xs">
+              {/* Linhas por agente */}
+              <div className="space-y-2">
+                {filteredGroups.map((group, groupIndex) => (
+                  <div key={groupIndex} className="border-2 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow min-w-max">
+                    <div className="flex items-stretch">
+                      {/* Nome do agente (coluna fixa à esquerda) */}
+                      <div 
+                        className="w-[200px] flex-shrink-0 bg-muted/30 p-4 border-r-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => toggleGroupCollapse(groupIndex)}
+                      >
+                        <div className="flex items-center gap-2">
+                          {group.collapsed ? (
+                            <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 flex-shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-medium text-sm truncate">{group.title}</h3>
+                            <Badge variant="secondary" className="text-xs mt-1">
+                              {group.columns.reduce((acc, col) => acc + col.tickets.length, 0)} total
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Células por status (alinhadas com o cabeçalho) */}
+                      {!group.collapsed && (
+                        <ScrollableKanbanContainer>
+                          <div className="flex min-w-max">
+                            {group.columns.map((column, colIdx) => (
+                              <div 
+                                key={column.status} 
+                                className={`flex-shrink-0 w-[280px] p-3 ${colIdx > 0 ? 'border-l-2' : ''}`}
+                                style={{
+                                  backgroundColor: hexToRgba(column.color)
+                                }}
+                              >
+                                {/* Cards dos Tickets */}
+                                <div className="space-y-2 min-h-[120px]">
+                                  {column.tickets.map((ticket) => (
+                                    <TicketCard 
+                                      key={ticket.id} 
+                                      ticket={ticket} 
+                                      groupId={`${groupIndex}-${column.status}`}
+                                      disableDrag={true}
+                                    />
+                                  ))}
+                                  
+                                  {column.tickets.length === 0 && (
+                                    <div className="text-center text-muted-foreground text-xs py-8 opacity-50">
+                                      -
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollableKanbanContainer>
+                      )}
+                      
+                      {/* Linha colapsada - mostrar resumo */}
+                      {group.collapsed && (
+                        <div className="flex-1 p-4 flex items-center gap-2">
+                          {group.columns.map((column) => (
+                            column.tickets.length > 0 && (
+                              <Badge 
+                                key={column.status}
+                                variant="outline" 
+                                className="text-xs"
+                                style={{ 
+                                  borderColor: column.color,
+                                  color: column.color
+                                }}
+                              >
                                 {column.tickets.length}
                               </Badge>
-                            </div>
-
-                            {/* Cards dos Tickets */}
-                            <div className="space-y-2 min-h-[100px]">
-                              {column.tickets.map((ticket) => (
-                                <TicketCard 
-                                  key={ticket.id} 
-                                  ticket={ticket} 
-                                  groupId={`${groupIndex}-${column.status}`}
-                                  disableDrag={true}
-                                />
-                              ))}
-                              
-                              {column.tickets.length === 0 && (
-                                <div className="text-center text-muted-foreground text-sm py-4">
-                                  Sem tickets
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollableKanbanContainer>
-                  )}
-                </div>
-              ))}
+                            )
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <DndContext
@@ -741,45 +828,121 @@ function DroppableColumn({
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
             >
-              <div className="space-y-4">
-                {filteredGroups.map((group, groupIndex) => (
-                  <div key={groupIndex} className="border-2 rounded-xl overflow-hidden shadow-md">
-                    {/* Cabeçalho do Grupo */}
-                    <div 
-                      className="flex justify-between items-center p-3 bg-muted cursor-pointer"
-                      onClick={() => toggleGroupCollapse(groupIndex)}
-                    >
-                      <div className="flex items-center gap-2">
-                        {group.collapsed ? (
-                          <ChevronDown className="h-5 w-5" />
-                        ) : (
-                          <ChevronUp className="h-5 w-5" />
-                        )}
-                        <span className="font-medium">{group.title}</span>
-                      </div>
-                      
-                      <div className="text-sm text-muted-foreground">
-                        {group.columns.reduce((acc, col) => acc + col.tickets.length, 0)} tickets
-                      </div>
+              <div className="space-y-6 overflow-x-auto">
+                {/* Cabeçalho fixo com status (compartilhado por todas as linhas) */}
+                <div className="border-2 rounded-xl overflow-hidden shadow-md bg-card sticky top-0 z-10 min-w-max">
+                  <div className="flex items-stretch">
+                    {/* Espaço para o nome do agente */}
+                    <div className="w-[200px] flex-shrink-0 bg-muted p-4 font-semibold border-r-2 flex items-center">
+                      Agente / Status
                     </div>
                     
-                    {/* Conteúdo do Grupo (colunas e tickets) */}
-                    {!group.collapsed && (
-                      <ScrollableKanbanContainer>
-                        <div className="flex gap-3 p-2 min-w-max">
-                          {group.columns.map((column, colIndex) => (
-                            <DroppableColumn
-                              key={`${groupIndex}-${colIndex}`}
-                              column={column}
-                              groupId={`group-${groupIndex}`}
-                              assigneeId={group.id}
-                            />
-                          ))}
-                        </div>
-                      </ScrollableKanbanContainer>
-                    )}
+                    {/* Cabeçalhos de status */}
+                    <ScrollableKanbanContainer>
+                      <div className="flex min-w-max">
+                        {filteredGroups[0]?.columns.map((column, idx) => (
+                          <div 
+                            key={column.status} 
+                            className={`flex-shrink-0 w-[280px] p-4 ${idx > 0 ? 'border-l-2' : ''}`}
+                            style={{
+                              backgroundColor: hexToRgba(column.color, 0.35)
+                            }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-semibold text-sm truncate">{column.title}</h4>
+                              <Badge 
+                                variant="secondary" 
+                                className="ml-2 text-xs"
+                                style={{ 
+                                  backgroundColor: column.color + '20',
+                                  borderColor: column.color,
+                                  color: column.color
+                                }}
+                              >
+                                {filteredGroups.reduce((total, group) => 
+                                  total + (group.columns.find(c => c.status === column.status)?.tickets.length || 0), 0
+                                )}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollableKanbanContainer>
                   </div>
-                ))}
+                </div>
+
+                {/* Linhas por agente */}
+                <div className="space-y-2">
+                  {filteredGroups.map((group, groupIndex) => (
+                    <div key={groupIndex} className="border-2 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow min-w-max">
+                      <div className="flex items-stretch">
+                        {/* Nome do agente (coluna fixa à esquerda) */}
+                        <div 
+                          className="w-[200px] flex-shrink-0 bg-muted/30 p-4 border-r-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => toggleGroupCollapse(groupIndex)}
+                        >
+                          <div className="flex items-center gap-2">
+                            {group.collapsed ? (
+                              <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                            ) : (
+                              <ChevronUp className="h-4 w-4 flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-medium text-sm truncate">{group.title}</h3>
+                              <Badge variant="secondary" className="text-xs mt-1">
+                                {group.columns.reduce((acc, col) => acc + col.tickets.length, 0)} total
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Células por status (alinhadas com o cabeçalho) */}
+                        {!group.collapsed && (
+                          <ScrollableKanbanContainer>
+                            <div className="flex min-w-max">
+                              {group.columns.map((column, colIdx) => (
+                                <div
+                                  key={`${groupIndex}-${colIdx}`}
+                                  className={`flex-shrink-0 w-[280px] ${colIdx > 0 ? 'border-l-2' : ''}`}
+                                  style={{
+                                    backgroundColor: hexToRgba(column.color)
+                                  }}
+                                >
+                                  <DroppableColumn
+                                    column={column}
+                                    groupId={`group-${groupIndex}`}
+                                    assigneeId={group.id}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollableKanbanContainer>
+                        )}
+                        
+                        {/* Linha colapsada - mostrar resumo */}
+                        {group.collapsed && (
+                          <div className="flex-1 p-4 flex items-center gap-2">
+                            {group.columns.map((column) => (
+                              column.tickets.length > 0 && (
+                                <Badge 
+                                  key={column.status}
+                                  variant="outline" 
+                                  className="text-xs"
+                                  style={{ 
+                                    borderColor: column.color,
+                                    color: column.color
+                                  }}
+                                >
+                                  {column.tickets.length}
+                                </Badge>
+                              )
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               
               <DragOverlay>
@@ -806,6 +969,11 @@ function DroppableColumn({
             </DndContext>
           )}
         </div>
+      
+      <NewTicketDialog
+        open={isNewTicketDialogOpen}
+        onOpenChange={setIsNewTicketDialogOpen}
+      />
       </AppLayout>
   );
 }

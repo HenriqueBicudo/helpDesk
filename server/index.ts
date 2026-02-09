@@ -7,8 +7,21 @@ import { setupVite, serveStatic, log } from "./vite";
 import { startSlaMonitoring } from "./jobs/sla-monitor.job";
 import { timeBasedAutomationJob } from "./jobs/time-based-automation.job";
 import { emailInboundService } from "./services/email-inbound.service";
+import { setupSecurityHeaders } from "./middleware/security-headers";
+import { apiRateLimiter } from "./middleware/rate-limit";
 
 const app = express();
+
+// ===== VALIDAÇÕES DE SEGURANÇA =====
+// Validar que SESSION_SECRET não está usando o valor padrão em produção
+if (process.env.NODE_ENV === 'production') {
+  const secret = process.env.SESSION_SECRET || '';
+  if (secret === 'helpdesk-development-secret' || secret.length < 32) {
+    console.error('❌ [Security] SESSION_SECRET inadequado para produção!');
+    console.error('   Gere um secret forte com: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))";');
+    process.exit(1);
+  }
+}
 
 // Configurar CORS para permitir requisições com credenciais
 const allowedOrigins = [
@@ -43,9 +56,17 @@ app.use(cors({
   credentials: true // Permite envio de cookies
 }));
 
+// Configurar headers de segurança (Helmet.js)
+setupSecurityHeaders(app);
+
 // Aumentar limite do body-parser para suportar imagens base64
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
+
+// Rate limiting para toda a API (apenas em produção)
+if (process.env.NODE_ENV === 'production') {
+  app.use('/api', apiRateLimiter);
+}
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -62,12 +83,20 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      
+      // NÃO logar response completo - pode conter dados sensíveis
+      // Apenas logar em caso de erro para debug
+      if (res.statusCode >= 400 && capturedJsonResponse) {
+        // Não logar campos sensíveis mesmo em erros
+        const safeResponse = { ...capturedJsonResponse };
+        delete safeResponse.password;
+        delete safeResponse.token;
+        delete safeResponse.secret;
+        logLine += ` :: ${JSON.stringify(safeResponse).slice(0, 200)}`;
       }
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      if (logLine.length > 200) {
+        logLine = logLine.slice(0, 199) + "…";
       }
 
       log(logLine);

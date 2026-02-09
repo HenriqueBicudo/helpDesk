@@ -27,6 +27,8 @@ import {
   canUserAccessTicket,
   canUserEditTicket 
 } from "./middleware/auth";
+import { loginRateLimiter, createResourceRateLimiter, resetPasswordRateLimiter } from "./middleware/rate-limit";
+import { sanitizeRequestBody } from "./middleware/sanitize";
 import { emailService } from "./email-service";
 import { ContractService } from "./services/contract.service";
 import { slaEngineService } from "./services/slaEngine.service";
@@ -346,7 +348,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.post(`${apiPrefix}/users`, requireAuthAndPermission('users:create'), async (req: Request, res: Response) => {
+  app.post(`${apiPrefix}/users`, 
+    requireAuthAndPermission('users:create'),
+    createResourceRateLimiter,
+    async (req: Request, res: Response) => {
     try {
       const data = insertUserSchema.parse(req.body);
       const currentUser = req.user as any;
@@ -943,7 +948,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post(`${apiPrefix}/tickets`, requireAuthAndPermission('tickets:create'), async (req: Request, res: Response) => {
+  app.post(`${apiPrefix}/tickets`, 
+    requireAuthAndPermission('tickets:create'),
+    sanitizeRequestBody(['subject', 'description']),
+    createResourceRateLimiter,
+    async (req: Request, res: Response) => {
     try {
       const data = insertTicketSchema.parse(req.body);
       const user = req.user as any;
@@ -1691,7 +1700,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post(`${apiPrefix}/tickets/:id/interactions`, upload.array('attachments', 5), async (req: Request, res: Response) => {
+  app.post(`${apiPrefix}/tickets/:id/interactions`, 
+    upload.array('attachments', 5),
+    sanitizeRequestBody(['content']),
+    async (req: Request, res: Response) => {
     try {
       const ticketId = Number(req.params.id);
       let { type, content, isInternal = 'false', timeSpent = 0, contractId } = req.body;

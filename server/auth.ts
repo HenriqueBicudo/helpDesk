@@ -9,6 +9,7 @@ import { User as UserSchema, InsertUser } from "@shared/schema";
 import connectPg from "connect-pg-simple";
 import { Pool } from "pg";
 import { generateRandomPassword, sendPasswordEmail } from "./utils/password";
+import { loginRateLimiter } from "./middleware/rate-limit";
 
 const scryptAsync = promisify(scrypt);
 
@@ -29,15 +30,15 @@ export async function hashPassword(password: string) {
 // Função para comparar senhas
 async function comparePasswords(supplied: string, stored: string) {
   // Verifica se a senha está no formato hash.salt
-  if (stored.includes(".")) {
-    const [hashed, salt] = stored.split(".");
-    const hashedBuf = Buffer.from(hashed, "hex");
-    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-    return timingSafeEqual(hashedBuf, suppliedBuf);
-  } else {
-    // Para desenvolvimento/teste, verificar senhas em texto plano
-    return supplied === stored;
+  if (!stored.includes(".")) {
+    console.error('⚠️ [Security] Senha armazenada em formato inválido (não está hasheada)');
+    return false; // NUNCA aceitar senha em texto plano
   }
+  
+  const [hashed, salt] = stored.split(".");
+  const hashedBuf = Buffer.from(hashed, "hex");
+  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+  return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
 export function setupAuth(app: Express) {
@@ -87,17 +88,27 @@ export function setupAuth(app: Express) {
         }
         
         if (!user) {
-          return done(null, false, { message: "Usuário não encontrado" });
+          console.warn(`⚠️ [Auth] Tentativa de login com usuário inexistente: ${usernameOrEmail}`);
+          return done(null, false, { message: "Credenciais inválidas" }); // Mensagem genérica
+        }
+        
+        // Verificar se usuário está ativo
+        if (!user.isActive) {
+          console.warn(`⚠️ [Auth] Tentativa de login com usuário inativo: ${usernameOrEmail}`);
+          return done(null, false, { message: "Conta desativada" });
         }
         
         const isPasswordValid = await comparePasswords(password, user.password);
         
         if (!isPasswordValid) {
-          return done(null, false, { message: "Senha incorreta" });
+          console.warn(`⚠️ [Auth] Senha incorreta para usuário: ${usernameOrEmail}`);
+          return done(null, false, { message: "Credenciais inválidas" }); // Mensagem genérica
         }
         
+        console.log(`✅ [Auth] Login bem-sucedido: ${user.username} (ID: ${user.id})`);
         return done(null, user);
       } catch (error) {
+        console.error('❌ [Auth] Erro no processo de autenticação:', error);
         return done(error);
       }
     })
@@ -162,8 +173,8 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Rota de login
-  app.post("/api/auth/login", (req, res, next) => {
+  // Rota de login com rate limiting
+  app.post("/api/auth/login", loginRateLimiter, (req, res, next) => {
     console.log('🔐 [Auth] Tentativa de login:', { username: req.body.username });
     
     passport.authenticate("local", (err: any, user: UserSchema | false, info: { message: string }) => {

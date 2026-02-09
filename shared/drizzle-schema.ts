@@ -6,7 +6,6 @@ export * from './schema/contracts';
 export * from './schema/calendars';
 export * from './schema/sla_templates';
 export * from './schema/ticket-status';
-export * from './schema/team-categories';
 export * from './schema/user-teams';
 
 // Enum definitions for PostgreSQL
@@ -79,6 +78,33 @@ export const teams = pgTable('teams', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
+// Tabela de categorias hierárquicas de equipes
+export const teamCategories = pgTable('team_categories', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  teamId: integer('team_id').notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  parentCategoryId: integer('parent_category_id').references((): any => teamCategories.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const teamCategoryUsers = pgTable('team_category_users', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  categoryId: integer('category_id').notNull().references(() => teamCategories.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  priority: integer('priority').notNull().default(1),
+  autoAssign: boolean('auto_assign').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export type TeamCategory = typeof teamCategories.$inferSelect;
+export type NewTeamCategory = typeof teamCategories.$inferInsert;
+export type TeamCategoryUser = typeof teamCategoryUsers.$inferSelect;
+export type NewTeamCategoryUser = typeof teamCategoryUsers.$inferInsert;
 
 // Tabela de serviços hierárquica
 export const services = pgTable('services', {
@@ -332,6 +358,9 @@ export const knowledgeArticles = pgTable('knowledge_articles', {
   views: integer('views').notNull().default(0),
   authorId: integer('author_id').references(() => users.id),
   author: varchar('author', { length: 100 }).notNull(), // Nome do autor para exibição
+  lastEditedById: integer('last_edited_by_id').references(() => users.id),
+  lastEditedBy: varchar('last_edited_by', { length: 100 }),
+  lastEditedAt: timestamp('last_edited_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

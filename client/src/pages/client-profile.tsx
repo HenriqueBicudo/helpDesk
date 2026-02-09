@@ -118,7 +118,7 @@ export default function ClientProfile() {
 
                   <div>
                     <Label>Tipo de Usuário</Label>
-                    <div className="text-sm text-gray-900 mt-1 p-2 bg-gray-50 rounded">
+                    <div className="text-sm text-gray-900 mt-1 p-2  rounded">
                       <Badge variant="outline">
                         {user?.role ? ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] : 'N/A'}
                       </Badge>
@@ -226,22 +226,6 @@ export default function ClientProfile() {
               </CardContent>
             </Card>
 
-            {/* Ações Rápidas */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Ações Rápidas</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button variant="outline" size="sm" className="w-full justify-start">
-                  <Mail className="h-4 w-4 mr-2" />
-                  Novo Chamado
-                </Button>
-                <Button variant="outline" size="sm" className="w-full justify-start">
-                  <User className="h-4 w-4 mr-2" />
-                  Meus Chamados
-                </Button>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>

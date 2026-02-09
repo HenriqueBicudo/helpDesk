@@ -391,30 +391,18 @@ export default function Dashboard() {
           // compute percent change based on volume data and selected dateRange
           change={(() => {
             try {
-              if (!volume || !Array.isArray(volume)) return undefined;
+              if (!volume || !Array.isArray(volume) || volume.length === 0) {
+                console.log('⚠️ Volume data not available for Total de Chamados');
+                return undefined;
+              }
 
               const toDate = new Date();
               const padDate = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
               let start: Date;
               let end: Date = padDate(toDate);
-
-              if (dateRange === 'today') {
-                start = padDate(toDate);
-              } else if (dateRange === 'last7days') {
-                start = padDate(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
-              } else if (dateRange === 'last30days') {
-                start = padDate(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
-              } else if (dateRange === 'thisMonth') {
-                start = new Date(toDate.getFullYear(), toDate.getMonth(), 1);
-              } else if (dateRange === 'thisYear') {
-                start = new Date(toDate.getFullYear(), 0, 1);
-              } else {
-                start = padDate(toDate);
-              }
-
-              const startTime = start.getTime();
-              const endTime = end.getTime();
+              let prevStart: Date;
+              let prevEnd: Date;
 
               const sumInRange = (s: number, e: number) => volume
                 .filter((r: any) => {
@@ -424,16 +412,55 @@ export default function Dashboard() {
                 })
                 .reduce((acc: number, cur: any) => acc + (cur.count || 0), 0);
 
-              const currentSum = sumInRange(startTime, endTime);
+              if (dateRange === 'thisMonth') {
+                // Este mês: do dia 1 até hoje
+                start = new Date(toDate.getFullYear(), toDate.getMonth(), 1);
+                end = padDate(toDate);
+                
+                // Mês anterior: mesmo período (dia 1 até o dia atual, mas do mês anterior)
+                const dayOfMonth = toDate.getDate();
+                prevStart = new Date(toDate.getFullYear(), toDate.getMonth() - 1, 1);
+                prevEnd = new Date(toDate.getFullYear(), toDate.getMonth() - 1, dayOfMonth);
+              } else if (dateRange === 'thisYear') {
+                // Este ano: do dia 1/1 até hoje
+                start = new Date(toDate.getFullYear(), 0, 1);
+                end = padDate(toDate);
+                
+                // Ano anterior: do dia 1/1 até o último dia do ano anterior
+                prevStart = new Date(toDate.getFullYear() - 1, 0, 1);
+                prevEnd = new Date(toDate.getFullYear() - 1, 11, 31);
+              } else {
+                // Para períodos fixos (today, last7days, last30days)
+                if (dateRange === 'today') {
+                  start = padDate(toDate);
+                } else if (dateRange === 'last7days') {
+                  start = padDate(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
+                } else if (dateRange === 'last30days') {
+                  start = padDate(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
+                } else {
+                  start = padDate(toDate);
+                }
+                
+                end = padDate(toDate);
+                
+                // Período anterior: mesmo tamanho, imediatamente antes
+                const periodDays = Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+                prevEnd = new Date(start.getTime() - 24 * 60 * 60 * 1000);
+                prevStart = new Date(prevEnd.getTime() - (periodDays - 1) * 24 * 60 * 60 * 1000);
+              }
 
-              // previous period: same length right before start
-              const periodDays = Math.round((endTime - startTime) / (24 * 60 * 60 * 1000)) + 1;
-              const prevEnd = new Date(startTime - 1 * 24 * 60 * 60 * 1000);
-              const prevStart = new Date(prevEnd.getTime() - (periodDays - 1) * 24 * 60 * 60 * 1000);
-
+              const currentSum = sumInRange(start.getTime(), end.getTime());
               const prevSum = sumInRange(padDate(prevStart).getTime(), padDate(prevEnd).getTime());
 
+              console.log('📊 Cálculo de variação - Total de Chamados:', {
+                dateRange,
+                currentPeriod: { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0], sum: currentSum },
+                previousPeriod: { start: prevStart.toISOString().split('T')[0], end: prevEnd.toISOString().split('T')[0], sum: prevSum }
+              });
+
               const changePercent = prevSum === 0 ? (currentSum === 0 ? 0 : 100) : Math.round(((currentSum - prevSum) / prevSum) * 100);
+
+              console.log('📊 Resultado:', { changePercent, isPositive: changePercent >= 0 });
 
               return {
                 value: Math.abs(changePercent),
@@ -441,6 +468,7 @@ export default function Dashboard() {
                 isPositive: changePercent >= 0
               };
             } catch (err) {
+              console.error('❌ Erro ao calcular variação de Total de Chamados:', err);
               return undefined;
             }
           })()}
