@@ -1819,18 +1819,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
               fullTicket.emailThreadId = emailThreadId;
             }
             
-            // Buscar todos os solicitantes do ticket
-            const requestersResponse = await fetch(`http://localhost:3000${apiPrefix}/tickets/${ticketId}/requesters`);
-            const ticketRequesters = requestersResponse.ok ? await requestersResponse.json() : [];
+            // Buscar requester principal
+            const ticketRequesters = fullTicket.requester ? [{
+              requester: {
+                email: fullTicket.requester.email,
+                fullName: fullTicket.requester.fullName
+              }
+            }] : [];
             
-            // Buscar pessoas em cópia
-            const ccResponse = await fetch(`http://localhost:3000${apiPrefix}/tickets/${ticketId}/cc`);
-            const ticketCc = ccResponse.ok ? await ccResponse.json() : [];
+            // TODO: Buscar requesters adicionais e CC quando implementado
+            const ticketCc: any[] = [];
             
             // Buscar autor da interação
             const author = await storage.getUserById((req as any).user?.id || 1);
             
-            if (author && (ticketRequesters.length > 0 || ticketCc.length > 0)) {
+            if (author && ticketRequesters.length > 0) {
+              console.log(`📧 Enviando notificação de interação para ${fullTicket.requester?.email}`);
+              
               // Enviar notificações de forma assíncrona (não bloquear a resposta)
               emailService.sendTicketInteractionNotification(
                 fullTicket,
@@ -1842,12 +1847,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 })),
                 ticketCc
               ).catch(error => {
-                console.error('Erro ao enviar notificação de interação:', error);
+                console.error('❌ Erro ao enviar notificação de interação:', error);
               });
+            } else {
+              console.log('ℹ️  Não há destinatários para enviar notificação de interação');
             }
           }
         } catch (emailError) {
-          console.error('Erro ao processar envio de email:', emailError);
+          console.error('❌ Erro ao processar envio de email:', emailError);
           // Não falhar a requisição se o email falhar
         }
       }

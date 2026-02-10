@@ -43,7 +43,7 @@ export default function Knowledge() {
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState<any[]>([]);
   const [editorContent, setEditorContent] = useState('');
-  
+
   // Sempre carregar artigos via API (não usar mocks)
   useEffect(() => {
     const fetchArticles = async () => {
@@ -70,7 +70,7 @@ export default function Knowledge() {
 
   // Get unique categories
   const categories = ['all', ...Array.from(new Set(articles.map(article => article.category)))];
-  
+
   // Form for adding/editing articles
   const form = useForm<ArticleFormValues>({
     resolver: zodResolver(articleFormSchema),
@@ -81,7 +81,7 @@ export default function Knowledge() {
       tags: ''
     }
   });
-  
+
   // Edit form
   const editForm = useForm<ArticleFormValues>({
     resolver: zodResolver(articleFormSchema),
@@ -92,37 +92,37 @@ export default function Knowledge() {
       tags: selectedArticle?.tags?.join(', ') || ''
     }
   });
-  
+
   // Filter articles based on search query and category
   const filteredArticles = articles.filter(article => {
     const tags = article.tags || [];
-    const matchesSearch = 
-      (article.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch =
+      (article.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (article.content || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       tags.some((tag: string) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    
+
     const matchesCategory = activeCategory === 'all' || article.category === activeCategory;
-    
+
     return matchesSearch && matchesCategory;
   });
-  
+
   // Reset form when opening dialog
   const openAddDialog = () => {
     form.reset();
     setIsAddDialogOpen(true);
   };
-  
+
   // Set up form when opening edit dialog
   const openEditDialog = (article: any) => {
     console.log('[openEditDialog] Article content length:', article.content?.length);
     console.log('[openEditDialog] Tem imagens?', article.content?.includes('<img'));
-    
+
     setSelectedArticle(article);
     setIsEditDialogOpen(false);
-    
+
     // Define o conteúdo no estado
     setEditorContent(article.content || '');
-    
+
     // Reseta o form
     editForm.reset({
       title: article.title,
@@ -130,19 +130,19 @@ export default function Knowledge() {
       category: article.category,
       tags: (article.tags || []).join(', ')
     });
-    
+
     // Abre o dialog após garantir que tudo está pronto
     setTimeout(() => {
       setIsEditDialogOpen(true);
     }, 100);
   };
-  
+
   // Open view dialog
   const openViewDialog = (article: any) => {
     setSelectedArticle(article);
     setIsViewDialogOpen(true);
     setNewComment('');
-    
+
     // Carregar comentários da API
     (async () => {
       try {
@@ -158,7 +158,7 @@ export default function Knowledge() {
         setComments([]);
       }
     })();
-    
+
     // Increment view count
     // Chamar API para incrementar views
     (async () => {
@@ -178,7 +178,7 @@ export default function Knowledge() {
       }
     })();
   };
-  
+
   // Handle form submission for new article
   const onSubmit = (data: ArticleFormValues) => {
     (async () => {
@@ -209,7 +209,7 @@ export default function Knowledge() {
       }
     })();
   };
-  
+
   // Handle edit form submission
   const onEditSubmit = (data: ArticleFormValues) => {
     if (!selectedArticle) return;
@@ -241,7 +241,7 @@ export default function Knowledge() {
       }
     })();
   };
-  
+
   // Handle article deletion
   const handleDeleteArticle = (id: number) => {
     (async () => {
@@ -257,7 +257,7 @@ export default function Knowledge() {
       }
     })();
   };
-  
+
   // Format date
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -279,7 +279,7 @@ export default function Knowledge() {
   // Handle comment submission
   const handleAddComment = async () => {
     if (!newComment.trim() || !user || !selectedArticle) return;
-    
+
     try {
       const resp = await fetch(`/api/knowledge/${selectedArticle.id}/comments`, {
         method: 'POST',
@@ -289,12 +289,12 @@ export default function Knowledge() {
       });
 
       if (!resp.ok) throw new Error('Erro ao adicionar comentário');
-      
+
       const body = await resp.json();
       if (body && body.data) {
         setComments(prev => [body.data, ...prev]);
         setNewComment('');
-        
+
         toast({
           title: 'Comentário adicionado',
           description: 'Seu comentário foi publicado com sucesso'
@@ -324,7 +324,7 @@ export default function Knowledge() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          
+
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={openAddDialog}>
@@ -354,7 +354,7 @@ export default function Knowledge() {
                       </FormItem>
                     )}
                   />
-                  
+
                   <FormField
                     control={form.control}
                     name="category"
@@ -381,7 +381,7 @@ export default function Knowledge() {
                       </FormItem>
                     )}
                   />
-                  
+
                   <FormField
                     control={form.control}
                     name="tags"
@@ -395,7 +395,7 @@ export default function Knowledge() {
                       </FormItem>
                     )}
                   />
-                  
+
                   <FormField
                     control={form.control}
                     name="content"
@@ -413,7 +413,7 @@ export default function Knowledge() {
                       </FormItem>
                     )}
                   />
-                  
+
                   <DialogFooter>
                     <Button type="submit">Salvar Artigo</Button>
                   </DialogFooter>
@@ -422,7 +422,7 @@ export default function Knowledge() {
             </DialogContent>
           </Dialog>
         </div>
-        
+
         {/* Categories */}
         <div className="flex overflow-x-auto pb-2">
           {categories.map((category, index) => (
@@ -436,7 +436,7 @@ export default function Knowledge() {
             </Button>
           ))}
         </div>
-        
+
         {/* Articles Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredArticles.length === 0 ? (
@@ -444,7 +444,7 @@ export default function Knowledge() {
               <FileQuestion className="h-16 w-16 text-gray-400 mb-4" />
               <h3 className="text-lg font-medium">Nenhum artigo encontrado</h3>
               <p className="text-sm text-gray-500 mt-2 text-center">
-                {searchQuery 
+                {searchQuery
                   ? "Nenhum artigo corresponde à sua busca. Tente com outros termos."
                   : "Comece adicionando seu primeiro artigo na base de conhecimento."}
               </p>
@@ -452,7 +452,7 @@ export default function Knowledge() {
           ) : (
             filteredArticles.map(article => (
               <Card key={article.id} className="flex flex-col h-full">
-                <CardHeader className="pb-2">
+                <CardHeader className="pb-2" onClick={() => openViewDialog(article)} style={{ cursor: 'pointer' }}>
                   <div className="flex justify-between items-start">
                     <Badge className="mb-2">{article.category}</Badge>
                     <div className="flex items-center text-sm text-gray-500">
@@ -465,7 +465,7 @@ export default function Knowledge() {
                     {extractPlainText(article.content, 150)}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="flex-grow">
+                <CardContent className="flex-grow" onClick={() => openViewDialog(article)} style={{ cursor: 'pointer' }}>
                   <div className="flex flex-wrap gap-1 mt-2">
                     {(article.tags || []).map((tag: string, index: number) => (
                       <Badge key={index} variant="outline" className="text-xs">
@@ -478,7 +478,7 @@ export default function Knowledge() {
                   <div className="w-full flex items-center justify-between">
                     <div className="flex flex-col text-xs text-gray-500">
                       <div className="flex items-center">
-                        <Clock className="h-3 w-3 mr-1" /> 
+                        <Clock className="h-3 w-3 mr-1" />
                         Criado em {formatDate(article.createdAt)}
                       </div>
                       {article.lastEditedAt && article.lastEditedBy && (
@@ -489,22 +489,22 @@ export default function Knowledge() {
                       )}
                     </div>
                     <div className="flex gap-1">
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="ghost"
                         onClick={() => openViewDialog(article)}
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="ghost"
                         onClick={() => openEditDialog(article)}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="ghost"
                         className="text-red-500 hover:text-red-600 hover:bg-red-50"
                         onClick={() => handleDeleteArticle(article.id)}
@@ -518,7 +518,7 @@ export default function Knowledge() {
             ))
           )}
         </div>
-        
+
         {/* View Article Dialog */}
         <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
           <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -552,16 +552,16 @@ export default function Knowledge() {
                   Comentários ({comments.length})
                 </TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="content" className="space-y-4 mt-4">
                 {/* Article content */}
-                <div 
+                <div
                   className="prose prose-sm max-w-none"
                   dangerouslySetInnerHTML={{ __html: selectedArticle?.content || '' }}
                 />
-                
+
                 <Separator />
-                
+
                 <div className="flex flex-col gap-2">
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-1">
@@ -580,7 +580,7 @@ export default function Knowledge() {
                       <span className="font-medium">{selectedArticle?.author}</span>
                     </div>
                   </div>
-                  
+
                   {selectedArticle?.lastEditedAt && selectedArticle?.lastEditedBy && (
                     <div className="flex items-center gap-1 text-sm text-muted-foreground justify-end">
                       <Pencil className="h-3.5 w-3.5" />
@@ -592,7 +592,7 @@ export default function Knowledge() {
                   )}
                 </div>
               </TabsContent>
-              
+
               <TabsContent value="comments" className="space-y-4 mt-4">
                 {/* Add comment form */}
                 <div className="space-y-3">
@@ -609,7 +609,7 @@ export default function Knowledge() {
                         }
                       }}
                     />
-                    <Button 
+                    <Button
                       onClick={handleAddComment}
                       disabled={!newComment.trim()}
                       size="icon"
@@ -618,9 +618,9 @@ export default function Knowledge() {
                     </Button>
                   </div>
                 </div>
-                
+
                 <Separator />
-                
+
                 {/* Comments list */}
                 <div className="space-y-4 max-h-[400px] overflow-y-auto">
                   {comments.length === 0 ? (
@@ -655,7 +655,7 @@ export default function Knowledge() {
             </Tabs>
           </DialogContent>
         </Dialog>
-        
+
         {/* Edit Article Dialog */}
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
           <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -680,7 +680,7 @@ export default function Knowledge() {
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={editForm.control}
                   name="category"
@@ -707,7 +707,7 @@ export default function Knowledge() {
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={editForm.control}
                   name="tags"
@@ -721,7 +721,7 @@ export default function Knowledge() {
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={editForm.control}
                   name="content"
@@ -750,7 +750,7 @@ export default function Knowledge() {
                     );
                   }}
                 />
-                
+
                 <DialogFooter>
                   <Button type="submit">
                     <Save className="mr-2 h-4 w-4" />

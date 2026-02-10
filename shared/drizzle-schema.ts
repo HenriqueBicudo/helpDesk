@@ -143,7 +143,7 @@ export const tickets = pgTable('tickets', {
   description: text('description').notNull(),
   status: statusEnum('status').notNull().default('open'),
   priority: priorityEnum('priority').notNull().default('medium'),
-  category: categoryEnum('category').notNull(),
+  category: varchar('category', { length: 255 }).notNull(),
   teamId: integer('team_id').references(() => teams.id), // ID da equipe (categoria principal)
   categoryId: integer('category_id').references(() => teamCategories.id), // ID da categoria hierárquica
   serviceId: integer('service_id'), // ID do serviço (será referenciado quando a tabela services for criada)

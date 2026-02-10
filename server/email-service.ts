@@ -193,13 +193,38 @@ export class EmailService {
       'high': 'Alta',
       'critical': 'Crítica'
     };
-    
-    return this.sendEmailWithTemplate('new_ticket', requester.email, {
-      requesterName: requester.fullName,
-      ticketId: ticket.id,
-      ticketSubject: ticket.subject,
-      ticketPriority: priorityMap[ticket.priority] || ticket.priority,
-      ticketCategory: categoryMap[ticket.category] || ticket.category
+
+    // Usar o emailThreadId do ticket como Message-ID inicial
+    const messageId = (ticket as any).emailThreadId || this.generateMessageId(ticket.id);
+    const subject = `[Ticket #${ticket.id}] ${ticket.subject}`;
+
+    const html = `
+${ticket.description}
+
+<br><br>
+--<br>
+<small style="color: #666;">
+Para responder este ticket, basta responder este email.<br>
+<a href="${process.env.APP_URL || 'http://localhost:3000'}/tickets/${ticket.id}">Ver ticket #${ticket.id}</a>
+</small>
+    `.trim();
+
+    const text = `
+${ticket.description.replace(/<[^>]*>/g, '')}
+
+--
+Para responder este ticket, basta responder este email.
+Ver ticket: ${process.env.APP_URL || 'http://localhost:3000'}/tickets/${ticket.id}
+Ticket ID: #${ticket.id}
+    `.trim();
+
+    return this.sendEmail({
+      to: requester.email,
+      from: this.defaultFromEmail,
+      subject,
+      html,
+      text,
+      messageId
     });
   }
   
@@ -282,7 +307,7 @@ export class EmailService {
       return `<ticket-${ticketId}-interaction-${interactionId}-${timestamp}@${domain}>`;
     } else {
       // Message-ID inicial do ticket (thread)
-      return `<ticket-${ticketId}-${timestamp}@${domain}>`;
+      return `<ticket-${ticketId}@${domain}>`;
     }
   }
 
@@ -323,65 +348,28 @@ export class EmailService {
     // Gerar Message-ID único para esta interação
     const interactionMessageId = this.generateMessageId(ticket.id, interaction.id);
 
-    const subject = `Re: [Ticket #${ticket.id}] ${ticket.subject}`;
+    // Manter subject original - adicionar Re: apenas se não tiver
+    const subject = ticket.subject.startsWith('Re:') || ticket.subject.includes('[Ticket #') 
+      ? ticket.subject 
+      : `[Ticket #${ticket.id}] ${ticket.subject}`;
     
     const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-          .content { background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
-          .interaction { background: white; padding: 15px; margin: 15px 0; border-left: 4px solid #2563eb; }
-          .footer { background: #f3f4f6; padding: 15px; border-radius: 0 0 8px 8px; font-size: 12px; color: #6b7280; }
-          .btn { display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
-          .reply-info { background: #fef3c7; padding: 10px; border-left: 3px solid #f59e0b; margin: 10px 0; font-size: 13px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h2>Ticket #${ticket.id}</h2>
-            <p style="margin: 0;">${ticket.subject}</p>
-          </div>
-          <div class="content">
-            <div class="reply-info">
-              <strong>💡 Dica:</strong> Responda este email diretamente para adicionar uma resposta ao ticket.
-            </div>
-            
-            <p><strong>De:</strong> ${author.fullName}</p>
-            <p><strong>Data:</strong> ${new Date().toLocaleString('pt-BR')}</p>
-            
-            <div class="interaction">
-              ${interaction.content}
-            </div>
-            
-            <a href="${process.env.APP_URL || 'http://localhost:3000'}/tickets/${ticket.id}" class="btn">
-              Ver Ticket Completo
-            </a>
-          </div>
-          <div class="footer">
-            <p>Para responder, basta responder este email.</p>
-            <p>Ticket ID: #${ticket.id} | HelpDesk System</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+${interaction.content}
+
+<br><br>
+--<br>
+<small style="color: #666;">
+Para responder este ticket, basta responder este email.<br>
+<a href="${process.env.APP_URL || 'http://localhost:3000'}/tickets/${ticket.id}">Ver ticket #${ticket.id}</a>
+</small>
+    `.trim();
 
     const text = `
-Ticket #${ticket.id} - ${ticket.subject}
-
-De: ${author.fullName}
-Data: ${new Date().toLocaleString('pt-BR')}
-
 ${interaction.content.replace(/<[^>]*>/g, '')}
 
----
-Para responder, basta responder este email.
-Ver ticket completo: ${process.env.APP_URL || 'http://localhost:3000'}/tickets/${ticket.id}
+--
+Para responder este ticket, basta responder este email.
+Ver ticket: ${process.env.APP_URL || 'http://localhost:3000'}/tickets/${ticket.id}
 Ticket ID: #${ticket.id}
     `.trim();
 

@@ -339,10 +339,7 @@ router.get('/users', requireAuth, requireAdmin, async (req: Request, res: Respon
 });
 
 router.post('/users', requireAuth, requireAdmin, async (req: Request, res: Response) => {
-  try {
-    console.log('Dados recebidos para criação de usuário:', JSON.stringify(req.body, null, 2));
-    console.log('Tipo do campo company:', typeof req.body.company, '- Valor:', req.body.company);
-    
+  try {    
     const data = createUserSchema.parse(req.body);
     console.log('Dados validados para usuário:', JSON.stringify(data, null, 2));
     

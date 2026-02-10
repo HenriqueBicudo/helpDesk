@@ -213,6 +213,19 @@ export default function TicketDetails() {
   );
 
   const [contractSearch, setContractSearch] = useState('');
+  const [assigneeSearch, setAssigneeSearch] = useState('');
+  const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+
+  // Fetch companies
+  const { data: companies = [] } = useQuery<any[]>({
+    queryKey: ['/api/companies'],
+    queryFn: async () => {
+      const res = await fetch('/api/companies');
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
 
   const CLOSED_STATUSES = ['resolved', 'closed'];
   const isClosed = ticket?.status ? CLOSED_STATUSES.includes(ticket.status) : false;
@@ -462,6 +475,29 @@ export default function TicketDetails() {
   };
 
   // Mutation to assign ticket to user
+  // Mutation to update company
+  const updateCompanyMutation = useMutation({
+    mutationFn: async (companyId: number | null) => {
+      const res = await apiRequest('PATCH', `/api/tickets/${ticketId}`, { companyId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
+      toast({
+        title: 'Empresa atualizada',
+        description: 'A empresa solicitante foi atualizada com sucesso.',
+      });
+      setCompanyDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Erro',
+        description: error.message || 'Não foi possível atualizar a empresa.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const assignTicketMutation = useMutation({
     mutationFn: async (data: { assigneeId: number | null }) => {
       const res = await fetch(`/api/tickets/${ticketId}`, {
@@ -903,13 +939,25 @@ export default function TicketDetails() {
                 <CardHeader className="py-3">
                   <CardTitle className="text-base font-semibold">Atribuído a</CardTitle>
                 </CardHeader>
-                <CardContent className="pb-4">
+                <CardContent className="pb-4 space-y-2">
+                  {/* Busca de usuário */}
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar usuário..."
+                      value={assigneeSearch}
+                      onChange={(e) => setAssigneeSearch(e.target.value)}
+                      className="pl-9 h-9"
+                    />
+                  </div>
+                  
                   <Select
                     value={ticket.assigneeId?.toString() || 'unassigned'}
                     onValueChange={(value) => {
                       assignTicketMutation.mutate({
                         assigneeId: value === 'unassigned' ? null : parseInt(value)
                       });
+                      setAssigneeSearch('');
                     }}
                     disabled={isClosed}
                   >
@@ -920,7 +968,13 @@ export default function TicketDetails() {
                       <SelectItem value="unassigned">
                         <span className="text-muted-foreground">Não atribuído</span>
                       </SelectItem>
-                      {helpdeskUsers.map((user: any) => (
+                      {helpdeskUsers
+                        .filter((user: any) => 
+                          !assigneeSearch || 
+                          user.fullName.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
+                          user.email.toLowerCase().includes(assigneeSearch.toLowerCase())
+                        )
+                        .map((user: any) => (
                         <SelectItem key={user.id} value={user.id!.toString()}>
                           <div className="flex items-center gap-2">
                             <Avatar className="h-5 w-5">
@@ -934,6 +988,58 @@ export default function TicketDetails() {
                       ))}
                     </SelectContent>
                   </Select>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Empresa Solicitante - Apenas para helpdesk */}
+            {!clientRestrictions.isClient && (
+              <Card className="shadow-md hover:shadow-lg transition-all border-2 border-l-4 border-l-purple-500 dark:border-l-purple-400 bg-white dark:bg-gray-800">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-base font-semibold">Empresa Solicitante</CardTitle>
+                </CardHeader>
+                <CardContent className="pb-4 space-y-2">
+                  {ticket.companyId ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <svg className="h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        <span className="font-medium">
+                          {companies.find((c: any) => c.id === ticket.companyId)?.name || 'Empresa não encontrada'}
+                        </span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedCompanyId(ticket.companyId || null);
+                          setCompanyDialogOpen(true);
+                        }}
+                        disabled={isClosed}
+                      >
+                        Alterar
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="text-sm text-muted-foreground bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-2">
+                        ⚠️ Nenhuma empresa vinculada
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedCompanyId(null);
+                          setCompanyDialogOpen(true);
+                        }}
+                        disabled={isClosed}
+                        className="w-full"
+                      >
+                        Vincular Empresa
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -1297,6 +1403,64 @@ export default function TicketDetails() {
         </DialogContent>
       </Dialog>
       */}
+
+      {/* Dialog para alterar empresa */}
+      <Dialog open={companyDialogOpen} onOpenChange={setCompanyDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Alterar Empresa Solicitante</DialogTitle>
+            <DialogDescription>
+              Selecione a empresa que será vinculada a este ticket.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Empresa</Label>
+              <Select
+                value={selectedCompanyId?.toString() || 'none'}
+                onValueChange={(value) => setSelectedCompanyId(value === 'none' ? null : parseInt(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma empresa..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    <span className="text-muted-foreground">Sem empresa</span>
+                  </SelectItem>
+                  {companies.map((company: any) => (
+                    <SelectItem key={company.id} value={company.id.toString()}>
+                      <div className="flex items-center gap-2">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        <div>
+                          <div className="font-medium">{company.name}</div>
+                          {company.cnpj && (
+                            <div className="text-xs text-muted-foreground">{company.cnpj}</div>
+                          )}
+                        </div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompanyDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={() => updateCompanyMutation.mutate(selectedCompanyId)}
+              disabled={updateCompanyMutation.isPending}
+            >
+              {updateCompanyMutation.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

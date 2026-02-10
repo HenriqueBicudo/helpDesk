@@ -1,7 +1,7 @@
 import Imap from 'imap';
 import { simpleParser, ParsedMail } from 'mailparser';
 import { db } from '../db-postgres';
-import { tickets, ticketInteractions, users } from '@shared/drizzle-schema';
+import { tickets, ticketInteractions, users, requesters, companies } from '@shared/drizzle-schema';
 import { eq } from 'drizzle-orm';
 
 export class EmailInboundService {
@@ -129,6 +129,177 @@ export class EmailInboundService {
   }
 
   /**
+   * Criar novo ticket a partir de email
+   */
+  private async createTicketFromEmail(mail: ParsedMail): Promise<void> {
+    try {
+      const subject = mail.subject || 'Sem assunto';
+      const from = mail.from?.value?.[0]?.address || '';
+      const fromName = mail.from?.value?.[0]?.name || from;
+
+      console.log('📬 Criando novo ticket via email:', {
+        from,
+        fromName,
+        subject
+      });
+
+      // Limpar e preparar conteúdo
+      const htmlContent = mail.html ? mail.html.toString() : undefined;
+      const textContent = mail.text ? mail.text.toString() : undefined;
+      const content = this.cleanEmailContent(htmlContent, textContent);
+
+      if (!content || content.length < 5) {
+        console.log('⚠️  Conteúdo do email vazio ou muito curto - ticket não criado');
+        return;
+      }
+
+      // Buscar usuário pelo email
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, from));
+
+      // Gerar Message-ID inicial para a thread de email
+      const domain = process.env.SMTP_FROM_EMAIL?.split('@')[1] || 'helpdesk.local';
+      const emailThreadId = `<ticket-${Date.now()}@${domain}>`;
+
+      if (user) {
+        // Usuário cadastrado - criar ticket direto
+        console.log(`✅ Usuário encontrado: ${user.fullName} (${user.email})`);
+        console.log(`   📋 Dados do usuário: company="${user.company}", role=${user.role}`);
+
+        // Buscar empresa - aceita tanto ID quanto nome
+        let companyId: number | null = null;
+        if (user.company) {
+          const companyValue = user.company.trim();
+          
+          // Verificar se é um ID (número) ou nome
+          if (/^\d+$/.test(companyValue)) {
+            // É um ID numérico
+            companyId = parseInt(companyValue);
+            console.log(`🔍 Usando company ID direto: ${companyId}`);
+            
+            // Verificar se a empresa existe
+            const [company] = await db
+              .select()
+              .from(companies)
+              .where(eq(companies.id, companyId));
+            
+            if (company) {
+              console.log(`✅ 🏢 Empresa vinculada ao ticket: ${company.name} (ID: ${companyId})`);
+            } else {
+              console.log(`⚠️  Empresa ID ${companyId} não encontrada - ticket será criado sem empresa`);
+              companyId = null;
+            }
+          } else {
+            // É um nome - buscar pelo nome
+            console.log(`🔍 Buscando empresa com nome: "${companyValue}"`);
+            
+            const [company] = await db
+              .select()
+              .from(companies)
+              .where(eq(companies.name, companyValue));
+            
+            if (company) {
+              companyId = company.id;
+              console.log(`✅ 🏢 Empresa vinculada ao ticket: ${company.name} (ID: ${companyId})`);
+            } else {
+              console.log(`❌ Empresa "${companyValue}" não encontrada no cadastro de empresas`);
+            }
+          }
+        } else {
+          console.log(`⚠️  Usuário não tem empresa cadastrada (campo company está vazio)`);
+        }
+
+        // Buscar ou criar requester
+        let [requester] = await db
+          .select()
+          .from(requesters)
+          .where(eq(requesters.email, from));
+
+        if (!requester) {
+          [requester] = await db
+            .insert(requesters)
+            .values({
+              fullName: user.fullName,
+              email: user.email,
+              company: user.company || null,
+              createdAt: new Date()
+            })
+            .returning();
+        }
+
+        // Criar ticket
+        const [ticket] = await db
+          .insert(tickets)
+          .values({
+            subject,
+            description: content,
+            status: 'open',
+            priority: 'medium',
+            category: 'other',
+            requesterId: requester.id,
+            companyId: companyId,
+            emailThreadId,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          })
+          .returning();
+
+        console.log(`✅ Ticket #${ticket.id} criado via email de ${from}`);
+        console.log(`   🏢 CompanyId do ticket: ${ticket.companyId || 'null (sem empresa)'}`);
+        console.log(`   📧 EmailThreadId: ${ticket.emailThreadId}`);
+      } else {
+        // Usuário NÃO cadastrado - criar ticket sem empresa (consultor vai vincular depois)
+        console.log(`⚠️  Usuário não cadastrado: ${from}`);
+
+        // Criar requester temporário
+        const [requester] = await db
+          .insert(requesters)
+          .values({
+            fullName: fromName,
+            email: from,
+            company: null, // Sem empresa - consultor vai vincular
+            createdAt: new Date()
+          })
+          .returning();
+
+        // Criar ticket com aviso
+        const ticketDescription = `
+<div style="background: #fff3cd; padding: 10px; border-left: 3px solid #ffc107; margin-bottom: 15px;">
+  <strong>⚠️ Atenção:</strong> Este ticket foi criado via email de um remetente não cadastrado.<br>
+  <strong>Email:</strong> ${from}<br>
+  <strong>Nome:</strong> ${fromName}<br>
+  <strong>Ação necessária:</strong> Vincular o ticket a uma empresa antes de prosseguir.
+</div>
+
+${content}
+        `.trim();
+
+        const [ticket] = await db
+          .insert(tickets)
+          .values({
+            subject: `[Email Externo] ${subject}`,
+            description: ticketDescription,
+            status: 'open',
+            priority: 'medium',
+            category: 'other',
+            requesterId: requester.id,
+            companyId: null, // SEM EMPRESA - precisa ser vinculado
+            emailThreadId,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          })
+          .returning();
+
+        console.log(`✅ Ticket #${ticket.id} criado (sem empresa) via email de ${from}`);
+      }
+    } catch (error) {
+      console.error('❌ Erro ao criar ticket via email:', error);
+    }
+  }
+
+  /**
    * Processar um email recebido
    */
   private async processEmail(mail: ParsedMail): Promise<void> {
@@ -136,7 +307,16 @@ export class EmailInboundService {
       const subject = mail.subject || '';
       const from = mail.from?.value?.[0]?.address || '';
       const inReplyTo = mail.inReplyTo || '';
-      const references = mail.references?.join(' ') || '';
+      
+      // Corrigir references - pode ser string ou array
+      let references = '';
+      if (mail.references) {
+        if (Array.isArray(mail.references)) {
+          references = mail.references.join(' ');
+        } else if (typeof mail.references === 'string') {
+          references = mail.references;
+        }
+      }
 
       console.log('📨 Processando email:', {
         from,
@@ -149,7 +329,9 @@ export class EmailInboundService {
       const ticketId = this.extractTicketId(subject, inReplyTo, references);
 
       if (!ticketId) {
-        console.log('⚠️  Não foi possível extrair ticket ID do email');
+        // Não é resposta a um ticket existente - criar novo ticket
+        console.log('📝 Email não é resposta a ticket - criando novo ticket');
+        await this.createTicketFromEmail(mail);
         return;
       }
 
@@ -196,7 +378,7 @@ export class EmailInboundService {
           type: 'comment',
           content: finalContent,
           isInternal: false,
-          timeSpent: 0,
+          timeSpent: '0',
           userId,
           createdAt: new Date(),
         })

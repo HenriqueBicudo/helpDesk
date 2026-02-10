@@ -377,6 +377,10 @@ export class PostgresStorage implements IStorage {
 
       // 1. Criar o ticket na transação
       const finalTicket = await db.transaction(async (tx) => {
+        // Gerar Message-ID inicial para a thread de email
+        const domain = process.env.SMTP_FROM_EMAIL?.split('@')[1] || 'helpdesk.local';
+        const emailThreadId = `<ticket-${Date.now()}@${domain}>`;
+        
         const ticketData = {
           subject: data.subject,
           description: data.description,
@@ -387,6 +391,7 @@ export class PostgresStorage implements IStorage {
           assigneeId: data.assigneeId || null,
           companyId: data.companyId || null, // ✅ Incluir companyId
           contractId: contractId || null,
+          emailThreadId: emailThreadId, // Thread ID do email
           createdAt: new Date(),
           updatedAt: new Date()
         };

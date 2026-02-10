@@ -855,10 +855,10 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                       </FormControl>
                       <SelectContent>
                         {teams.map((team) => (
-                          <SelectItem key={team.id} value={team.id.toString()}>
-                            {team.name}
+                          <SelectItem key={team.id} value={team.id.toString()}>                            
+                            {team.name}                            
                           </SelectItem>
-                        ))}
+                        ))}                        
                       </SelectContent>
                     </Select>
                     <FormMessage />

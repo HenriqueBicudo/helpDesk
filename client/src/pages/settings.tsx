@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -20,6 +20,7 @@ import TagsPage from './tags';
 import ResponseTemplatesPage from './response-templates';
 import { AutomationTriggersPage } from './automation-triggers';
 import { ServicesManagementPage } from './services-management';
+import { useAuth } from '@/hooks/use-auth';
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
@@ -32,6 +33,13 @@ interface BusinessHours {
 export default function SettingsNew() {
   const { theme, setTheme: setDarkTheme, actualTheme } = useDarkTheme();
   const { toast } = useToast();
+  const { user } = useAuth();
+  
+  // Check if user is admin
+  const isAdmin = user?.role === 'admin';
+  
+  // State for active tab - prevents reset when components re-render
+  const [activeTab, setActiveTab] = useState(isAdmin ? "appearance" : "services");
   
   // Use hook for ticket status management
   const { 
@@ -190,21 +198,26 @@ export default function SettingsNew() {
   return (
     <AppLayout title="Configurações">
       <div className="p-6 space-y-6">
-        <Tabs defaultValue="appearance">
+        
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="flex items-center mb-4">
-            <TabsList className="grid w-full max-w-3xl grid-cols-5">
-              <TabsTrigger value="appearance">
-                <Palette className="h-4 w-4 mr-2" />
-                Aparência
-              </TabsTrigger>
+            <TabsList className={`grid w-full max-w-3xl ${isAdmin ? 'grid-cols-5' : 'grid-cols-3'}`}>
+              {isAdmin && (
+                <TabsTrigger value="appearance">
+                  <Palette className="h-4 w-4 mr-2" />
+                  Aparência
+                </TabsTrigger>
+              )}
               <TabsTrigger value="services">
                 <Settings2 className="h-4 w-4 mr-2" />
                 Serviços
               </TabsTrigger>
-              <TabsTrigger value="sla">
-                <Clock className="h-4 w-4 mr-2" />
-                SLA
-              </TabsTrigger>
+              {isAdmin && (
+                <TabsTrigger value="sla">
+                  <Clock className="h-4 w-4 mr-2" />
+                  SLA
+                </TabsTrigger>
+              )}
               <TabsTrigger value="tickets">
                 <Ticket className="h-4 w-4 mr-2" />
                 Tickets
@@ -221,18 +234,19 @@ export default function SettingsNew() {
             <ServicesManagementPage />
           </TabsContent>
 
-          {/* Appearance Tab */}
-          <TabsContent value="appearance">
-            <Card className="bg-card border-border">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Palette className="h-5 w-5" />
-                  Personalização de Aparência
-                </CardTitle>
-                <CardDescription>
-                  Personalize o tema e cores do sistema.
-                </CardDescription>
-              </CardHeader>
+          {/* Appearance Tab - Admin Only */}
+          {isAdmin && (
+            <TabsContent value="appearance">
+              <Card className="bg-card border-border">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Palette className="h-5 w-5" />
+                    Personalização de Aparência
+                  </CardTitle>
+                  <CardDescription>
+                    Personalize o tema e cores do sistema.
+                  </CardDescription>
+                </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium">Tema da Interface</h3>
@@ -287,10 +301,12 @@ export default function SettingsNew() {
               </CardContent>
             </Card>
           </TabsContent>
+          )}
 
-          {/* SLA Configuration Tab */}
-          <TabsContent value="sla">
-            <div className="space-y-6">
+          {/* SLA Configuration Tab - Admin Only */}
+          {isAdmin && (
+            <TabsContent value="sla">
+              <div className="space-y-6">
               {/* General SLA Settings */}
               <Card className="bg-card border-border">
                 <CardHeader>
@@ -465,6 +481,7 @@ export default function SettingsNew() {
               </Card>
             </div>
           </TabsContent>
+          )}
 
           {/* Tickets Tab: reúne Tags e Respostas Prontas (empilhados por linha) */}
           <TabsContent value="tickets">
