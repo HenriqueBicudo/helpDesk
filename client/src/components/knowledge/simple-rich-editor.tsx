@@ -31,12 +31,15 @@ export function SimpleRichEditor({
   onChange, 
   placeholder = 'Escreva o conteúdo do artigo...'
 }: SimpleRichEditorProps) {
+  
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         link: false,
       }),
       Image.configure({
+        inline: true,
+        allowBase64: true,
         HTMLAttributes: {
           class: 'max-w-full h-auto rounded-lg',
         },
@@ -48,25 +51,37 @@ export function SimpleRichEditor({
         placeholder,
       }),
     ],
-    content,
+    content: content,
     onUpdate: ({ editor }) => {
       onChange?.(editor.getHTML())
     },
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm max-w-none focus:outline-none',
+      },
+    },
+    parseOptions: {
+      preserveWhitespace: 'full',
+    },
   })
 
-  // Atualiza o conteúdo do editor quando o prop content muda
-  // Isso corrige o bug de imagens sendo perdidas ao editar
+ // Log temporário para debug
   useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content)
+    console.log('[Editor] Content recebido:', content?.substring(0, 100), 'Length:', content?.length);
+    console.log('[Editor] Tem imagens?', content?.includes('<img'));
+    if (editor) {
+      console.log('[Editor] HTML atual do editor:', editor.getHTML().substring(0, 100));
     }
   }, [content, editor])
+
+  if (!editor) {
+    return <div className="min-h-[200px] border rounded-lg bg-muted/5 animate-pulse" />
+  }
 
   const addImage = useCallback(() => {
     const url = window.prompt('URL da imagem')
     if (url && editor) {
       editor.chain().focus().setImage({ src: url }).run()
-    }
     }
   }, [editor])
 

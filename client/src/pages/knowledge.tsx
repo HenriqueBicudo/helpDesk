@@ -42,6 +42,7 @@ export default function Knowledge() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState<any[]>([]);
+  const [editorContent, setEditorContent] = useState('');
   
   // Sempre carregar artigos via API (não usar mocks)
   useEffect(() => {
@@ -113,14 +114,27 @@ export default function Knowledge() {
   
   // Set up form when opening edit dialog
   const openEditDialog = (article: any) => {
+    console.log('[openEditDialog] Article content length:', article.content?.length);
+    console.log('[openEditDialog] Tem imagens?', article.content?.includes('<img'));
+    
     setSelectedArticle(article);
+    setIsEditDialogOpen(false);
+    
+    // Define o conteúdo no estado
+    setEditorContent(article.content || '');
+    
+    // Reseta o form
     editForm.reset({
       title: article.title,
-      content: article.content,
+      content: article.content || '',
       category: article.category,
       tags: (article.tags || []).join(', ')
     });
-    setIsEditDialogOpen(true);
+    
+    // Abre o dialog após garantir que tudo está pronto
+    setTimeout(() => {
+      setIsEditDialogOpen(true);
+    }, 100);
   };
   
   // Open view dialog
@@ -468,7 +482,7 @@ export default function Knowledge() {
                         Criado em {formatDate(article.createdAt)}
                       </div>
                       {article.lastEditedAt && article.lastEditedBy && (
-                        <div className="flex items-center mt-1 text-orange-600">
+                        <div className="flex items-center mt-1 text-muted-foreground">
                           <Pencil className="h-3 w-3 mr-1" />
                           Editado em {formatDate(article.lastEditedAt)} por {article.lastEditedBy}
                         </div>
@@ -518,7 +532,7 @@ export default function Knowledge() {
                   </span>
                 </div>
                 {selectedArticle?.lastEditedAt && selectedArticle?.lastEditedBy && (
-                  <div className="flex items-center gap-1 text-sm text-orange-600">
+                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
                     <Pencil className="h-3.5 w-3.5" />
                     <span>
                       Editado em {formatDate(selectedArticle.lastEditedAt)} por {selectedArticle.lastEditedBy}
@@ -568,7 +582,7 @@ export default function Knowledge() {
                   </div>
                   
                   {selectedArticle?.lastEditedAt && selectedArticle?.lastEditedBy && (
-                    <div className="flex items-center gap-1 text-sm text-orange-600 justify-end">
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground justify-end">
                       <Pencil className="h-3.5 w-3.5" />
                       <span>
                         Editado em {formatDate(selectedArticle.lastEditedAt)} por{' '}
@@ -711,19 +725,30 @@ export default function Knowledge() {
                 <FormField
                   control={editForm.control}
                   name="content"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Conteúdo</FormLabel>
-                      <FormControl>
-                        <SimpleRichEditor
-                          content={field.value}
-                          onChange={field.onChange}
-                          placeholder="Digite o conteúdo do artigo..."
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    console.log('[FormField render] editorContent length:', editorContent?.length);
+                    console.log('[FormField render] Tem imagens no editorContent?', editorContent?.includes('<img'));
+                    return (
+                      <FormItem>
+                        <FormLabel>Conteúdo</FormLabel>
+                        <FormControl>
+                          {isEditDialogOpen && editorContent ? (
+                            <SimpleRichEditor
+                              key={selectedArticle?.id}
+                              content={editorContent}
+                              onChange={field.onChange}
+                              placeholder="Digite o conteúdo do artigo..."
+                            />
+                          ) : (
+                            <div className="min-h-[200px] flex items-center justify-center border rounded-lg bg-muted/5">
+                              <p className="text-sm text-muted-foreground">Carregando editor...</p>
+                            </div>
+                          )}
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
                 
                 <DialogFooter>
