@@ -28,6 +28,19 @@ export default defineConfig({
       '/api': {
         target: 'http://backend:5000', // Nome do serviço no docker-compose
         changeOrigin: true,
+        secure: false,
+        ws: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('[vite] proxy error:', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('[vite] Sending Request to the Target:', req.method, req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('[vite] Received Response from the Target:', proxyRes.statusCode, req.url);
+          });
+        },
       },
     },
   },
