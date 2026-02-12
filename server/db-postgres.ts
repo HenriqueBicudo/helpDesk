@@ -1,11 +1,18 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { existsSync } from 'fs';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../shared/drizzle-schema';
 
-// Carregar .env da pasta raiz
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Carregar .env da pasta raiz (se existir - em Docker, variáveis vêm do docker-compose)
+const envPath = path.resolve(__dirname, '../.env');
+if (existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+} else {
+  // Em Docker, as variáveis já estão disponíveis via docker-compose env_file
+  dotenv.config();
+}
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL environment variable is not set');

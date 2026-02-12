@@ -19,9 +19,10 @@ COPY . ./
 
 WORKDIR /app/server
 
-EXPOSE 3001
+EXPOSE 5000
 
 ENV NODE_ENV=development
+ENV PORT=5000
 
 # Inicia o servidor com tsx
 CMD ["npx", "tsx", "index.ts"]
