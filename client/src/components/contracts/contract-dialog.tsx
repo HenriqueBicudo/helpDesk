@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
+import { useSlaTemplatesForSelection } from '@/hooks/use-sla-v2';
 
 interface Contract {
   id?: string;
@@ -29,6 +30,7 @@ interface Contract {
   companyId: number;
   type: 'support' | 'maintenance' | 'development' | 'consulting';
   status: 'active' | 'inactive' | 'expired' | 'suspended';
+  slaTemplateId?: number;
   startDate: string;
   endDate: string;
   monthlyValue: number;
@@ -70,55 +72,13 @@ export function ContractDialog({ open, onOpenChange, contract, companies }: Cont
     allowOverage: false,
     description: '',
     slaRuleId: '',
+    slaTemplateId: undefined,
   });
 
   const [isEndDateIndefinite, setIsEndDateIndefinite] = useState(false);
 
-  // Templates SLA pré-definidos (mesmo padrão da interface de aplicação)
-  const slaTemplates = [
-    {
-      id: 'suporte-basico',
-      name: 'Suporte Básico',
-      description: 'Template para contratos de suporte básico',
-      responseTime: '8h',
-      solutionTime: '72h',
-    },
-    {
-      id: 'suporte-premium', 
-      name: 'Suporte Premium',
-      description: 'Template para contratos premium com SLA otimizado',
-      responseTime: '2h',
-      solutionTime: '24h',
-    },
-    {
-      id: 'suporte-critico',
-      name: 'Suporte Crítico',
-      description: 'Template para sistemas críticos',
-      responseTime: '30min',
-      solutionTime: '4h',
-    },
-    {
-      id: 'manutencao',
-      name: 'Manutenção',
-      description: 'Template para contratos de manutenção',
-      responseTime: '24h',
-      solutionTime: '120h',
-    },
-    {
-      id: 'desenvolvimento',
-      name: 'Desenvolvimento',
-      description: 'Template para projetos de desenvolvimento',
-      responseTime: '4h',
-      solutionTime: '48h',
-    },
-    {
-      id: 'consultoria',
-      name: 'Consultoria',
-      description: 'Template para serviços de consultoria',
-      responseTime: '12h',
-      solutionTime: '96h',
-    },
-  ];
+  // Buscar templates SLA disponíveis para seleção
+  const { data: slaTemplates = [], isLoading: templatesLoading } = useSlaTemplatesForSelection();
 
   // Resetar form quando abrir/fechar ou alterar contrato
   useEffect(() => {
@@ -416,23 +376,26 @@ export function ContractDialog({ open, onOpenChange, contract, companies }: Cont
 
           {/* SLA Template */}
           <div>
-            <Label htmlFor="slaRuleId">Regra SLA (Opcional)</Label>
+            <Label htmlFor="slaTemplateId">Template SLA (Opcional)</Label>
             <Select
-              value={formData.slaRuleId || 'none'}
-              onValueChange={(value) => handleInputChange('slaRuleId', value === 'none' ? null : value)}
+              value={formData.slaTemplateId?.toString() || 'none'}
+              onValueChange={(value) => handleInputChange('slaTemplateId', value === 'none' ? undefined : Number(value))}
+              disabled={templatesLoading}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Selecione um template" />
+                <SelectValue placeholder={templatesLoading ? "Carregando templates..." : "Selecione um template"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Nenhuma regra SLA</SelectItem>
+                <SelectItem value="none">Nenhum template SLA</SelectItem>
                 {slaTemplates.map((template) => (
-                  <SelectItem key={template.id} value={template.id}>
+                  <SelectItem key={template.id} value={template.id.toString()}>
                     <div className="flex flex-col">
                       <span className="font-medium">{template.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        Resposta: {template.responseTime} | Resolução: {template.solutionTime}
-                      </span>
+                      {template.description && (
+                        <span className="text-xs text-muted-foreground">
+                          {template.description}
+                        </span>
+                      )}
                     </div>
                   </SelectItem>
                 ))}

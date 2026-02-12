@@ -34,8 +34,8 @@ interface TicketWithSlaData {
   priority: string;
   createdAt: Date;
   contract?: {
-    id: number;
-    calendarId: number;
+    id: string; // VARCHAR UUID
+    calendarId: number | null;
     calendar?: {
       id: number;
       name: string;
@@ -156,19 +156,24 @@ export class SlaEngineService {
       .limit(1);
     
     if (ticketResult.length === 0) {
+      console.log(`❌ Ticket ${ticketId} não encontrado no banco`);
       return null;
     }
     
     const ticket = ticketResult[0];
+    console.log(`📋 Ticket encontrado: ID=${ticket.id}, Priority=${ticket.priority}, ContractId=${ticket.contractId}`);
     
     // Se não tem contrato, retorna dados básicos
     if (!ticket.contractId) {
+      console.log(`⚠️ Ticket ${ticketId} não possui contractId`);
       return {
         id: ticket.id,
         priority: ticket.priority,
         createdAt: ticket.createdAt
       };
     }
+    
+    console.log(`🔍 Buscando contrato ${ticket.contractId}...`);
     
     // Buscar contrato com calendário
     const contractResult = await db
@@ -181,6 +186,7 @@ export class SlaEngineService {
       .limit(1);
     
     if (contractResult.length === 0) {
+      console.log(`❌ Contrato ${ticket.contractId} não encontrado`);
       return {
         id: ticket.id,
         priority: ticket.priority,
@@ -189,20 +195,33 @@ export class SlaEngineService {
     }
     
     const contract = contractResult[0];
+    console.log(`✅ Contrato encontrado: ID=${contract.id}, CalendarId=${contract.calendarId}`);
     
     // Buscar calendário
-    const calendarResult = await db
-      .select({
-        id: calendars.id,
-        name: calendars.name,
-        workingHours: calendars.workingHours,
-        holidays: calendars.holidays
-      })
-      .from(calendars)
-      .where(eq(calendars.id, contract.calendarId))
-      .limit(1);
+    console.log(`🔍 Buscando calendário ${contract.calendarId}...`);
+    
+    let calendarResult: any[] = [];
+    if (contract.calendarId) {
+      calendarResult = await db
+        .select({
+          id: calendars.id,
+          name: calendars.name,
+          workingHours: calendars.workingHours,
+          holidays: calendars.holidays
+        })
+        .from(calendars)
+        .where(eq(calendars.id, contract.calendarId))
+        .limit(1);
+    }
+    
+    if (calendarResult.length === 0) {
+      console.log(`❌ Calendário ${contract.calendarId} não encontrado`);
+    } else {
+      console.log(`✅ Calendário encontrado: ${calendarResult[0].name}`);
+    }
     
     // Buscar regras de SLA do contrato
+    console.log(`🔍 Buscando regras SLA para contrato ${ticket.contractId}...`);
     const slaRulesResult = await db
       .select({
         id: slaRules.id,
@@ -212,6 +231,11 @@ export class SlaEngineService {
       })
       .from(slaRules)
       .where(eq(slaRules.contractId, ticket.contractId));
+    
+    console.log(`📋 Regras SLA encontradas: ${slaRulesResult.length} regras`);
+    if (slaRulesResult.length > 0) {
+      console.log(`   Prioridades disponíveis: ${slaRulesResult.map(r => r.priority).join(', ')}`);
+    }
     
     return {
       id: ticket.id,
@@ -233,12 +257,24 @@ export class SlaEngineService {
    * @returns boolean - true se válido, false caso contrário
    */
   private validateSlaData(ticketData: TicketWithSlaData): boolean {
-    return !!(
-      ticketData.contract &&
-      ticketData.contract.calendar &&
-      ticketData.contract.slaRules &&
-      ticketData.contract.slaRules.length > 0
-    );
+    const hasContract = !!ticketData.contract;
+    const hasCalendar = !!ticketData.contract?.calendar;
+    const hasSlaRules = !!ticketData.contract?.slaRules && ticketData.contract.slaRules.length > 0;
+    
+    console.log(`🔍 Validação de dados SLA:`);
+    console.log(`   ✓ Tem contrato? ${hasContract}`);
+    console.log(`   ✓ Tem calendário? ${hasCalendar}`);
+    console.log(`   ✓ Tem regras SLA? ${hasSlaRules} (${ticketData.contract?.slaRules?.length || 0} regras)`);
+    
+    const isValid = hasContract && hasCalendar && hasSlaRules;
+    
+    if (!isValid) {
+      if (!hasContract) console.log(`   ❌ Faltando: Contrato`);
+      if (!hasCalendar) console.log(`   ❌ Faltando: Calendário`);
+      if (!hasSlaRules) console.log(`   ❌ Faltando: Regras SLA`);
+    }
+    
+    return isValid;
   }
   
   /**

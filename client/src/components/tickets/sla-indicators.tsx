@@ -100,28 +100,28 @@ export function SlaIndicators({ ticket, hasFirstResponse = false }: SlaIndicator
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Timer className="h-4 w-4" />
+    <Card className="shadow-md hover:shadow-lg transition-all border-2 border-l-4 border-l-red-500 dark:border-l-red-400 bg-white dark:bg-gray-800">
+      <CardHeader className="py-3 bg-red-50/50 dark:bg-red-950/20">
+        <CardTitle className="text-base flex items-center gap-2 font-semibold">
+          <Timer className="h-4.5 w-4.5" />
           Indicadores de SLA
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 pb-4">
         {/* SLA de Primeira Resposta */}
         {responseDueAt && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <responseSla.icon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Primeira Resposta</span>
+              <div className="flex items-center gap-2.5">
+                <responseSla.icon className="h-4.5 w-4.5 text-muted-foreground" />
+                <span className="text-sm font-semibold">Primeira Resposta</span>
               </div>
-              <Badge variant={getBadgeVariant(responseSla.color)}>
+              <Badge variant={getBadgeVariant(responseSla.color)} className="text-xs px-3 py-1">
                 {getSlaStatusText(responseSla.status)}
               </Badge>
             </div>
             
-            <div className="text-xs text-muted-foreground space-y-1">
+            <div className="text-sm text-muted-foreground space-y-1">
               <div className="flex items-center justify-between">
                 <span>Prazo máximo:</span>
                 <span className="font-medium">{formatDate(responseDueAt)}</span>
@@ -151,23 +151,23 @@ export function SlaIndicators({ ticket, hasFirstResponse = false }: SlaIndicator
 
         {/* Separador */}
         {responseDueAt && solutionDueAt && (
-          <div className="border-t pt-4" />
+          <div className="border-t pt-3" />
         )}
 
         {/* SLA de Solução */}
         {solutionDueAt && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <solutionSla.icon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Resolução Final</span>
+              <div className="flex items-center gap-2.5">
+                <solutionSla.icon className="h-4.5 w-4.5 text-muted-foreground" />
+                <span className="text-sm font-semibold">Resolução Final</span>
               </div>
-              <Badge variant={getBadgeVariant(solutionSla.color)}>
+              <Badge variant={getBadgeVariant(solutionSla.color)} className="text-xs px-3 py-1">
                 {getSlaStatusText(solutionSla.status)}
               </Badge>
             </div>
             
-            <div className="text-xs text-muted-foreground space-y-1">
+            <div className="text-sm text-muted-foreground space-y-1">
               <div className="flex items-center justify-between">
                 <span>Prazo máximo:</span>
                 <span className="font-medium">{formatDate(solutionDueAt)}</span>
@@ -196,14 +196,14 @@ export function SlaIndicators({ ticket, hasFirstResponse = false }: SlaIndicator
         )}
 
         {/* Informações adicionais */}
-        <div className="border-t pt-3 space-y-1">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Calendar className="h-3 w-3" />
+        <div className="border-t pt-2.5 space-y-1.5">
+          <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+            <Calendar className="h-4 w-4" />
             <span>Ticket aberto em: {formatDate(createdAt)}</span>
           </div>
           
-          <div className="text-xs text-muted-foreground">
-            Prioridade: <span className="font-medium capitalize">{ticket.priority}</span>
+          <div className="text-sm text-muted-foreground">
+            Prioridade: <span className="font-semibold capitalize">{ticket.priority}</span>
           </div>
         </div>
       </CardContent>

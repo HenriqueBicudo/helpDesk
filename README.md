@@ -4,21 +4,96 @@ Um sistema completo de gerenciamento de chamados (tickets) inspirado no Movidesk
 
 ![HelpDesk Screenshot](./screenshot.png)
 
-## 🚀 Como Iniciar o HelpDesk
+## 🚀 Início Rápido
 
-### Método 1: Usando o Botão "Run" do Replit
-1. No ambiente Replit, simplesmente clique no botão **Run** na parte superior
-2. O sistema iniciará automaticamente o fluxo de trabalho "Start application"
-3. Aguarde até que o servidor e o cliente estejam completamente carregados
-4. O sistema estará disponível no navegador integrado do Replit
+### Pré-requisitos
+- Node.js (>= 18)
+- PostgreSQL (>= 13)
+- npm ou yarn
 
-### Método 2: Via Terminal
-1. Abra o terminal no ambiente Replit
-2. Execute o comando: `npm run dev`
-3. Aguarde até que o servidor e o cliente estejam completamente carregados
-4. O sistema estará disponível no navegador integrado do Replit
+### Configuração em Novo Ambiente
 
-## 📱 Funcionalidades Principais
+```bash
+# 1. Clone o repositório
+git clone https://github.com/HenriqueBicudo/helpDesk.git
+cd helpDesk
+
+# 2. Instale as dependências
+npm install
+cd client && npm install && cd ..
+
+# 3. Configure o ambiente
+cp .env.example .env
+# Edite o .env com suas credenciais do PostgreSQL
+
+# 4. Crie e popule o banco de dados
+npm run db:seed
+
+# 5. Inicie a aplicação
+npm run dev
+```
+
+Acesse em: http://localhost:5173
+
+**Credenciais padrão:**
+- Admin: `admin` / `admin123`
+- Agente: `agent1` / `agent123`
+- Cliente: `client1` / `client123`
+
+📖 **[Guia Completo de Seed e Migração](./QUICK_START.md)**
+
+## 🗄️ Scripts do Banco de Dados
+
+| Comando | Descrição |
+|---------|-----------|
+| `npm run seed` | Popula o banco com dados de exemplo |
+| `npm run db:push` | Aplica o schema ao banco |
+| `npm run db:fresh` | Limpa e popula com dados novos |
+| `npm run db:export` | Exporta dados atuais para backup |
+| `npm run db:import <arquivo>` | Importa dados de backup |
+
+## 🚀 Como executar em desenvolvimento
+
+### Opção 1: Setup Automático (Recomendado)
+
+```bash
+npm run db:seed  # Cria tabelas e popula dados
+npm run dev      # Inicia client + server
+```
+
+### Opção 2: Setup Manual
+
+1. **Instalar dependências**
+```bash
+npm install
+```
+
+2. **Configurar banco de dados**
+```bash
+# Resetar banco (se necessário)
+psql "${env:DATABASE_URL}" -f .\scripts\reset_db.sql
+
+# Popular com dados
+npx tsx .\scripts\seed.ts
+```
+
+3. **Iniciar aplicação**
+```bash
+npm run dev
+```
+
+Frontend: http://localhost:5173  
+Backend: http://localhost:5000
+
+## � Documentação
+
+- **[🚀 Guia de Início Rápido](./QUICK_START.md)** - Comandos essenciais e setup rápido
+- **[📦 Documentação da Seed](./SEED_README.md)** - Guia completo do sistema de seed
+- **[🔧 Detalhes de Implementação](./SEED_IMPLEMENTATION.md)** - Resumo técnico da implementação
+- **[🖥️ Guia de Migração](./MIGRATION_GUIDE.md)** - Como migrar o projeto para outro computador
+- **[📞 Google Meet Setup](./GOOGLE_MEET_SETUP.md)** - Configurar integração com Google Calendar
+
+## �📱 Funcionalidades Principais
 
 ### Dashboard
 - Visualização de métricas importantes:
@@ -78,7 +153,36 @@ Para adicionar novas funcionalidades ao sistema:
 2. **Componentes UI:** Explore os componentes disponíveis em `client/src/components/ui/`
 3. **API:** Expanda as rotas em `server/routes.ts` e implemente novos métodos em `server/storage.ts`
 
-## 📞 Suporte
+## � Google Meet Integration
+
+O sistema possui integração com Google Calendar para criar reuniões agendadas diretamente dos tickets!
+
+### Como configurar:
+
+1. Siga o guia completo em [GOOGLE_MEET_SETUP.md](./GOOGLE_MEET_SETUP.md)
+2. Configure as variáveis de ambiente no arquivo `.env`:
+   ```env
+   GOOGLE_CLIENT_ID=seu_client_id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=seu_client_secret
+   GOOGLE_REDIRECT_URI=http://localhost:5000/api/google/callback
+   GOOGLE_REFRESH_TOKEN=seu_refresh_token
+   ```
+3. Reinicie o servidor
+
+### Como usar:
+
+1. Abra um ticket
+2. Clique no botão **Google Meet** no cabeçalho
+3. Preencha data, horário e duração
+4. Clique em **Criar Reunião**
+5. Pronto! Todos os participantes receberão convites por email 📧
+
+**Participantes incluídos automaticamente:**
+- Solicitante do ticket
+- Agente responsável (se atribuído)
+- Pessoas em cópia (CC)
+
+## �📞 Suporte
 
 Em caso de dúvidas ou problemas, por favor abra uma issue neste repositório ou entre em contato com o administrador do sistema.
 

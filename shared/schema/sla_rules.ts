@@ -10,7 +10,7 @@ import { contracts } from './contracts';
  */
 export const slaRules = pgTable('sla_rules', {
   id: serial('id').primaryKey(),
-  contractId: integer('contract_id').notNull().references(() => contracts.id, {
+  contractId: varchar('contract_id', { length: 255 }).notNull().references(() => contracts.id, {
     onDelete: 'cascade', // Remove regras SLA quando contrato é deletado
   }),
   /**
@@ -62,7 +62,7 @@ const baseCreateSlaRuleSchema = createInsertSchema(slaRules);
  * Schema personalizado para criação de regra SLA com validações de negócio
  */
 export const createSlaRuleSchema = baseCreateSlaRuleSchema.extend({
-  contractId: z.number().int().positive('ID do contrato deve ser um número positivo'),
+  contractId: z.string().min(1, 'ID do contrato é obrigatório'),
   priority: priorityEnum,
   responseTimeMinutes: z.number().int().min(1, 'Tempo de resposta deve ser pelo menos 1 minuto').max(43200, 'Tempo de resposta não pode exceder 30 dias'),
   solutionTimeMinutes: z.number().int().min(1, 'Tempo de solução deve ser pelo menos 1 minuto').max(525600, 'Tempo de solução não pode exceder 1 ano'),
@@ -122,7 +122,7 @@ export const slaRuleWithContractSchema = selectSlaRuleSchema.extend({
  * Schema para filtros de busca de regras SLA
  */
 export const slaRuleFiltersSchema = z.object({
-  contractId: z.number().int().positive().optional(),
+  contractId: z.string().optional(),
   priority: priorityEnum.optional(),
   page: z.number().int().min(1).optional().default(1),
   limit: z.number().int().min(1).max(100).optional().default(10),
@@ -135,7 +135,7 @@ export const slaRuleFiltersSchema = z.object({
 export const slaCalculationSchema = z.object({
   ticketCreatedAt: z.date(),
   ticketPriority: priorityEnum,
-  contractId: z.number().int().positive(),
+  contractId: z.string().min(1),
   currentDate: z.date().optional().default(() => new Date()),
 });
 

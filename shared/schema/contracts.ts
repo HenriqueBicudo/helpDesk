@@ -4,6 +4,7 @@ import { relations } from 'drizzle-orm';
 import { z } from 'zod';
 import { calendars } from './calendars';
 import { slaRules } from './sla_rules';
+import { slaTemplates } from './sla_templates';
 
 /**
  * Tabela de contratos - Schema alinhado com a realidade do banco
@@ -32,6 +33,7 @@ export const contracts = pgTable('contracts', {
   createdAt: timestamp('created_at').notNull(),
   updatedAt: timestamp('updated_at').notNull(),
   calendarId: integer('calendar_id'), // Referencia calendars.id (nullable)
+  slaTemplateId: integer('sla_template_id'), // Referencia sla_templates.id (nullable)
 });
 
 /**
@@ -42,6 +44,11 @@ export const contractsRelations = relations(contracts, ({ one, many }) => ({
   calendar: one(calendars, {
     fields: [contracts.calendarId],
     references: [calendars.id],
+  }),
+  // Relacionamento many-to-one com sla_templates
+  slaTemplate: one(slaTemplates, {
+    fields: [contracts.slaTemplateId],
+    references: [slaTemplates.id],
   }),
   // Relacionamento one-to-many com sla_rules
   slaRules: many(slaRules),

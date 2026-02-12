@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Plus } from 'lucide-react';
 import { TicketWithRelations } from '@shared/schema';
+import { useRealtimeSync } from '@/hooks/use-query-helpers';
 
 export default function Tickets() {
   const [isNewTicketDialogOpen, setIsNewTicketDialogOpen] = useState(false);
@@ -21,9 +22,14 @@ export default function Tickets() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   
+  // ✅ Ativar sincronização automática em tempo real
+  useRealtimeSync(true);
+  
   // Fetch all tickets with relations
   const { data: allTickets, isLoading } = useQuery<TicketWithRelations[]>({
     queryKey: ['/api/tickets'],
+    refetchInterval: 30000, // Atualiza automaticamente a cada 30 segundos
+    refetchOnWindowFocus: true, // ✅ Atualizar quando voltar à aba
   });
   
   // Apply filters to tickets

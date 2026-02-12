@@ -1,6 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
+// Helper para normalizar respostas da API que podem vir no formato { success, data }
+async function parseApi<T = any>(response: Response): Promise<T> {
+  const json = await response.json();
+  if (json && typeof json === 'object' && Object.prototype.hasOwnProperty.call(json, 'data')) {
+    return json.data as T;
+  }
+  return json as T;
+}
+
 // Interfaces para os dados SLA
 export interface SlaData {
   ticketId: string;
@@ -72,7 +81,7 @@ export const useSlaData = (ticketId: string) => {
       if (!response.ok) {
         throw new Error('Falha ao carregar dados SLA');
       }
-      return response.json();
+      return parseApi<SlaData>(response);
     },
     enabled: !!ticketId,
     staleTime: 30000, // 30 segundos
@@ -98,7 +107,7 @@ export const useSlaMetrics = (params?: {
       if (!response.ok) {
         throw new Error('Falha ao carregar métricas SLA');
       }
-      return response.json();
+      return parseApi<SlaMetrics>(response);
     },
     staleTime: 120000, // 2 minutos
     refetchInterval: 300000 // 5 minutos
@@ -122,7 +131,7 @@ export const useSlaAlerts = (filters?: {
       if (!response.ok) {
         throw new Error('Falha ao carregar alertas SLA');
       }
-      return response.json();
+      return parseApi<SlaAlert[]>(response);
     },
     staleTime: 30000, // 30 segundos
     refetchInterval: 60000 // 1 minuto
@@ -141,7 +150,7 @@ export const useSlaConfigurations = (contractId?: string) => {
       if (!response.ok) {
         throw new Error('Falha ao carregar configurações SLA');
       }
-      return response.json();
+      return parseApi<SlaConfiguration[]>(response);
     },
     staleTime: 300000, // 5 minutos
   });
@@ -161,7 +170,7 @@ export const useSlaMonitoring = () => {
       if (!response.ok) {
         throw new Error('Falha ao reconhecer alerta');
       }
-      return response.json();
+      return parseApi(response);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sla', 'alerts'] });
@@ -179,7 +188,7 @@ export const useSlaMonitoring = () => {
       if (!response.ok) {
         throw new Error('Falha ao atualizar configuração SLA');
       }
-      return response.json();
+      return parseApi(response);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sla', 'configurations'] });
@@ -197,7 +206,7 @@ export const useSlaMonitoring = () => {
       if (!response.ok) {
         throw new Error('Falha ao recalcular SLA');
       }
-      return response.json();
+      return parseApi(response);
     },
     onSuccess: (_, ticketId) => {
       queryClient.invalidateQueries({ queryKey: ['sla', 'ticket', ticketId] });
@@ -220,7 +229,7 @@ export const useSlaMonitoring = () => {
     if (!response.ok) {
       throw new Error('Falha ao carregar status SLA');
     }
-    return response.json();
+    return parseApi(response);
   }, []);
 
   return {

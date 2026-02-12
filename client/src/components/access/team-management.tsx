@@ -17,7 +17,8 @@ import {
   UserMinus,
   Calendar,
   Shield,
-  Trash2
+  Trash2,
+  X
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -47,8 +48,11 @@ interface CreateTeamForm {
 export function TeamManagement() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isAddMembersDialogOpen, setIsAddMembersDialogOpen] = useState(false);
+  const [selectedTeamForMembers, setSelectedTeamForMembers] = useState<Team | null>(null);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [agentSearchTerm, setAgentSearchTerm] = useState(""); // Busca para adicionar agentes
   const { toast } = useToast();
   const [createForm, setCreateForm] = useState<CreateTeamForm>({
     name: "",
@@ -71,14 +75,16 @@ export function TeamManagement() {
     }
   });
 
-  // Query para buscar agentes disponíveis
+  // Query para buscar agentes disponíveis (que não estão nesta equipe)
   const { data: availableAgents = [] } = useQuery({
-    queryKey: ['available-agents'],
+    queryKey: ['available-agents', selectedTeamForMembers?.id],
     queryFn: async () => {
-      const response = await fetch('/api/access/available-agents');
+      if (!selectedTeamForMembers?.id) return [];
+      const response = await fetch(`/api/access/teams/${selectedTeamForMembers.id}/available-agents`);
       if (!response.ok) throw new Error('Erro ao carregar agentes');
       return response.json();
-    }
+    },
+    enabled: !!selectedTeamForMembers?.id
   });
 
   // Mutation para criar equipe
@@ -94,6 +100,7 @@ export function TeamManagement() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['teams'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
       setIsCreateDialogOpen(false);
       setCreateForm({ name: "", description: "" });
       toast({
@@ -123,6 +130,7 @@ export function TeamManagement() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['teams'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
       setIsEditDialogOpen(false);
       setEditingTeam(null);
       toast({
@@ -152,6 +160,7 @@ export function TeamManagement() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['teams'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
       toast({
         title: variables.isActive ? "Equipe ativada" : "Equipe desativada",
         description: variables.isActive 
@@ -182,6 +191,14 @@ export function TeamManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams'] });
       queryClient.invalidateQueries({ queryKey: ['available-agents'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({ title: "Membro adicionado com sucesso!" });
+    },
+    onError: () => {
+      toast({ 
+        title: "Erro ao adicionar membro", 
+        variant: "destructive" 
+      });
     }
   });
 
@@ -196,6 +213,7 @@ export function TeamManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
       toast({
         title: "Equipe excluída",
         description: "A equipe foi excluída permanentemente com sucesso.",
@@ -217,11 +235,20 @@ export function TeamManagement() {
         method: 'DELETE'
       });
       if (!response.ok) throw new Error('Erro ao remover membro');
-      return response.json();
+      // 204 No Content - não há corpo para parsear
+      return { success: true };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams'] });
       queryClient.invalidateQueries({ queryKey: ['available-agents'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({ title: "Membro removido com sucesso!" });
+    },
+    onError: () => {
+      toast({ 
+        title: "Erro ao remover membro", 
+        variant: "destructive" 
+      });
     }
   });
 
@@ -256,6 +283,128 @@ export function TeamManagement() {
 
   return (
     <div className="space-y-6">
+      {/* Diálogo para Adicionar Agentes */}
+      <Dialog open={isAddMembersDialogOpen} onOpenChange={(open) => {
+        setIsAddMembersDialogOpen(open);
+        if (!open) {
+          setAgentSearchTerm(""); // Limpar busca ao fechar
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Adicionar Agentes à Equipe</DialogTitle>
+            <DialogDescription>
+              Selecione os agentes que deseja adicionar à equipe <strong>{selectedTeamForMembers?.name}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          
+          {/* Barra de Pesquisa */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome ou email..."
+              value={agentSearchTerm}
+              onChange={(e) => setAgentSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+            {agentSearchTerm && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                onClick={() => setAgentSearchTerm("")}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          
+          <div className="space-y-3">
+            {availableAgents.filter((agent: any) => {
+              if (!agentSearchTerm) return true;
+              const searchLower = agentSearchTerm.toLowerCase();
+              return (
+                agent.fullName?.toLowerCase().includes(searchLower) ||
+                agent.name?.toLowerCase().includes(searchLower) ||
+                agent.email?.toLowerCase().includes(searchLower)
+              );
+            }).length === 0 ? (
+              <Alert>
+                <Shield className="h-4 w-4" />
+                <AlertDescription>
+                  {agentSearchTerm 
+                    ? `Nenhum agente encontrado para "${agentSearchTerm}"`
+                    : "Não há agentes disponíveis. Todos os agentes já fazem parte desta equipe."
+                  }
+                </AlertDescription>
+              </Alert>
+            ) : (
+              availableAgents
+                .filter((agent: any) => {
+                  if (!agentSearchTerm) return true;
+                  const searchLower = agentSearchTerm.toLowerCase();
+                  return (
+                    agent.fullName?.toLowerCase().includes(searchLower) ||
+                    agent.name?.toLowerCase().includes(searchLower) ||
+                    agent.email?.toLowerCase().includes(searchLower)
+                  );
+                })
+                .map((agent: any) => (
+                <div 
+                  key={agent.id} 
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex-1">
+                    <div className="font-medium">{agent.fullName || agent.name}</div>
+                    <div className="text-sm text-muted-foreground">{agent.email}</div>
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant="outline" className="text-xs">
+                        {agent.role === 'admin' ? 'Administrador' :
+                         agent.role === 'helpdesk_manager' ? 'Gerente' :
+                         agent.role === 'helpdesk_agent' ? 'Agente' : agent.role}
+                      </Badge>
+                      {agent.teamId && (
+                        <Badge variant="secondary" className="text-xs">
+                          Sem Equipe
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      if (selectedTeamForMembers) {
+                        addMemberMutation.mutate({ 
+                          teamId: selectedTeamForMembers.id, 
+                          userId: agent.id 
+                        });
+                      }
+                    }}
+                    disabled={addMemberMutation.isPending}
+                    size="sm"
+                  >
+                    <UserPlus className="h-4 w-4 mr-1" />
+                    Adicionar
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button 
+              variant="outline"
+              onClick={() => {
+                setIsAddMembersDialogOpen(false);
+                setSelectedTeamForMembers(null);
+                setAgentSearchTerm(""); // Limpar busca
+              }}
+            >
+              Fechar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Header com ações */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -472,40 +621,26 @@ export function TeamManagement() {
                   )}
                 </div>
 
-                {/* Adicionar Agentes Disponíveis */}
-                {availableAgents.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="font-medium text-sm">Adicionar Agentes:</h4>
-                    <div className="space-y-1">
-                      {availableAgents.slice(0, 3).map((agent: any) => (
-                        <div key={agent.id} className="flex items-center justify-between bg-green-50 p-2 rounded text-sm">
-                          <div>
-                            <span className="font-medium">{agent.name}</span>
-                            <span className="text-muted-foreground ml-1">
-                              ({agent.email})
-                            </span>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => addMemberMutation.mutate({ 
-                              teamId: team.id, 
-                              userId: agent.id 
-                            })}
-                            disabled={addMemberMutation.isPending}
-                          >
-                            <UserPlus className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))}
-                      {availableAgents.length > 3 && (
-                        <p className="text-xs text-muted-foreground">
-                          +{availableAgents.length - 3} outros agentes disponíveis
-                        </p>
-                      )}
-                    </div>
+                {/* Adicionar Agentes */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm">Adicionar Membros:</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedTeamForMembers(team);
+                        setIsAddMembersDialogOpen(true);
+                      }}
+                    >
+                      <UserPlus className="h-3 w-3 mr-1" />
+                      Adicionar Agentes
+                    </Button>
                   </div>
-                )}
+                  <p className="text-xs text-muted-foreground">
+                    Clique para adicionar agentes a esta equipe
+                  </p>
+                </div>
 
                 {/* Ações */}
                 <div className="flex gap-2 pt-2">
@@ -552,6 +687,7 @@ export function TeamManagement() {
           ))
         )}
       </div>
+
     </div>
   );
 }

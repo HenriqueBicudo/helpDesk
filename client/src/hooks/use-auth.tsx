@@ -7,8 +7,13 @@ import { User } from "@shared/schema";
 import { getQueryFn, apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+// Tipo estendido para incluir flag de troca de senha obrigatória
+type UserWithPasswordChange = User & {
+  requiresPasswordChange?: boolean;
+};
+
 type AuthContextType = {
-  user: User | null;
+  user: UserWithPasswordChange | null;
   isLoading: boolean;
   error: Error | null;
   loginMutation: ReturnType<typeof useLogin>;
@@ -39,15 +44,31 @@ function useLogin() {
       const res = await apiRequest("POST", "/api/auth/login", credentials);
       return await res.json();
     },
-    onSuccess: (user: User) => {
-      queryClient.setQueryData(["/api/auth/current-user"], user);
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/current-user"] });
-      toast({
-        title: "Login realizado com sucesso",
-        description: `Bem-vindo de volta, ${user.fullName}!`,
+    onSuccess: (user: UserWithPasswordChange) => {
+      console.log('🔐 Login successful, user data:', { 
+        id: user.id, 
+        username: user.username, 
+        requiresPasswordChange: user.requiresPasswordChange 
       });
+      
+      // Se precisar trocar senha, salvar no sessionStorage para não perder
+      if (user.requiresPasswordChange) {
+        sessionStorage.setItem('pending-password-change', 'true');
+      }
+      
+      // Apenas setar os dados, NÃO invalidar (isso causaria uma nova query que retorna 401)
+      queryClient.setQueryData(["/api/auth/current-user"], user);
+      
+      // Só mostrar toast se não precisar trocar senha
+      if (!user.requiresPasswordChange) {
+        toast({
+          title: "Login realizado com sucesso",
+          description: `Bem-vindo de volta, ${user.fullName}!`,
+        });
+      }
     },
     onError: (error: Error) => {
+      console.error('❌ Login failed:', error);
       toast({
         title: "Falha no login",
         description: error.message || "Credenciais inválidas",
@@ -91,7 +112,7 @@ function useRegister() {
       const res = await apiRequest("POST", "/api/auth/register", userData);
       return await res.json();
     },
-    onSuccess: (user: User) => {
+    onSuccess: (user: UserWithPasswordChange) => {
       queryClient.setQueryData(["/api/auth/current-user"], user);
       toast({
         title: "Registro realizado com sucesso",
@@ -116,9 +137,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     data: user,
     error,
     isLoading,
-  } = useQuery<User>({
+  } = useQuery<UserWithPasswordChange>({
     queryKey: ["/api/auth/current-user"],
     queryFn: getQueryFn({ on401: "returnNull" }),
+    retry: false, // Não tentar novamente em caso de erro
+    staleTime: Infinity, // Considerar dados sempre frescos
+    gcTime: Infinity, // Nunca remover do cache
   });
 
   const loginMutation = useLogin();

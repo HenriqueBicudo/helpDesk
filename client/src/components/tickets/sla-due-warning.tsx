@@ -9,6 +9,7 @@ interface SlaDueWarningProps {
   hasFirstResponse?: boolean;
   compact?: boolean;
   className?: string;
+  status?: string;
 }
 
 export function SlaDueWarning({
@@ -16,9 +17,15 @@ export function SlaDueWarning({
   solutionDueAt,
   hasFirstResponse = false,
   compact = false,
-  className
+  className,
+  status
 }: SlaDueWarningProps) {
   const now = new Date();
+  
+  // Não mostrar para tickets resolvidos ou fechados
+  if (status === 'resolved' || status === 'closed') {
+    return null;
+  }
   
   // Determinar qual prazo mostrar
   let dueDate: Date | null = null;

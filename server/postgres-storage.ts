@@ -1,7 +1,8 @@
 ﻿import { eq, desc, count, sql, and, gte, lte, or } from 'drizzle-orm';
-import { db } from './db-postgres';
+import { db, client } from './db-postgres';
 import * as schema from '../shared/drizzle-schema';
 import { contracts } from '../shared/schema/contracts';
+import { userTeams } from '../shared/schema/user-teams';
 import { slaEngineService } from './services/slaEngine.service';
 import type { IStorage } from './storage-interface';
 import type { 
@@ -82,7 +83,35 @@ export class PostgresStorage implements IStorage {
   }
 
   async getAllUsers(): Promise<User[]> {
-    return await db.select().from(schema.users) as User[];
+    const usersWithCompanies = await db
+      .select({
+        id: schema.users.id,
+        username: schema.users.username,
+        password: schema.users.password,
+        fullName: schema.users.fullName,
+        email: schema.users.email,
+        phone: schema.users.phone,
+        role: schema.users.role,
+        company: schema.users.company,
+        companyName: schema.companies.name,
+        teamId: schema.users.teamId,
+        avatarInitials: schema.users.avatarInitials,
+        isActive: schema.users.isActive,
+        firstLogin: schema.users.firstLogin,
+        createdAt: schema.users.createdAt,
+        updatedAt: schema.users.updatedAt,
+      })
+      .from(schema.users)
+      .leftJoin(
+        schema.companies,
+        eq(schema.users.company, sql`CAST(${schema.companies.id} AS VARCHAR)`)
+      );
+
+    // Mapear para incluir o nome da empresa no campo company
+    return usersWithCompanies.map(user => ({
+      ...user,
+      company: user.companyName || user.company, // Usar o nome da empresa se disponível
+    })) as User[];
   }
 
   async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
@@ -136,6 +165,11 @@ export class PostgresStorage implements IStorage {
     return result[0] as Requester | undefined;
   }
 
+  async deleteRequester(id: number): Promise<void> {
+    await db.delete(schema.requesters)
+      .where(eq(schema.requesters.id, id));
+  }
+
   // Ticket methods
   async getTicket(id: number): Promise<Ticket | undefined> {
     const result = await db.select().from(schema.tickets).where(eq(schema.tickets.id, id));
@@ -151,6 +185,9 @@ export class PostgresStorage implements IStorage {
         status: schema.tickets.status,
         priority: schema.tickets.priority,
         category: schema.tickets.category,
+        teamId: schema.tickets.teamId,
+        categoryId: schema.tickets.categoryId,
+        serviceId: schema.tickets.serviceId,
         requesterId: schema.tickets.requesterId,
         assigneeId: schema.tickets.assigneeId,
         companyId: schema.tickets.companyId,
@@ -221,6 +258,46 @@ export class PostgresStorage implements IStorage {
     if (result.length === 0) return undefined;
 
     const ticket = result[0];
+    // Se join de contract não trouxe um contrato (ticket.contractId nulo), tentar buscar contrato ativo da empresa
+    if (!ticket.contract && ticket.company?.id) {
+      try {
+        const active = await db.select({
+          id: contracts.id,
+          contractNumber: contracts.contractNumber,
+          includedHours: contracts.includedHours,
+          usedHours: contracts.usedHours,
+          monthlyValue: contracts.monthlyValue,
+          hourlyRate: contracts.hourlyRate,
+          resetDay: contracts.resetDay,
+          status: contracts.status,
+          startDate: contracts.startDate,
+          endDate: contracts.endDate,
+        })
+        .from(contracts)
+        .where(and(eq(contracts.companyId, ticket.company.id), eq(contracts.status, 'active')))
+        .orderBy(desc(contracts.createdAt))
+        .limit(1);
+
+        if (active && active.length > 0) {
+          const c = active[0];
+          ticket.contract = {
+            id: c.id,
+            contractNumber: c.contractNumber,
+            includedHours: c.includedHours,
+            usedHours: parseFloat(c.usedHours?.toString() || '0'),
+            monthlyValue: parseFloat(c.monthlyValue?.toString() || '0'),
+            hourlyRate: parseFloat(c.hourlyRate?.toString() || '0'),
+            resetDay: c.resetDay,
+            status: c.status,
+            startDate: c.startDate,
+            endDate: c.endDate,
+          } as any;
+        }
+      } catch (err) {
+        console.warn('⚠️ Falha ao buscar contrato ativo como fallback para ticket:', err);
+      }
+    }
+
     return {
       ...ticket,
       assignee: ticket.assignee?.id ? ticket.assignee : undefined,
@@ -240,26 +317,88 @@ export class PostgresStorage implements IStorage {
    * @returns Promise<Ticket> - Ticket criado com contractId vinculado e SLA calculado (se aplicável)
    */
   async createTicket(data: InsertTicket): Promise<Ticket> {
-    const contractId = data.contractId;
-    
     // 1. Criar o ticket na transação
-    const finalTicket = await db.transaction(async (tx) => {
-      const ticketData = {
-        subject: data.subject,
-        description: data.description,
-        status: data.status || 'open',
-        priority: data.priority || 'medium',
-        category: data.category,
-        requesterId: data.requesterId,
-        assigneeId: data.assigneeId || null,
-        contractId: contractId || null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      
-      const result = await tx.insert(schema.tickets).values(ticketData as any).returning();
-      return result[0] as Ticket;
-    });
+      // Se não foi informado contractId, tentar vincular automaticamente ao contrato ativo da empresa do requester
+      let contractId = data.contractId;
+      if (!contractId) {
+        try {
+          const requester = await this.getRequester(data.requesterId);
+          const companyNameOrId = requester?.company;
+          if (companyNameOrId) {
+              // tentar resolver company id: solicitar a lista de companies e achar a que bate pelo nome
+              // Primeiro tentar interpretar company como id numérico
+              let companyId: number | undefined;
+              if (typeof companyNameOrId === 'number') {
+                companyId = companyNameOrId;
+              } else if (typeof companyNameOrId === 'string') {
+                const companiesByName = await db.select().from(schema.companies).where(eq(schema.companies.name, companyNameOrId));
+                if (companiesByName && companiesByName.length > 0) {
+                  companyId = companiesByName[0].id;
+                } else {
+                  // Caso não encontre por nome, tentar detectar pela relação de domínio com o email do requester
+                  if (requester?.email) {
+                    try {
+                      const domain = requester.email.split('@')[1];
+                      if (domain) {
+                        const allCompanies = await db.select().from(schema.companies);
+                        const matched = allCompanies.find(c => {
+                          if (!c.email) return false;
+                          const compDomain = c.email.split('@')[1];
+                          return compDomain === domain;
+                        });
+                        if (matched) companyId = matched.id;
+                      }
+                    } catch (e) {
+                      // ignore domain matching errors
+                    }
+                  }
+                }
+              }
+
+            if (companyId) {
+              // Buscar contratos ativos da empresa
+              const activeContracts = await db.select().from(contracts)
+                .where(and(eq(contracts.companyId, companyId), eq(contracts.status, 'active')))
+                .orderBy(desc(contracts.createdAt));
+
+              if (activeContracts && activeContracts.length > 0) {
+                // Priorizar contrato de "support" se existir; caso contrário, usar o mais recente
+                const supportContract = activeContracts.find(c => c.type === 'support');
+                const selectedContract = supportContract || activeContracts[0];
+                contractId = selectedContract.id;
+                console.log(`🔗 Auto-linked ticket to contract ${contractId} (type: ${selectedContract.type}) for company ${companyId}`);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('⚠️ Falha ao tentar auto-vincular contrato ao ticket:', err);
+        }
+      }
+
+      // 1. Criar o ticket na transação
+      const finalTicket = await db.transaction(async (tx) => {
+        // Gerar Message-ID inicial para a thread de email
+        const domain = process.env.SMTP_FROM_EMAIL?.split('@')[1] || 'helpdesk.local';
+        const emailThreadId = `<ticket-${Date.now()}@${domain}>`;
+        
+        const ticketData = {
+          subject: data.subject,
+          description: data.description,
+          status: data.status || 'open',
+          priority: data.priority || 'medium',
+          category: data.category,
+          requesterId: data.requesterId,
+          assigneeId: data.assigneeId || null,
+          companyId: data.companyId || null, // ✅ Incluir companyId
+          contractId: contractId || null,
+          emailThreadId: emailThreadId, // Thread ID do email
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        const result = await tx.insert(schema.tickets).values(ticketData as any).returning();
+        return result[0] as Ticket;
+      });
 
     // 2. Calcular SLA APÓS o commit da transação
     if (contractId && finalTicket.id) {
@@ -334,6 +473,9 @@ export class PostgresStorage implements IStorage {
         status: schema.tickets.status,
         priority: schema.tickets.priority,
         category: schema.tickets.category,
+        teamId: schema.tickets.teamId,
+        categoryId: schema.tickets.categoryId,
+        serviceId: schema.tickets.serviceId,
         requesterId: schema.tickets.requesterId,
         assigneeId: schema.tickets.assigneeId,
         companyId: schema.tickets.companyId,
@@ -403,10 +545,132 @@ export class PostgresStorage implements IStorage {
       .orderBy(desc(schema.tickets.createdAt)) as Ticket[];
   }
 
-  async getTicketsByRequester(requesterId: number): Promise<Ticket[]> {
-    return await db.select().from(schema.tickets)
+  async getTicketsByRequester(requesterId: number): Promise<TicketWithRelations[]> {
+    const result = await db
+      .select({
+        id: schema.tickets.id,
+        subject: schema.tickets.subject,
+        description: schema.tickets.description,
+        status: schema.tickets.status,
+        priority: schema.tickets.priority,
+        category: schema.tickets.category,
+        teamId: schema.tickets.teamId,
+        categoryId: schema.tickets.categoryId,
+        serviceId: schema.tickets.serviceId,
+        requesterId: schema.tickets.requesterId,
+        assigneeId: schema.tickets.assigneeId,
+        companyId: schema.tickets.companyId,
+        contractId: schema.tickets.contractId,
+        responseDueAt: schema.tickets.responseDueAt,
+        solutionDueAt: schema.tickets.solutionDueAt,
+        createdAt: schema.tickets.createdAt,
+        updatedAt: schema.tickets.updatedAt,
+        requester: {
+          id: schema.requesters.id,
+          fullName: schema.requesters.fullName,
+          email: schema.requesters.email,
+          company: schema.requesters.company,
+          avatarInitials: schema.requesters.avatarInitials,
+          planType: schema.requesters.planType,
+          monthlyHours: schema.requesters.monthlyHours,
+          usedHours: schema.requesters.usedHours,
+          resetDate: schema.requesters.resetDate,
+          createdAt: schema.requesters.createdAt,
+        },
+        assignee: {
+          id: schema.users.id,
+          username: schema.users.username,
+          fullName: schema.users.fullName,
+          email: schema.users.email,
+          role: schema.users.role,
+          company: schema.users.company,
+          avatarInitials: schema.users.avatarInitials,
+          isActive: schema.users.isActive,
+          createdAt: schema.users.createdAt,
+        },
+        company: {
+          id: schema.companies.id,
+          name: schema.companies.name,
+          email: schema.companies.email,
+          isActive: schema.companies.isActive,
+        }
+      })
+      .from(schema.tickets)
+      .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
+      .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .leftJoin(schema.companies, eq(schema.tickets.companyId, schema.companies.id))
       .where(eq(schema.tickets.requesterId, requesterId))
-      .orderBy(desc(schema.tickets.createdAt)) as Ticket[];
+      .orderBy(desc(schema.tickets.createdAt));
+
+    return result.map(ticket => ({
+      ...ticket,
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined,
+      company: ticket.company?.id ? ticket.company : undefined
+    })) as TicketWithRelations[];
+  }
+
+  async getTicketsByRequesterEmail(email: string): Promise<TicketWithRelations[]> {
+    const result = await db
+      .select({
+        id: schema.tickets.id,
+        subject: schema.tickets.subject,
+        description: schema.tickets.description,
+        status: schema.tickets.status,
+        priority: schema.tickets.priority,
+        category: schema.tickets.category,
+        teamId: schema.tickets.teamId,
+        categoryId: schema.tickets.categoryId,
+        serviceId: schema.tickets.serviceId,
+        requesterId: schema.tickets.requesterId,
+        assigneeId: schema.tickets.assigneeId,
+        companyId: schema.tickets.companyId,
+        contractId: schema.tickets.contractId,
+        responseDueAt: schema.tickets.responseDueAt,
+        solutionDueAt: schema.tickets.solutionDueAt,
+        createdAt: schema.tickets.createdAt,
+        updatedAt: schema.tickets.updatedAt,
+        requester: {
+          id: schema.requesters.id,
+          fullName: schema.requesters.fullName,
+          email: schema.requesters.email,
+          company: schema.requesters.company,
+          avatarInitials: schema.requesters.avatarInitials,
+          planType: schema.requesters.planType,
+          monthlyHours: schema.requesters.monthlyHours,
+          usedHours: schema.requesters.usedHours,
+          resetDate: schema.requesters.resetDate,
+          createdAt: schema.requesters.createdAt,
+        },
+        assignee: {
+          id: schema.users.id,
+          username: schema.users.username,
+          fullName: schema.users.fullName,
+          email: schema.users.email,
+          role: schema.users.role,
+          company: schema.users.company,
+          avatarInitials: schema.users.avatarInitials,
+          isActive: schema.users.isActive,
+          createdAt: schema.users.createdAt,
+        },
+        company: {
+          id: schema.companies.id,
+          name: schema.companies.name,
+          email: schema.companies.email,
+          isActive: schema.companies.isActive,
+        }
+      })
+      .from(schema.tickets)
+      .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
+      .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .leftJoin(schema.companies, eq(schema.tickets.companyId, schema.companies.id))
+      .where(eq(schema.requesters.email, email))
+      .orderBy(desc(schema.tickets.createdAt));
+
+    return result.map(ticket => ({
+      ...ticket,
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined,
+      company: ticket.company?.id ? ticket.company : undefined
+    })) as TicketWithRelations[];
   }
 
   async getTicketsByCompany(company: string): Promise<TicketWithRelations[]> {
@@ -470,6 +734,67 @@ export class PostgresStorage implements IStorage {
     })) as TicketWithRelations[];
   }
 
+  async getTicketsByCompanyId(companyId: number): Promise<TicketWithRelations[]> {
+    const result = await db
+      .select({
+        id: schema.tickets.id,
+        subject: schema.tickets.subject,
+        description: schema.tickets.description,
+        status: schema.tickets.status,
+        priority: schema.tickets.priority,
+        category: schema.tickets.category,
+        requesterId: schema.tickets.requesterId,
+        assigneeId: schema.tickets.assigneeId,
+        companyId: schema.tickets.companyId,
+        contractId: schema.tickets.contractId,
+        responseDueAt: schema.tickets.responseDueAt,
+        solutionDueAt: schema.tickets.solutionDueAt,
+        createdAt: schema.tickets.createdAt,
+        updatedAt: schema.tickets.updatedAt,
+        requester: {
+          id: schema.requesters.id,
+          fullName: schema.requesters.fullName,
+          email: schema.requesters.email,
+          company: schema.requesters.company,
+          avatarInitials: schema.requesters.avatarInitials,
+          planType: schema.requesters.planType,
+          monthlyHours: schema.requesters.monthlyHours,
+          usedHours: schema.requesters.usedHours,
+          resetDate: schema.requesters.resetDate,
+          createdAt: schema.requesters.createdAt,
+        },
+        assignee: {
+          id: schema.users.id,
+          username: schema.users.username,
+          fullName: schema.users.fullName,
+          email: schema.users.email,
+          role: schema.users.role,
+          company: schema.users.company,
+          avatarInitials: schema.users.avatarInitials,
+          isActive: schema.users.isActive,
+          createdAt: schema.users.createdAt,
+        },
+        company: {
+          id: schema.companies.id,
+          name: schema.companies.name,
+          email: schema.companies.email,
+          isActive: schema.companies.isActive,
+        }
+      })
+      .from(schema.tickets)
+      .innerJoin(schema.requesters, eq(schema.tickets.requesterId, schema.requesters.id))
+      .leftJoin(schema.users, eq(schema.tickets.assigneeId, schema.users.id))
+      .leftJoin(schema.companies, eq(schema.tickets.companyId, schema.companies.id))
+      .where(eq(schema.tickets.companyId, companyId))
+      .orderBy(desc(schema.tickets.createdAt));
+
+    return result.map(ticket => ({
+      ...ticket,
+      assignee: ticket.assignee?.id ? ticket.assignee : undefined,
+      company: ticket.company?.id ? ticket.company : undefined
+    })) as TicketWithRelations[];
+  }
+
   async getTicketsByUserCompany(userId: number): Promise<TicketWithRelations[]> {
     // Primeiro buscar a empresa do usuário
     const user = await this.getUser(userId);
@@ -477,8 +802,18 @@ export class PostgresStorage implements IStorage {
       return [];
     }
     
-    // Depois buscar tickets da empresa
-    return this.getTicketsByCompany(user.company);
+    // Se user.company for um ID numérico, buscar o nome da empresa
+    let companyName = user.company;
+    if (!isNaN(parseInt(user.company, 10))) {
+      const companyId = parseInt(user.company, 10);
+      const company = await this.getCompanyById(companyId);
+      if (company?.name) {
+        companyName = company.name;
+      }
+    }
+    
+    // Depois buscar tickets da empresa pelo nome
+    return this.getTicketsByCompany(companyName);
   }
 
   async assignTicket(ticketId: number, assigneeId: number): Promise<Ticket | undefined> {
@@ -642,7 +977,7 @@ export class PostgresStorage implements IStorage {
       timeSpent: parseFloat(row.timeSpent || '0'),
       createdBy: row.createdBy || 0,
       createdAt: row.createdAt,
-      author: row.author?.id ? row.author : undefined
+      user: row.author?.id ? row.author : undefined
     })) as TicketInteraction[];
   }
 
@@ -839,6 +1174,42 @@ export class PostgresStorage implements IStorage {
     } as ResponseTemplate;
   }
 
+  async deleteResponseTemplate(id: number): Promise<boolean> {
+    try {
+      const result = await db.delete(schema.responseTemplates).where(eq(schema.responseTemplates.id, id)).returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error deleting response template:', error);
+      return false;
+    }
+  }
+
+  async updateResponseTemplate(id: number, updates: Partial<ResponseTemplate>): Promise<ResponseTemplate | undefined> {
+    try {
+      const updateData: any = { ...updates, updatedAt: new Date() };
+
+      // Map title -> name in DB
+      if (updateData.title !== undefined) {
+        updateData.name = updateData.title;
+        delete updateData.title;
+      }
+
+      // Remove fields that don't exist on table
+      delete updateData.id;
+      delete updateData.createdAt;
+      delete updateData.updatedAt; // we've set updatedAt above
+
+      const result = await db.update(schema.responseTemplates).set(updateData).where(eq(schema.responseTemplates.id, id)).returning();
+
+      if (!result || result.length === 0) return undefined;
+
+      return await this.getResponseTemplate(id);
+    } catch (error) {
+      console.error('Error updating response template:', error);
+      return undefined;
+    }
+  }
+
   // System Settings methods
   async getSystemSetting(key: string): Promise<SystemSetting | undefined> {
     const result = await db.select().from(schema.systemSettings)
@@ -932,6 +1303,28 @@ export class PostgresStorage implements IStorage {
     return result[0];
   }
 
+  async updateTag(id: number, updates: Partial<{ name: string; color: string }>): Promise<any | undefined> {
+    try {
+      const updateData: any = { ...updates, updatedAt: new Date() };
+      const result = await db.update(schema.tags).set(updateData).where(eq(schema.tags.id, id)).returning();
+      return result[0] || undefined;
+    } catch (error) {
+      console.error('Error updating tag:', error);
+      return undefined;
+    }
+  }
+
+  async updateTag(id: number, updates: Partial<{ name: string; color: string }>): Promise<any | undefined> {
+    try {
+      const updateData: any = { ...updates, updatedAt: new Date() };
+      const result = await db.update(schema.tags).set(updateData).where(eq(schema.tags.id, id)).returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error updating tag:', error);
+      return undefined;
+    }
+  }
+
   async deleteTag(id: number): Promise<boolean> {
     try {
       // Primeiro remover associações com tickets
@@ -973,13 +1366,14 @@ export class PostgresStorage implements IStorage {
 
   async removeTicketTag(ticketId: number, tagId: number): Promise<boolean> {
     try {
-      const result = await db
-        .delete(schema.ticketTags)
-        .where(and(
-          eq(schema.ticketTags.ticketId, ticketId),
-          eq(schema.ticketTags.tagId, tagId)
-        ));
-      return result.length > 0;
+      // Use raw client DELETE RETURNING to ensure we get affected rows reliably
+      const rows: any[] = await client`
+        DELETE FROM ticket_tags
+        WHERE ticket_id = ${ticketId} AND tag_id = ${tagId}
+        RETURNING id
+      `;
+
+      return Array.isArray(rows) && rows.length > 0;
     } catch (error) {
       console.error('Error removing ticket tag:', error);
       return false;
@@ -1086,6 +1480,16 @@ export class PostgresStorage implements IStorage {
     }
   }
 
+  async getCompanyByName(name: string): Promise<any | undefined> {
+    try {
+      const result = await db.select().from(schema.companies).where(eq(schema.companies.name, name));
+      return result[0];
+    } catch (error) {
+      console.error('Error getting company by name:', error);
+      return undefined;
+    }
+  }
+
   async createCompany(company: any): Promise<any> {
     try {
       const result = await db.insert(schema.companies).values(company).returning();
@@ -1115,7 +1519,7 @@ export class PostgresStorage implements IStorage {
       // Buscar equipes
       const teams = await db.select().from(schema.teams);
       
-      // Para cada equipe, buscar seus membros
+      // Para cada equipe, buscar seus membros através da tabela user_teams
       const teamsWithMembers = await Promise.all(
         teams.map(async (team) => {
           const members = await db
@@ -1123,18 +1527,21 @@ export class PostgresStorage implements IStorage {
               id: schema.users.id,
               name: schema.users.fullName,
               email: schema.users.email,
-              role: schema.users.role
+              role: schema.users.role,
+              isPrimary: userTeams.isPrimary
             })
             .from(schema.users)
-            .where(eq(schema.users.teamId, team.id));
-          
+            .innerJoin(userTeams, eq(userTeams.userId, schema.users.id))
+            .where(eq(userTeams.teamId, team.id));
+
           return {
             ...team,
-            members
+            members,
+            memberCount: members.length
           };
         })
       );
-      
+
       return teamsWithMembers;
     } catch (error) {
       console.error('Error getting teams:', error);
@@ -1207,10 +1614,31 @@ export class PostgresStorage implements IStorage {
 
   async addTeamMember(teamId: number, userId: number): Promise<void> {
     try {
-      // Atualizar o teamId do usuário
-      await db.update(schema.users)
-        .set({ teamId })
-        .where(eq(schema.users.id, userId));
+      // Inserir na tabela user_teams
+      await db.insert(schema.userTeams)
+        .values({
+          userId,
+          teamId,
+          isPrimary: false, // Por padrão não é primária
+          joinedAt: new Date()
+        })
+        .onConflictDoNothing(); // Ignora se já existe
+      
+      // Manter compatibilidade: se o usuário não tem teamId, define como primária
+      const user = await this.getUser(userId);
+      if (!user?.teamId) {
+        await db.update(schema.users)
+          .set({ teamId })
+          .where(eq(schema.users.id, userId));
+        
+        // Marca como equipe primária
+        await db.update(schema.userTeams)
+          .set({ isPrimary: true })
+          .where(and(
+            eq(schema.userTeams.userId, userId),
+            eq(schema.userTeams.teamId, teamId)
+          ));
+      }
     } catch (error) {
       console.error('Error adding team member:', error);
       throw error;
@@ -1219,13 +1647,41 @@ export class PostgresStorage implements IStorage {
 
   async removeTeamMember(teamId: number, userId: number): Promise<void> {
     try {
-      // Remover o teamId do usuário
-      await db.update(schema.users)
-        .set({ teamId: null })
+      // Remover da tabela user_teams
+      await db.delete(schema.userTeams)
         .where(and(
-          eq(schema.users.id, userId),
-          eq(schema.users.teamId, teamId)
+          eq(schema.userTeams.userId, userId),
+          eq(schema.userTeams.teamId, teamId)
         ));
+      
+      // Se era a equipe primária, limpar users.teamId
+      const user = await this.getUser(userId);
+      if (user?.teamId === teamId) {
+        // Buscar outra equipe para ser a primária
+        const otherTeams = await db.select()
+          .from(schema.userTeams)
+          .where(eq(schema.userTeams.userId, userId))
+          .limit(1);
+        
+        if (otherTeams.length > 0) {
+          // Define outra equipe como primária
+          await db.update(schema.users)
+            .set({ teamId: otherTeams[0].teamId })
+            .where(eq(schema.users.id, userId));
+          
+          await db.update(schema.userTeams)
+            .set({ isPrimary: true })
+            .where(and(
+              eq(schema.userTeams.userId, userId),
+              eq(schema.userTeams.teamId, otherTeams[0].teamId)
+            ));
+        } else {
+          // Não tem mais equipes, limpar
+          await db.update(schema.users)
+            .set({ teamId: null })
+            .where(eq(schema.users.id, userId));
+        }
+      }
     } catch (error) {
       console.error('Error removing team member:', error);
       throw error;
@@ -1242,6 +1698,38 @@ export class PostgresStorage implements IStorage {
         )) as User[];
     } catch (error) {
       console.error('Error getting available agents:', error);
+      return [];
+    }
+  }
+
+  async getTeamById(teamId: number): Promise<any | null> {
+    try {
+      const result = await db.select().from(schema.teams)
+        .where(eq(schema.teams.id, teamId));
+      return result[0] || null;
+    } catch (error) {
+      console.error('Error getting team by id:', error);
+      return null;
+    }
+  }
+
+  async getTicketsByTeam(teamId: number): Promise<any[]> {
+    try {
+      // Buscar tickets atribuídos aos membros da equipe
+      const teamMembers = await db.select({ userId: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.teamId, teamId));
+      
+      const memberIds = teamMembers.map(m => m.userId);
+      
+      if (memberIds.length === 0) {
+        return [];
+      }
+      
+      return await db.select().from(schema.tickets)
+        .where(sql`${schema.tickets.assigneeId} IN (${memberIds.join(',')})`);
+    } catch (error) {
+      console.error('Error getting tickets by team:', error);
       return [];
     }
   }
@@ -1304,6 +1792,7 @@ export class PostgresStorage implements IStorage {
           allowOverage: contracts.allowOverage,
           description: contracts.description,
           slaRuleId: contracts.servicePackageId,
+          slaTemplateId: contracts.slaTemplateId,
           createdAt: contracts.createdAt,
           updatedAt: contracts.updatedAt,
         })
@@ -1328,6 +1817,7 @@ export class PostgresStorage implements IStorage {
         allowOverage: row.allowOverage || false,
         description: row.description || undefined,
         slaRuleId: row.slaRuleId || undefined,
+        slaTemplateId: row.slaTemplateId || undefined,
         createdAt: row.createdAt!.toISOString(),
         updatedAt: row.updatedAt!.toISOString(),
       }));
@@ -1357,6 +1847,7 @@ export class PostgresStorage implements IStorage {
           allowOverage: contracts.allowOverage,
           description: contracts.description,
           slaRuleId: contracts.servicePackageId,
+          slaTemplateId: contracts.slaTemplateId,
           createdAt: contracts.createdAt,
           updatedAt: contracts.updatedAt,
         })
@@ -1385,6 +1876,7 @@ export class PostgresStorage implements IStorage {
         allowOverage: row.allowOverage || false,
         description: row.description || undefined,
         slaRuleId: row.slaRuleId || undefined,
+        slaTemplateId: row.slaTemplateId || undefined,
         createdAt: row.createdAt!.toISOString(),
         updatedAt: row.updatedAt!.toISOString(),
       };
@@ -1397,12 +1889,26 @@ export class PostgresStorage implements IStorage {
   async createContract(contract: Omit<ContractUI, 'id' | 'createdAt' | 'updatedAt' | 'companyName' | 'usedHours'>): Promise<ContractUI> {
     try {
       const contractId = `CONTRACT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
+      // Se for informado um servicePackageId, verificar se existe na tabela service_packages
+      let servicePackageIdToUse: string | null = null;
+      if (contract.slaRuleId) {
+        try {
+          const rows: any[] = await client`SELECT id FROM service_packages WHERE id = ${contract.slaRuleId} LIMIT 1`;
+          if (rows && rows.length > 0) {
+            servicePackageIdToUse = contract.slaRuleId;
+          } else {
+            console.warn(`⚠️ Service package id not found: ${contract.slaRuleId} — inserting contract without service_package reference`);
+          }
+        } catch (err) {
+          console.warn('⚠️ Could not validate service_package id due to DB error, proceeding without service_package:', err);
+        }
+      }
+
       const result = await db.insert(contracts).values({
         id: contractId,
         contractNumber: contract.contractNumber,
         companyId: contract.companyId || null,
-        servicePackageId: contract.slaRuleId || null,
+        servicePackageId: servicePackageIdToUse,
         type: contract.type,
         status: contract.status,
         startDate: new Date(contract.startDate),
@@ -1419,6 +1925,7 @@ export class PostgresStorage implements IStorage {
         autoRenewal: false,
         notifyThreshold: null,
         description: contract.description || null,
+        slaTemplateId: contract.slaTemplateId || null,  // Salvar template SLA selecionado
         createdAt: new Date(),
         updatedAt: new Date(),
         calendarId: null,
@@ -1441,6 +1948,7 @@ export class PostgresStorage implements IStorage {
         allowOverage: created.allowOverage!,
         description: created.description || undefined,
         slaRuleId: created.servicePackageId || undefined,
+        slaTemplateId: created.slaTemplateId || undefined,  // Retornar template SLA associado
         createdAt: created.createdAt!.toISOString(),
         updatedAt: created.updatedAt!.toISOString(),
       } as ContractUI;
@@ -1458,16 +1966,27 @@ export class PostgresStorage implements IStorage {
       };
 
       // Converter campos que precisam de transformação
-      if (updates.startDate) updateData.startDate = new Date(updates.startDate);
-      if (updates.endDate) updateData.endDate = new Date(updates.endDate);
+      if (updates.startDate) {
+        updateData.startDate = updates.startDate instanceof Date
+          ? updates.startDate
+          : new Date(updates.startDate);
+      }
+      if (updates.endDate) {
+        updateData.endDate = updates.endDate instanceof Date
+          ? updates.endDate
+          : new Date(updates.endDate);
+      }
       if (updates.monthlyValue !== undefined) updateData.monthlyValue = updates.monthlyValue?.toString() || '0';
       if (updates.hourlyRate !== undefined) updateData.hourlyRate = updates.hourlyRate?.toString() || '0';
       if (updates.usedHours !== undefined) updateData.usedHours = updates.usedHours.toString();
       if (updates.slaRuleId !== undefined) updateData.servicePackageId = updates.slaRuleId;
+      if (updates.slaTemplateId !== undefined) updateData.slaTemplateId = updates.slaTemplateId;
 
       // Remover campos que não existem na tabela
       delete updateData.slaRuleId;
       delete updateData.companyName;
+      delete updateData.createdAt;
+      delete updateData.id;
 
       console.log(`📝 [Storage] Atualizando contrato ${id} com dados:`, updateData);
 
@@ -1508,7 +2027,13 @@ export class PostgresStorage implements IStorage {
     try {
       // Primeiro buscar o ticket para pegar a empresa
       const ticket = await this.getTicket(ticketId);
+      console.log(`🎫 [getContractsForTicket] Ticket ${ticketId}:`, { 
+        companyId: ticket?.companyId, 
+        company: ticket?.company 
+      });
+      
       if (!ticket || !ticket.companyId) {
+        console.log(`❌ [getContractsForTicket] Ticket sem companyId`);
         return [];
       }
 
@@ -1532,6 +2057,11 @@ export class PostgresStorage implements IStorage {
           )
         )
         .orderBy(desc(contracts.createdAt));
+
+      console.log(`✅ [getContractsForTicket] Encontrados ${result.length} contratos ativos para empresa ${ticket.companyId}`);
+      if (result.length > 0) {
+        console.log(`   Contratos:`, result.map(c => ({ id: c.id, number: c.contractNumber, type: c.type })));
+      }
 
       return result.map(row => ({
         id: row.id,
@@ -1580,5 +2110,60 @@ export class PostgresStorage implements IStorage {
       console.error('Error getting contracts by company:', error);
       return [];
     }
+  }
+
+  // Requester notes methods
+  async getRequesterNotes(requesterId: number): Promise<any[]> {
+    try {
+      const notes = await db
+        .select({
+          id: schema.requesterNotes.id,
+          requesterId: schema.requesterNotes.requesterId,
+          content: schema.requesterNotes.content,
+          authorId: schema.requesterNotes.authorId,
+          isImportant: schema.requesterNotes.isImportant,
+          createdAt: schema.requesterNotes.createdAt,
+          updatedAt: schema.requesterNotes.updatedAt,
+          authorName: schema.users.fullName,
+          authorEmail: schema.users.email,
+        })
+        .from(schema.requesterNotes)
+        .leftJoin(schema.users, eq(schema.requesterNotes.authorId, schema.users.id))
+        .where(eq(schema.requesterNotes.requesterId, requesterId))
+        .orderBy(desc(schema.requesterNotes.createdAt));
+
+      return notes;
+    } catch (error) {
+      console.error('Error getting requester notes:', error);
+      return [];
+    }
+  }
+
+  async createRequesterNote(note: { requesterId: number; content: string; authorId: number; isImportant?: boolean }): Promise<any> {
+    const result = await db
+      .insert(schema.requesterNotes)
+      .values({
+        requesterId: note.requesterId,
+        content: note.content,
+        authorId: note.authorId,
+        isImportant: note.isImportant || false,
+      })
+      .returning();
+
+    return result[0];
+  }
+
+  async updateRequesterNote(id: number, updates: { content?: string; isImportant?: boolean }): Promise<any | undefined> {
+    const result = await db
+      .update(schema.requesterNotes)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(schema.requesterNotes.id, id))
+      .returning();
+
+    return result[0];
+  }
+
+  async deleteRequesterNote(id: number): Promise<void> {
+    await db.delete(schema.requesterNotes).where(eq(schema.requesterNotes.id, id));
   }
 }

@@ -27,6 +27,7 @@ export interface ContractUI {
   allowOverage?: boolean;
   description?: string;
   slaRuleId?: string;
+  slaTemplateId?: number;  // Novo campo para relacionamento com templates SLA
   createdAt: string;
   updatedAt: string;
 }
@@ -127,6 +128,7 @@ export interface IStorage {
   getCompanyById(id: number): Promise<Company | undefined>;
   getCompanyByEmail(email: string): Promise<Company | undefined>;
   getCompanyByEmailDomain(domain: string): Promise<Company | undefined>;
+  getCompanyByName(name: string): Promise<Company | undefined>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: number, updates: Partial<Company>): Promise<Company | undefined>;
   deleteCompany(id: number): Promise<boolean>;
@@ -147,6 +149,7 @@ export interface IStorage {
   getRequesterByEmail(email: string): Promise<Requester | undefined>;
   createRequester(requester: InsertRequester): Promise<Requester>;
   updateRequester(id: number, updates: Partial<Requester>): Promise<Requester | undefined>;
+  deleteRequester(id: number): Promise<void>;
   getAllRequesters(): Promise<Requester[]>;
   
   // Ticket methods
@@ -157,12 +160,14 @@ export interface IStorage {
   getAllTickets(): Promise<Ticket[]>;
   getAllTicketsWithRelations(): Promise<TicketWithRelations[]>;
   getTicketsByCompany(company: string): Promise<TicketWithRelations[]>;
+  getTicketsByCompanyId(companyId: number): Promise<TicketWithRelations[]>;
   getTicketsByUserCompany(userId: number): Promise<TicketWithRelations[]>;
   getTicketsByStatus(status: string): Promise<Ticket[]>;
   getTicketsByPriority(priority: string): Promise<Ticket[]>;
   getTicketsByCategory(category: string): Promise<Ticket[]>;
   getTicketsByAssignee(assigneeId: number): Promise<Ticket[]>;
-  getTicketsByRequester(requesterId: number): Promise<Ticket[]>;
+  getTicketsByRequester(requesterId: number): Promise<TicketWithRelations[]>;
+  getTicketsByRequesterEmail(email: string): Promise<TicketWithRelations[]>;
   assignTicket(ticketId: number, assigneeId: number): Promise<Ticket | undefined>;
   changeTicketStatus(ticketId: number, status: string): Promise<Ticket | undefined>;
   
@@ -179,6 +184,8 @@ export interface IStorage {
   getAllResponseTemplates(): Promise<ResponseTemplate[]>;
   getResponseTemplatesByCategory(category: string): Promise<ResponseTemplate[]>;
   createResponseTemplate(template: InsertResponseTemplate): Promise<ResponseTemplate>;
+  updateResponseTemplate(id: number, updates: Partial<ResponseTemplate>): Promise<ResponseTemplate | undefined>;
+  deleteResponseTemplate(id: number): Promise<boolean>;
   
   // Dashboard statistics
   getTicketStatistics(): Promise<{
@@ -212,6 +219,7 @@ export interface IStorage {
   // Tags methods
   getTags(): Promise<Tag[]>;
   createTag(tag: InsertTag): Promise<Tag>;
+  updateTag(id: number, updates: Partial<InsertTag>): Promise<Tag | undefined>;
   deleteTag(id: number): Promise<boolean>;
   
   // Ticket Tags methods
@@ -232,6 +240,12 @@ export interface IStorage {
   deleteContract(id: string): Promise<boolean>;
   getContractsForTicket(ticketId: number): Promise<ContractUI[]>;
   getContractsByCompany(companyId: number): Promise<ContractUI[]>;
+  
+  // Requester notes methods
+  getRequesterNotes(requesterId: number): Promise<any[]>;
+  createRequesterNote(note: { requesterId: number; content: string; authorId: number; isImportant?: boolean }): Promise<any>;
+  updateRequesterNote(id: number, updates: { content?: string; isImportant?: boolean }): Promise<any | undefined>;
+  deleteRequesterNote(id: number): Promise<void>;
 }
 
 // Import storage implementations

@@ -4,11 +4,11 @@ import { slaRules } from '../../shared/schema/sla_rules';
 import { contracts } from '../../shared/schema/contracts';
 
 /**
- * Tipos para o serviço SLA, adaptados para trabalhar com contract_id como string (UUID)
+ * Tipos para o serviço SLA
  */
-interface SlaRuleWithStringContractId {
+interface SlaRuleData {
   id: number;
-  contractId: string; // UUID como string
+  contractId: string; // VARCHAR UUID
   priority: string;
   responseTimeMinutes: number;
   solutionTimeMinutes: number;
@@ -16,7 +16,7 @@ interface SlaRuleWithStringContractId {
 }
 
 interface SlaRuleFilters {
-  contractId?: string; // UUID como string
+  contractId?: string; // VARCHAR UUID
   priority?: 'low' | 'medium' | 'high' | 'urgent' | 'critical';
   page?: number;
   limit?: number;
@@ -32,46 +32,26 @@ export class SlaService {
    * Busca todas as regras SLA com filtros opcionais
    * 
    * @param filters - Filtros para busca (contractId, priority, paginação)
-   * @returns Promise<SlaRuleWithStringContractId[]> - Lista de regras SLA
+   * @returns Promise<SlaRuleData[]> - Lista de regras SLA
    */
-  async getAllConfigurations(filters?: SlaRuleFilters): Promise<SlaRuleWithStringContractId[]> {
+  async getAllConfigurations(filters?: SlaRuleFilters): Promise<SlaRuleData[]> {
     try {
-      let query = db
-        .select({
-          id: slaRules.id,
-          contractId: slaRules.contractId,
-          priority: slaRules.priority,
-          responseTimeMinutes: slaRules.responseTimeMinutes,
-          solutionTimeMinutes: slaRules.solutionTimeMinutes,
-          createdAt: slaRules.createdAt,
-        })
-        .from(slaRules);
+      // Buscar todas as regras
+      let results = await db.select().from(slaRules).orderBy(asc(slaRules.contractId), asc(slaRules.priority));
 
-      // Aplicar filtros se fornecidos
-      const conditions = [];
+      // Aplicar filtros em memória
       if (filters?.contractId) {
-        conditions.push(eq(slaRules.contractId, filters.contractId));
+        results = results.filter(r => r.contractId === filters.contractId);
       }
       if (filters?.priority) {
-        conditions.push(eq(slaRules.priority, filters.priority));
+        results = results.filter(r => r.priority === filters.priority);
       }
 
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
-
-      // Ordenar por contractId e depois por prioridade
-      query = query.orderBy(asc(slaRules.contractId), asc(slaRules.priority));
-
-      // Aplicar paginação se fornecida
+      // Aplicar paginação em memória
       if (filters?.limit) {
-        query = query.limit(filters.limit);
-        if (filters?.page && filters.page > 1) {
-          query = query.offset((filters.page - 1) * filters.limit);
-        }
+        const start = filters.page ? (filters.page - 1) * filters.limit : 0;
+        results = results.slice(start, start + filters.limit);
       }
-
-      const results = await query;
       
       console.log(`📋 [SlaService] Retornando ${results.length} configurações SLA`);
       return results;
@@ -84,10 +64,10 @@ export class SlaService {
   /**
    * Busca regras SLA de um contrato específico
    * 
-   * @param contractId - ID do contrato (UUID)
-   * @returns Promise<SlaRuleWithStringContractId[]> - Lista de regras SLA do contrato
+   * @param contractId - ID do contrato (VARCHAR UUID)
+   * @returns Promise<SlaRuleData[]> - Lista de regras SLA do contrato
    */
-  async getByContractId(contractId: string): Promise<SlaRuleWithStringContractId[]> {
+  async getByContractId(contractId: string): Promise<SlaRuleData[]> {
     try {
       const results = await db
         .select()
@@ -107,9 +87,9 @@ export class SlaService {
    * Busca uma regra SLA específica
    * 
    * @param id - ID da regra SLA
-   * @returns Promise<SlaRuleWithStringContractId | null> - Regra SLA ou null se não encontrada
+   * @returns Promise<SlaRuleData | null> - Regra SLA ou null se não encontrada
    */
-  async getById(id: number): Promise<SlaRuleWithStringContractId | null> {
+  async getById(id: number): Promise<SlaRuleData | null> {
     try {
       const results = await db
         .select()
@@ -134,42 +114,22 @@ export class SlaService {
    */
   async getConfigurationsWithContracts(filters?: SlaRuleFilters) {
     try {
-      let query = db
-        .select({
-          // Campos da regra SLA
-          id: slaRules.id,
-          contractId: slaRules.contractId,
-          priority: slaRules.priority,
-          responseTimeMinutes: slaRules.responseTimeMinutes,
-          solutionTimeMinutes: slaRules.solutionTimeMinutes,
-          createdAt: slaRules.createdAt,
-        })
-        .from(slaRules);
+      // Buscar todas as regras
+      let results = await db.select().from(slaRules).orderBy(asc(slaRules.contractId), asc(slaRules.priority));
 
-      // Aplicar filtros
-      const conditions = [];
+      // Aplicar filtros em memória
       if (filters?.contractId) {
-        conditions.push(eq(slaRules.contractId, filters.contractId));
+        results = results.filter(r => r.contractId === filters.contractId);
       }
       if (filters?.priority) {
-        conditions.push(eq(slaRules.priority, filters.priority));
+        results = results.filter(r => r.priority === filters.priority);
       }
 
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
-
-      query = query.orderBy(asc(slaRules.contractId), asc(slaRules.priority));
-
-      // Aplicar paginação
+      // Aplicar paginação em memória
       if (filters?.limit) {
-        query = query.limit(filters.limit);
-        if (filters?.page && filters.page > 1) {
-          query = query.offset((filters.page - 1) * filters.limit);
-        }
+        const start = filters.page ? (filters.page - 1) * filters.limit : 0;
+        results = results.slice(start, start + filters.limit);
       }
-
-      const results = await query;
 
       // Por enquanto, retornar sem dados de contrato para simplificar
       const configurationsWithContracts = results.map(row => ({
@@ -182,7 +142,7 @@ export class SlaService {
         // TODO: adicionar dados do contrato quando o join estiver funcionando
         contract: {
           id: row.contractId,
-          name: row.contractId ? `Contrato ${String(row.contractId).substring(0, 8)}...` : 'Contrato não especificado',
+          name: row.contractId ? `Contrato ${String(row.contractId)}` : 'Contrato não especificado',
           type: 'support',
           isActive: true,
         }
@@ -200,11 +160,11 @@ export class SlaService {
    * Busca regra SLA específica por contrato e prioridade
    * Usado pelo sistema de cálculo de SLA
    * 
-   * @param contractId - ID do contrato (UUID)
+   * @param contractId - ID do contrato (VARCHAR UUID)
    * @param priority - Prioridade do ticket
-   * @returns Promise<SlaRuleWithStringContractId | null> - Regra SLA específica ou null
+   * @returns Promise<SlaRuleData | null> - Regra SLA específica ou null
    */
-  async findByContractAndPriority(contractId: string, priority: string): Promise<SlaRuleWithStringContractId | null> {
+  async findByContractAndPriority(contractId: string, priority: string): Promise<SlaRuleData | null> {
     try {
       const results = await db
         .select()
@@ -241,6 +201,128 @@ export class SlaService {
     } catch (error) {
       console.error('Erro no SlaService.count:', error);
       throw new Error('Falha ao contar configurações SLA: ' + (error as Error).message);
+    }
+  }
+
+  /**
+   * Cria uma nova regra SLA
+   * 
+   * @param data - Dados da regra SLA
+   * @returns Promise<SlaRuleData> - Regra criada
+   */
+  async create(data: {
+    contractId: string;
+    priority: string;
+    responseTimeMinutes: number;
+    solutionTimeMinutes: number;
+  }): Promise<SlaRuleData> {
+    try {
+      console.log(`➕ [SlaService] Criando regra SLA para contrato ${data.contractId}, prioridade ${data.priority}`);
+      
+      // Verificar se já existe regra para este contrato e prioridade
+      const existing = await this.findByContractAndPriority(data.contractId, data.priority);
+      if (existing) {
+        throw new Error(`Já existe uma regra SLA para o contrato ${data.contractId} com prioridade ${data.priority}`);
+      }
+      
+      const result = await db
+        .insert(slaRules)
+        .values({
+          contractId: data.contractId,
+          priority: data.priority,
+          responseTimeMinutes: data.responseTimeMinutes,
+          solutionTimeMinutes: data.solutionTimeMinutes,
+          createdAt: new Date(),
+        })
+        .returning();
+      
+      const created = result[0];
+      console.log(`✅ [SlaService] Regra SLA criada com ID ${created.id}`);
+      return created;
+    } catch (error) {
+      console.error('Erro no SlaService.create:', error);
+      throw new Error('Falha ao criar regra SLA: ' + (error as Error).message);
+    }
+  }
+
+  /**
+   * Atualiza uma regra SLA existente
+   * 
+   * @param id - ID da regra SLA
+   * @param data - Dados a serem atualizados
+   * @returns Promise<SlaRuleData | null> - Regra atualizada ou null
+   */
+  async update(id: number, data: {
+    contractId?: string;
+    priority?: string;
+    responseTimeMinutes?: number;
+    solutionTimeMinutes?: number;
+  }): Promise<SlaRuleData | null> {
+    try {
+      console.log(`✏️ [SlaService] Atualizando regra SLA ${id}`);
+      
+      // Verificar se existe
+      const existing = await this.getById(id);
+      if (!existing) {
+        console.log(`❌ [SlaService] Regra SLA ${id} não encontrada`);
+        return null;
+      }
+      
+      // Se está mudando contrato ou prioridade, verificar duplicação
+      if (data.contractId || data.priority) {
+        const newContractId = data.contractId || existing.contractId;
+        const newPriority = data.priority || existing.priority;
+        
+        const duplicate = await this.findByContractAndPriority(newContractId, newPriority);
+        if (duplicate && duplicate.id !== id) {
+          throw new Error(`Já existe uma regra SLA para o contrato ${newContractId} com prioridade ${newPriority}`);
+        }
+      }
+      
+      const result = await db
+        .update(slaRules)
+        .set({
+          ...data,
+          createdAt: existing.createdAt || new Date(), // Manter data de criação
+        })
+        .where(eq(slaRules.id, id))
+        .returning();
+      
+      const updated = result[0] || null;
+      console.log(`✅ [SlaService] Regra SLA ${id} atualizada`);
+      return updated;
+    } catch (error) {
+      console.error('Erro no SlaService.update:', error);
+      throw new Error('Falha ao atualizar regra SLA: ' + (error as Error).message);
+    }
+  }
+
+  /**
+   * Remove uma regra SLA
+   * 
+   * @param id - ID da regra SLA
+   * @returns Promise<boolean> - true se removido, false se não encontrado
+   */
+  async delete(id: number): Promise<boolean> {
+    try {
+      console.log(`🗑️ [SlaService] Removendo regra SLA ${id}`);
+      
+      const result = await db
+        .delete(slaRules)
+        .where(eq(slaRules.id, id))
+        .returning();
+      
+      const deleted = result.length > 0;
+      if (deleted) {
+        console.log(`✅ [SlaService] Regra SLA ${id} removida`);
+      } else {
+        console.log(`❌ [SlaService] Regra SLA ${id} não encontrada`);
+      }
+      
+      return deleted;
+    } catch (error) {
+      console.error('Erro no SlaService.delete:', error);
+      throw new Error('Falha ao remover regra SLA: ' + (error as Error).message);
     }
   }
 }

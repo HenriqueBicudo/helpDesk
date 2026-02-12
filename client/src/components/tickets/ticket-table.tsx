@@ -60,8 +60,8 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           bVal = b.subject;
           break;
         case 'requester':
-          aVal = a.requester.fullName;
-          bVal = b.requester.fullName;
+          aVal = a.requester?.fullName || '';
+          bVal = b.requester?.fullName || '';
           break;
         case 'status':
           aVal = a.status;
@@ -103,11 +103,11 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
   
   return (
     <Table>
-      <TableHeader className="bg-muted/30">
-        <TableRow>
+      <TableHeader className="bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-900">
+        <TableRow className="border-b-2 border-gray-200 dark:border-gray-700">
           <TableHead className="w-[100px]">
             <button 
-              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
+              className="flex items-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide hover:text-primary transition-colors"
               onClick={() => handleSort('id')}
             >
               ID {renderSortIcon('id')}
@@ -115,7 +115,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
+              className="flex items-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide hover:text-primary transition-colors"
               onClick={() => handleSort('subject')}
             >
               Assunto {renderSortIcon('subject')}
@@ -123,7 +123,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
+              className="flex items-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide hover:text-primary transition-colors"
               onClick={() => handleSort('requester')}
             >
               Solicitante {renderSortIcon('requester')}
@@ -131,7 +131,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
+              className="flex items-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide hover:text-primary transition-colors"
               onClick={() => handleSort('status')}
             >
               Status {renderSortIcon('status')}
@@ -139,18 +139,18 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
+              className="flex items-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide hover:text-primary transition-colors"
               onClick={() => handleSort('priority')}
             >
               Prioridade {renderSortIcon('priority')}
             </button>
           </TableHead>
-          <TableHead className="text-xs font-medium text-muted-foreground uppercase">
+          <TableHead className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
             SLA
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
+              className="flex items-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide hover:text-primary transition-colors"
               onClick={() => handleSort('createdAt')}
             >
               Criado em {renderSortIcon('createdAt')}
@@ -158,13 +158,13 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           </TableHead>
           <TableHead>
             <button 
-              className="flex items-center text-xs font-medium text-muted-foreground uppercase"
+              className="flex items-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide hover:text-primary transition-colors"
               onClick={() => handleSort('assignee')}
             >
               Atribuído {renderSortIcon('assignee')}
             </button>
           </TableHead>
-          <TableHead className="text-right text-xs font-medium text-muted-foreground uppercase">
+          <TableHead className="text-right text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
             Ações
           </TableHead>
         </TableRow>
@@ -181,28 +181,30 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
           sortedTickets.map((ticket) => (
             <TableRow
               key={ticket.id}
-              className="hover:bg-muted/50 cursor-pointer border-b border-border"
+              className="hover:bg-blue-50 dark:hover:bg-blue-950/20 cursor-pointer border-b transition-colors group"
               onClick={() => setLocation(`/tickets/${ticket.id}`)}
             >
-              <TableCell className="font-medium text-foreground">
-                #{ticket.id?.toString().padStart(6, '0') || 'N/A'}
+              <TableCell className="font-bold text-gray-900 dark:text-gray-100">
+                <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-md text-xs font-mono">
+                  #{ticket.id?.toString().padStart(6, '0') || 'N/A'}
+                </span>
               </TableCell>
-              <TableCell className="text-foreground">
-                {ticket.subject}
+              <TableCell className="font-medium text-gray-900 dark:text-gray-100">
+                <span className="group-hover:text-primary transition-colors">{ticket.subject}</span>
               </TableCell>
               <TableCell>
                 <div className="flex items-center">
-                  <Avatar className="h-8 w-8 mr-3">
-                    <AvatarFallback className="bg-muted text-muted-foreground text-xs">
-                      {ticket.requester.avatarInitials}
+                  <Avatar className="h-8 w-8 mr-3 ring-2 ring-gray-200 dark:ring-gray-700">
+                    <AvatarFallback className="bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900 dark:to-indigo-900 text-blue-700 dark:text-blue-300 text-xs font-semibold">
+                      {ticket.requester?.avatarInitials || '--'}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <div className="text-sm font-medium text-foreground">
-                      {ticket.requester.fullName}
+                      {ticket.requester?.fullName || 'Solicitante desconhecido'}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {ticket.requester.email}
+                      {ticket.requester?.email || '—'}
                     </div>
                   </div>
                 </div>
@@ -226,6 +228,7 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
                     solutionDueAt={ticket.solutionDueAt || undefined}
                     hasFirstResponse={false}
                     compact={true}
+                    status={ticket.status}
                   />
                 </div>
               </TableCell>
@@ -237,11 +240,11 @@ export function TicketTable({ tickets, isLoading }: TicketTableProps) {
                   <div className="flex items-center">
                     <Avatar className="h-7 w-7 mr-2">
                       <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                        {ticket.assignee.avatarInitials}
+                        {ticket.assignee?.avatarInitials || '--'}
                       </AvatarFallback>
                     </Avatar>
                     <div className="text-sm text-foreground">
-                      {ticket.assignee.fullName}
+                      {ticket.assignee?.fullName || '—'}
                     </div>
                   </div>
                 ) : (

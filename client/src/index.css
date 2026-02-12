@@ -4,49 +4,67 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 20 14.3% 4.1%;
-    --muted: 60 4.8% 95.9%;
-    --muted-foreground: 25 5.3% 44.7%;
+    /* TOTVS Light Theme - Azul Corporativo */
+    --background: 0 0% 98%;
+    --foreground: 215 25% 16%;
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 15% 45%;
     --popover: 0 0% 100%;
-    --popover-foreground: 20 14.3% 4.1%;
+    --popover-foreground: 215 25% 16%;
     --card: 0 0% 100%;
-    --card-foreground: 20 14.3% 4.1%;
-    --border: 20 5.9% 90%;
-    --input: 20 5.9% 90%;
-    --primary: 207 90% 54%;
-    --primary-foreground: 211 100% 99%;
-    --secondary: 60 4.8% 95.9%;
-    --secondary-foreground: 24 9.8% 10%;
-    --accent: 60 4.8% 95.9%;
-    --accent-foreground: 24 9.8% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 60 9.1% 97.8%;
-    --ring: 20 14.3% 4.1%;
-    --radius: 0.5rem;
+    --card-foreground: 215 25% 16%;
+    --border: 210 15% 88%;
+    --input: 210 15% 92%;
+    --primary: 214 100% 32%; /* TOTVS Azul #0033A0 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 208 100% 36%; /* TOTVS Azul Claro #005EB8 */
+    --secondary-foreground: 0 0% 100%;
+    --accent: 208 100% 36%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 214 100% 32%;
+    --radius: 0.25rem; /* Bordas mais retas estilo TOTVS */
+    --sidebar-background: 214 100% 32%; /* Sidebar azul TOTVS */
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 208 100% 36%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 100% 38%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 214 100% 28%;
+    --sidebar-ring: 214 100% 38%;
   }
   
   .dark {
-    --background: 222 17% 8%;
-    --foreground: 210 40% 98%;
-    --muted: 222 17% 12%;
-    --muted-foreground: 215 20% 65%;
-    --popover: 222 17% 8%;
-    --popover-foreground: 210 40% 98%;
-    --card: 222 17% 10%;
-    --card-foreground: 210 40% 98%;
-    --border: 215 25% 16%;
-    --input: 215 25% 16%;
-    --primary: 207 90% 54%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 222 17% 14%;
-    --secondary-foreground: 210 40% 98%;
-    --accent: 222 17% 14%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 55%;
-    --destructive-foreground: 210 40% 98%;
-    --ring: 215 25% 20%;
-    --radius: 0.5rem;
+    /* TOTVS Dark Theme */
+    --background: 215 28% 12%;
+    --foreground: 210 20% 95%;
+    --muted: 215 25% 18%;
+    --muted-foreground: 215 15% 65%;
+    --popover: 215 28% 14%;
+    --popover-foreground: 210 20% 95%;
+    --card: 215 26% 15%;
+    --card-foreground: 210 20% 95%;
+    --border: 215 22% 22%;
+    --input: 215 22% 20%;
+    --primary: 208 100% 45%; /* Azul mais claro no dark */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 208 80% 40%;
+    --secondary-foreground: 0 0% 100%;
+    --accent: 208 80% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 208 100% 45%;
+    --radius: 0.25rem;
+    --sidebar-background: 215 30% 10%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 208 100% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 28% 18%;
+    --sidebar-accent-foreground: 210 20% 90%;
+    --sidebar-border: 215 25% 16%;
+    --sidebar-ring: 208 100% 45%;
   }
   
   * {
@@ -55,9 +73,21 @@
   
   body {
     @apply bg-background text-foreground;
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+  
+  /* Tipografia estilo TOTVS */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+  
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.5rem; }
+  h3 { font-size: 1.25rem; }
 }
 
 /* Estilos customizados para o editor TipTap */
@@ -81,3 +111,54 @@
   pointer-events: none;
 }
 
+/* Estilos TOTVS para componentes */
+@layer components {
+  /* Cards estilo TOTVS */
+  .totvs-card {
+    @apply bg-card border border-border shadow-sm;
+  }
+  
+  /* Botões primários estilo TOTVS */
+  .totvs-btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 font-semibold;
+    transition: all 0.2s ease;
+  }
+  
+  .totvs-btn-primary:hover {
+    box-shadow: 0 4px 12px rgba(0, 51, 160, 0.25);
+  }
+  
+  /* Cabeçalhos de seção estilo TOTVS */
+  .totvs-section-header {
+    @apply text-lg font-semibold text-foreground border-b border-primary/20 pb-2 mb-4;
+  }
+  
+  /* Badges estilo TOTVS */
+  .totvs-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold;
+  }
+  
+  /* Inputs estilo TOTVS */
+  .totvs-input {
+    @apply border-input focus:border-primary focus:ring-1 focus:ring-primary;
+  }
+  
+  /* Scrollbar customizada estilo TOTVS */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.3);
+    border-radius: 3px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.5);
+  }
+}

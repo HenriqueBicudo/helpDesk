@@ -50,11 +50,11 @@ interface CreateUserForm {
 }
 
 const roleLabels = {
-  admin: 'Administrador',
-  helpdesk_manager: 'Gestor Helpdesk',
+  admin: 'Gestor Helpdesk',
+  helpdesk_manager: 'Gerente de Suporte',
   helpdesk_agent: 'Agente Helpdesk',
-  client_manager: 'Gestor da Empresa',
-  client_user: 'Funcionário da Empresa'
+  client_manager: 'Admin cliente',
+  client_user: 'Cliente Funcionário'
 };
 
 const roleColors = {
@@ -205,6 +205,31 @@ export function UserManagement() {
     }
   });
 
+  // Mutation para resetar senha do usuário
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const response = await apiRequest('POST', '/api/auth/reset-user-password', { userId });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast({
+        title: "Senha resetada com sucesso!",
+        description: data.emailSent 
+          ? "Uma nova senha foi enviada para o email do usuário." 
+          : `Email não configurado. Senha temporária: ${data.tempPassword}`,
+        duration: data.tempPassword ? 10000 : 3000,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Erro ao resetar senha",
+        description: error.message || "Ocorreu um erro ao tentar resetar a senha.",
+      });
+    }
+  });
+
   // Mutation para excluir usuário
   const deleteUserMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -240,11 +265,19 @@ export function UserManagement() {
 
   const handleEditUser = (user: User) => {
     setEditingUser(user);
+    // Map company name (returned by API) to company id when possible
+    let companyId: number | undefined = undefined;
+    if (user.company) {
+      // companies is from query; try to find by name first
+      const match = (companies as any[]).find((c: any) => c.name === user.company || String(c.id) === String(user.company));
+      if (match) companyId = match.id;
+    }
+
     setEditForm({
       fullName: user.fullName,
       email: user.email,
       role: user.role,
-      company: user.company ? parseInt(user.company) : undefined,
+      company: companyId,
       teamId: user.teamId
     });
     setIsEditDialogOpen(true);
@@ -287,16 +320,17 @@ export function UserManagement() {
   // Determinar quais papéis podem ser criados/editados
   const getAvailableRoles = (isEdit = false) => {
     const company = isEdit ? editForm.company : createForm.company;
-    
+
     if (company) {
       return [
-        { value: 'client_manager', label: 'Gestor da Empresa' },
-        { value: 'client_user', label: 'Funcionário da Empresa' }
+        { value: 'client_manager', label: 'Admin cliente' },
+        { value: 'client_user', label: 'Cliente Funcionário' }
       ];
     } else {
       return [
         { value: 'helpdesk_manager', label: 'Gestor Helpdesk' },
-        { value: 'helpdesk_agent', label: 'Agente Helpdesk' }
+        { value: 'helpdesk_agent', label: 'Agente Helpdesk' },
+        { value: 'admin', label: 'Gestor Helpdesk (Admin)' }
       ];
     }
   };
@@ -571,20 +605,35 @@ export function UserManagement() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-4">
+              <div className="flex justify-between items-center gap-2 pt-4 border-t mt-4">
                 <Button 
                   type="button" 
                   variant="outline"
-                  onClick={() => setIsEditDialogOpen(false)}
+                  onClick={() => {
+                    if (editingUser && confirm(`Tem certeza que deseja resetar a senha de ${editingUser.fullName}?\n\nUma nova senha será gerada e enviada por email.`)) {
+                      resetPasswordMutation.mutate(editingUser.id!);
+                    }
+                  }}
+                  disabled={resetPasswordMutation.isPending}
                 >
-                  Cancelar
+                  {resetPasswordMutation.isPending ? "Resetando..." : "🔄 Resetar Senha"}
                 </Button>
-                <Button 
-                  type="submit"
-                  disabled={editUserMutation.isPending}
-                >
-                  {editUserMutation.isPending ? "Atualizando..." : "Atualizar Usuário"}
-                </Button>
+                
+                <div className="flex gap-2">
+                  <Button 
+                    type="button" 
+                    variant="outline"
+                    onClick={() => setIsEditDialogOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    type="submit"
+                    disabled={editUserMutation.isPending}
+                  >
+                    {editUserMutation.isPending ? "Atualizando..." : "Atualizar Usuário"}
+                  </Button>
+                </div>
               </div>
             </form>
           </DialogContent>

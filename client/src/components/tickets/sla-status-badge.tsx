@@ -21,6 +21,11 @@ export function SlaStatusBadge({
 }: SlaStatusBadgeProps) {
   const now = new Date();
   
+  // Não mostrar badge para tickets resolvidos ou fechados
+  if (status === 'resolved' || status === 'closed') {
+    return null;
+  }
+  
   // Se não há SLA configurado, não mostrar badge
   if (!responseDueAt && !solutionDueAt) {
     return null;

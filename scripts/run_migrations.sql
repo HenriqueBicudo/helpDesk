@@ -1,0 +1,13 @@
+\set ON_ERROR_STOP on
+\i '/tmp/migrations/0000_yielding_rhino.sql'
+\i '/tmp/migrations/0001_late_ares.sql'
+\i '/tmp/migrations/0002_add_user_roles_and_company.sql'
+\i '/tmp/migrations/0003_ordinary_vampiro.sql'
+\i '/tmp/migrations/0003_update_existing_roles.sql'
+\i '/tmp/migrations/0004_ambitious_the_anarchist.sql'
+\i '/tmp/migrations/create_contracts_sla_tables.sql'
+\i '/tmp/migrations/0002_add_has_active_contract.sql'
+\i '/tmp/migrations/0002_integrate_contracts_with_tickets.sql'
+\i '/tmp/migrations/0005_tan_rocket_racer.sql'
+\i '/tmp/migrations/0006_add_company_id_to_tickets.sql'
+\i '/tmp/migrations/0007_change_category_to_varchar.sql'

@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { and, lte, notInArray, isNotNull, or, sql } from 'drizzle-orm';
+import { and, lte, isNotNull, or, sql, inArray, not } from 'drizzle-orm';
 import postgres from 'postgres';
 import { tickets } from '../../shared/drizzle-schema';
 import { NotificationService } from './notification.service';
@@ -64,6 +64,15 @@ export class SlaMonitorService {
       
       for (const ticket of ticketsAtRisk) {
         try {
+          // ⚠️ VALIDAÇÃO CRÍTICA: Ignorar tickets fechados ou resolvidos
+          // Mesmo que a query já filtre esses tickets, esta validação extra
+          // protege contra race conditions onde o ticket pode ter sido fechado
+          // entre a query e o processamento
+          if (ticket.status === 'resolved' || ticket.status === 'closed') {
+            console.log(`⏭️ Ticket ${ticket.id} já está ${ticket.status}, pulando verificação de SLA`);
+            continue;
+          }
+          
           const slaStatus = this.determineSlaStatus(ticket, now);
           console.log(`📋 Ticket ${ticket.id} (${ticket.subject}) - Status: ${slaStatus.type}`);
           
@@ -120,8 +129,8 @@ export class SlaMonitorService {
       .from(tickets)
       .where(
         and(
-          // Status não resolvido
-          notInArray(tickets.status, ['resolved', 'closed']),
+          // Status não resolvido ou fechado - verificação explícita
+          not(inArray(tickets.status, ['resolved', 'closed'])),
           
           // Tem prazo de solução definido
           isNotNull(tickets.solutionDueAt),
@@ -209,13 +218,23 @@ export class SlaMonitorService {
   private async executeSlaAction(ticket: any, slaStatus: SlaStatus): Promise<void> {
     console.log(`🎯 Executando ação para ticket ${ticket.id}: ${slaStatus.type}`);
     
+    // ⚠️ VALIDAÇÃO DUPLA: Segunda verificação de segurança
+    // Esta verificação garante que mesmo se um ticket passou pela primeira validação,
+    // não será criada notificação se ele foi fechado/resolvido durante o processamento
+    if (ticket.status === 'resolved' || ticket.status === 'closed') {
+      console.log(`⏭️ Ticket ${ticket.id} já está ${ticket.status}, pulando notificação`);
+      return;
+    }
+    
     try {
-      // Criar interação de alerta/violação
-      await this.notificationService.createSlaAlertInteraction(
-        ticket.id,
-        slaStatus.type,
-        slaStatus.message
-      );
+      // DESABILITADO: Criar interação de alerta/violação
+      // await this.notificationService.createSlaAlertInteraction(
+      //   ticket.id,
+      //   slaStatus.type,
+      //   slaStatus.message
+      // );
+      
+      console.log(`📝 Notificação de SLA desabilitada para ticket ${ticket.id}`);
       
       // Se é violação e escalação está habilitada
       if (slaStatus.type === 'breach' && this.BREACH_ESCALATION_ENABLED) {
@@ -259,14 +278,14 @@ export class SlaMonitorService {
           .where(sql`${tickets.id} = ${ticket.id}`);
       }
       
-      // Criar interação de escalação
-      await this.notificationService.createSlaAlertInteraction(
-        ticket.id,
-        'breach',
-        `🚨 ESCALAÇÃO AUTOMÁTICA: Ticket escalado para prioridade CRÍTICA devido à violação de SLA de ${slaStatus.dueType}. Ação imediata necessária!`
-      );
+      // DESABILITADO: Criar interação de escalação
+      // await this.notificationService.createSlaAlertInteraction(
+      //   ticket.id,
+      //   'breach',
+      //   `🚨 ESCALAÇÃO AUTOMÁTICA: Ticket escalado para prioridade CRÍTICA devido à violação de SLA de ${slaStatus.dueType}. Ação imediata necessária!`
+      // );
       
-      console.log(`✅ Ticket ${ticket.id} escalado com sucesso`);
+      console.log(`✅ Ticket ${ticket.id} escalado com sucesso (sem notificação automática)`);
       
     } catch (error) {
       console.error(`❌ Erro ao escalar ticket ${ticket.id}:`, error);

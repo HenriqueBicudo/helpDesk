@@ -3,6 +3,10 @@ import { storage } from '../../storage-interface';
 import { requireAuth, requirePermission } from '../../middleware/auth';
 import { hashPassword } from '../../auth';
 import { z } from 'zod';
+import { db } from '../../db-postgres';
+import { eq, or } from 'drizzle-orm';
+import * as schema from '@shared/drizzle-schema';
+import { userTeams } from '@shared/drizzle-schema';
 
 const router = Router();
 
@@ -27,7 +31,10 @@ const createUserSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
   role: z.enum(['admin', 'helpdesk_manager', 'helpdesk_agent', 'client_manager', 'client_user']),
-  company: z.string().optional(),
+  company: z.union([z.string(), z.number()]).optional().transform((val) => {
+    if (val === null || val === undefined) return undefined;
+    return String(val);
+  }),
   teamId: z.number().optional(),
   isActive: z.boolean().default(true)
 });
@@ -125,11 +132,31 @@ router.get('/stats', requireAuth, requireAdmin, async (req: Request, res: Respon
 });
 
 // ===== EMPRESAS =====
-router.get('/companies', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+router.get('/companies', requireAuth, async (req: Request, res: Response) => {
   try {
+    const user = req.user as any;
     const { search, status } = req.query;
     
     let companies = await storage.getAllCompanies();
+    // Campo 'company' armazena ID da empresa como string, converter para número
+    const userCompanyId = user.company ? parseInt(user.company, 10) : null;
+    console.log('📋 [/companies] User:', { id: user.id, role: user.role, company: user.company, companyId: userCompanyId });
+    console.log('📋 [/companies] Total de empresas no DB:', companies.length);
+    
+    // Clientes só veem a própria empresa
+    if (user.role === 'client_user' || user.role === 'client_manager') {
+      if (!userCompanyId) {
+        console.log('❌ [/companies] User sem company vinculada!');
+        return res.status(400).json({ message: 'Seu usuário não está vinculado a uma empresa' });
+      }
+      console.log('🔍 [/companies] Filtrando para companyId:', userCompanyId);
+      companies = companies.filter((c: any) => {
+        const match = c.id === userCompanyId;
+        console.log(`  - ${c.name} (ID: ${c.id}) === ${userCompanyId} ? ${match}`);
+        return match;
+      });
+      console.log('✅ [/companies] Após filtro, empresas:', companies.length);
+    }
     
     // Filtrar por busca
     if (search) {
@@ -312,9 +339,7 @@ router.get('/users', requireAuth, requireAdmin, async (req: Request, res: Respon
 });
 
 router.post('/users', requireAuth, requireAdmin, async (req: Request, res: Response) => {
-  try {
-    console.log('Dados recebidos para criação de usuário:', JSON.stringify(req.body, null, 2));
-    
+  try {    
     const data = createUserSchema.parse(req.body);
     console.log('Dados validados para usuário:', JSON.stringify(data, null, 2));
     
@@ -341,6 +366,7 @@ router.post('/users', requireAuth, requireAdmin, async (req: Request, res: Respo
     res.status(201).json(user);
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error('Erros de validação Zod:', JSON.stringify(error.errors, null, 2));
       res.status(400).json({ message: 'Dados inválidos', errors: error.errors });
     } else {
       console.error('Erro ao criar usuário:', error);
@@ -368,7 +394,7 @@ router.patch('/users/:id', requireAuth, requireAdmin, async (req: Request, res: 
 });
 
 // ===== EQUIPES =====
-router.get('/teams', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+router.get('/teams', requireAuth, async (req: Request, res: Response) => {
   try {
     const { search, status } = req.query;
     
@@ -486,7 +512,40 @@ router.delete('/teams/:id/members/:userId', requireAuth, requireAdmin, async (re
   }
 });
 
-// Buscar agentes disponíveis para adicionar em equipes
+// Buscar agentes disponíveis para adicionar em uma equipe específica
+router.get('/teams/:id/available-agents', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const teamId = Number(req.params.id);
+    
+    // Buscar todos os agentes helpdesk e managers
+    const allAgents = await db.select()
+      .from(schema.users)
+      .where(
+        or(
+          eq(schema.users.role, 'helpdesk_agent'),
+          eq(schema.users.role, 'helpdesk_manager'),
+          eq(schema.users.role, 'admin')
+        )
+      );
+    
+    // Buscar agentes que já estão nesta equipe
+    const teamMembers = await db.select({ userId: userTeams.userId })
+      .from(userTeams)
+      .where(eq(userTeams.teamId, teamId));
+    
+    const teamMemberIds = new Set(teamMembers.map(m => m.userId));
+    
+    // Retornar agentes que NÃO estão nesta equipe
+    const availableAgents = allAgents.filter(agent => !teamMemberIds.has(agent.id));
+    
+    res.json(availableAgents);
+  } catch (error) {
+    console.error('Erro ao buscar agentes disponíveis:', error);
+    res.status(500).json({ message: 'Erro ao buscar agentes disponíveis' });
+  }
+});
+
+// Buscar agentes disponíveis para adicionar em equipes (endpoint legado)
 router.get('/available-agents', requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {
     const agents = await storage.getAvailableAgents();

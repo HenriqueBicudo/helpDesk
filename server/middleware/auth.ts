@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { User as DrizzleUser, UserRole } from '@shared/drizzle-schema';
-import { hasPermission, Permission } from '@shared/permissions';
+import { hasPermission, Permission, canAccessTicket, canEditTicket } from '@shared/permissions';
 
 // Tipo do usuário com todos os campos necessários
 export type AuthUser = DrizzleUser & {
@@ -16,7 +16,17 @@ interface AuthenticatedRequest extends Request {
 
 // Middleware para verificar autenticação (versão simples para Express)
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+  console.log('🔒 [Auth Middleware]', {
+    path: req.path,
+    authenticated: req.isAuthenticated(),
+    hasUser: !!req.user,
+    userId: req.user ? (req.user as any).id : null,
+    userRole: req.user ? (req.user as any).role : null,
+    sessionID: req.sessionID
+  });
+  
   if (!req.isAuthenticated() || !req.user) {
+    console.warn('⚠️ [Auth Middleware] Acesso negado - não autenticado');
     return res.status(401).json({ message: 'Não autenticado' });
   }
   next();
@@ -119,55 +129,73 @@ export function requireAuthAndPermission(permission: Permission) {
 
 // Função helper para verificar se um usuário pode acessar um ticket específico
 export function canUserAccessTicket(user: any, ticket: any): boolean {
-  const userRole = user.role as UserRole;
-  const userCompany = user.company;
-  
-  // Admin e helpdesk têm acesso a todos os tickets
-  if (hasPermission(userRole, 'tickets:view_all')) {
-    return true;
-  }
-  
-  // Usuários podem ver tickets da própria empresa
-  if (hasPermission(userRole, 'tickets:view_company')) {
-    if (userCompany && userCompany === ticket.requester?.company) {
+  // Delegate to shared permission helper to keep logic in one place
+  try {
+    // Para clientes, comparar por companyId ao invés de nome da empresa
+    const userCompanyId = user.company && !isNaN(parseInt(user.company, 10)) 
+      ? parseInt(user.company, 10) 
+      : null;
+    
+    const ticketCompanyId = ticket.companyId || ticket.company?.id || null;
+    
+    // Se temos IDs numéricos, comparar por ID
+    if (userCompanyId && ticketCompanyId) {
+      if (userCompanyId === ticketCompanyId) {
+        return true; // Mesma empresa, acesso liberado
+      }
+    }
+    
+    // Fallback: validação pelo e-mail para clientes
+    const isOwnTicketByEmail = Boolean(ticket?.requester?.email && user?.email && ticket.requester.email === user.email);
+    if (isOwnTicketByEmail) {
       return true;
     }
+    
+    // Usar a função canAccessTicket como fallback
+    const effectiveRequesterId = isOwnTicketByEmail ? user.id : ticket.requesterId;
+    return canAccessTicket(
+      user.role as UserRole,
+      user.company ?? null,
+      ticket.requester?.company ?? null,
+      effectiveRequesterId,
+      user.id,
+      ticket.assigneeId === user.id
+    );
+  } catch (err) {
+    // Fallback conservative deny
+    console.error('❌ Erro ao verificar acesso ao ticket:', err);
+    return false;
   }
-  
-  // Usuários podem ver seus próprios tickets
-  if (hasPermission(userRole, 'tickets:view_own')) {
-    // Se é o requester original ou está atribuído ao ticket
-    if (ticket.requesterId === user.id || ticket.assigneeId === user.id) {
-      return true;
-    }
-  }
-  
-  return false;
 }
 
 // Função helper para verificar se um usuário pode editar um ticket específico
 export function canUserEditTicket(user: any, ticket: any): boolean {
-  const userRole = user.role as UserRole;
-  const userCompany = user.company;
-  
-  // Admin e helpdesk agents podem editar todos os tickets
-  if (hasPermission(userRole, 'tickets:edit_all')) {
-    return true;
+  try {
+    return canEditTicket(
+      user.role as UserRole,
+      user.company ?? null,
+      ticket.requester?.company ?? null,
+      ticket.requesterId,
+      user.id,
+      ticket.assigneeId === user.id
+    );
+  } catch (err) {
+    return false;
   }
-  
-  // Client managers podem editar tickets da própria empresa
-  if (hasPermission(userRole, 'tickets:edit_company')) {
-    if (userCompany && userCompany === ticket.requester?.company) {
-      return true;
-    }
-  }
-  
-  // Usuários podem editar seus próprios tickets (limitado)
-  if (hasPermission(userRole, 'tickets:edit_own')) {
-    if (ticket.requesterId === user.id || ticket.assigneeId === user.id) {
-      return true;
-    }
-  }
-  
-  return false;
 }
+
+// Middleware para permitir apenas administradores
+export const requireAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Não autenticado' });
+  }
+
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ 
+      message: 'Acesso negado: apenas administradores podem realizar esta ação',
+      userRole: req.user.role
+    });
+  }
+
+  next();
+};

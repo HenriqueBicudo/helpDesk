@@ -8,8 +8,7 @@ import {
   Clock, 
   AlertTriangle, 
   CheckCircle2,
-  BarChart3,
-  Users
+  
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -242,62 +241,6 @@ export const SlaMetricsGrid: React.FC<SlaMetricsGridProps> = ({
 };
 
 // Dados de exemplo para demonstração
-export const sampleSlaMetrics: SlaMetric[] = [
-  {
-    id: 'sla_compliance',
-    title: 'Conformidade SLA Geral',
-    value: 94.5,
-    target: 95.0,
-    unit: 'percentage',
-    trend: {
-      value: 2.3,
-      direction: 'up',
-      period: 'mês passado'
-    },
-    status: 'warning',
-    description: 'Percentual de tickets que cumpriram os prazos de SLA'
-  },
-  {
-    id: 'response_time',
-    title: 'Tempo Médio de Resposta',
-    value: 2.3,
-    target: 4.0,
-    unit: 'hours',
-    trend: {
-      value: 15.2,
-      direction: 'down',
-      period: 'semana passada'
-    },
-    status: 'good',
-    description: 'Tempo médio para primeira resposta aos tickets'
-  },
-  {
-    id: 'resolution_time',
-    title: 'Tempo Médio de Resolução',
-    value: 18.7,
-    target: 24.0,
-    unit: 'hours',
-    trend: {
-      value: 8.5,
-      direction: 'down',
-      period: 'mês passado'
-    },
-    status: 'good',
-    description: 'Tempo médio para resolução completa dos tickets'
-  },
-  {
-    id: 'breached_tickets',
-    title: 'Tickets com SLA Violado',
-    value: 12,
-    unit: 'count',
-    trend: {
-      value: 25.0,
-      direction: 'up',
-      period: 'semana passada'
-    },
-    status: 'critical',
-    description: 'Número de tickets que violaram os prazos de SLA'
-  }
-];
+// sampleSlaMetrics removed — use API-driven metrics instead (SlaMetricsGrid receives data from API)
 
 export default SlaMetricsCard;
