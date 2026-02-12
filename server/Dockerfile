@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Diretório de trabalho na raiz do projeto — build context será a raiz
 WORKDIR /app
