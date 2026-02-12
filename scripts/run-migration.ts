@@ -17,21 +17,38 @@ const sql = postgres(process.env.DATABASE_URL);
 
 async function runMigration(migrationNumber: string) {
   try {
-    const migrationFile = join(process.cwd(), 'migrations', `${migrationNumber}_*.sql`);
+    // Em Docker, process.cwd() pode ser /app/server, então procuramos no diretório pai também
+    const possiblePaths = [
+      join(process.cwd(), 'migrations'),
+      join(process.cwd(), '..', 'migrations'),
+    ];
+    
+    let migrationsDir = possiblePaths[0];
+    const fs = await import('fs/promises');
+    
+    // Encontrar o diretório de migrações correto
+    for (const testPath of possiblePaths) {
+      try {
+        await fs.access(testPath);
+        migrationsDir = testPath;
+        break;
+      } catch {
+        continue;
+      }
+    }
     
     // Encontrar o arquivo que começa com o número
-    const fs = await import('fs/promises');
-    const files = await fs.readdir(join(process.cwd(), 'migrations'));
+    const files = await fs.readdir(migrationsDir);
     const targetFile = files.find(f => f.startsWith(migrationNumber));
     
     if (!targetFile) {
-      console.error(`❌ Migração ${migrationNumber} não encontrada`);
+      console.error(`❌ Migração ${migrationNumber} não encontrada em ${migrationsDir}`);
       process.exit(1);
     }
     
     console.log(`📝 Executando migração: ${targetFile}\n`);
     
-    const migrationPath = join(process.cwd(), 'migrations', targetFile);
+    const migrationPath = join(migrationsDir, targetFile);
     const migrationSQL = readFileSync(migrationPath, 'utf-8');
     
     // Executar a migração
