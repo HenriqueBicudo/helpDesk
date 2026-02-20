@@ -5,6 +5,7 @@ import { slaService } from '../../services/sla.service';
 import { db } from '../../db-postgres';
 import { slaRules } from '../../../shared/schema/sla_rules';
 import { eq } from 'drizzle-orm';
+import { requireAdmin } from '../../middleware/auth';
 
 /**
  * Rotas para monitoramento e controle do sistema SLA
@@ -65,9 +66,9 @@ slaRoutes.get('/monitor/status', (req, res) => {
 
 /**
  * POST /api/sla/monitor/check
- * Executa verificação manual de SLA
+ * Executa verificação manual de SLA (apenas admin)
  */
-slaRoutes.post('/monitor/check', async (req, res) => {
+slaRoutes.post('/monitor/check', requireAdmin, async (req, res) => {
   try {
     console.log('🧪 Iniciando verificação manual de SLA via API...');
     
@@ -96,9 +97,9 @@ slaRoutes.post('/monitor/check', async (req, res) => {
 
 /**
  * POST /api/sla/monitor/restart
- * Reinicia o job de monitoramento
+ * Reinicia o job de monitoramento (apenas admin)
  */
-slaRoutes.post('/monitor/restart', (req, res) => {
+slaRoutes.post('/monitor/restart', requireAdmin, (req, res) => {
   try {
     console.log('🔄 Reiniciando job de monitoramento SLA via API...');
     
@@ -192,9 +193,9 @@ slaRoutes.get('/configurations', async (req, res) => {
 
 /**
  * POST /api/sla/configurations
- * Cria uma nova regra/configuração SLA
+ * Cria uma nova regra/configuração SLA (apenas admin)
  */
-slaRoutes.post('/configurations', async (req, res) => {
+slaRoutes.post('/configurations', requireAdmin, async (req, res) => {
   try {
     console.log('➕ [API] Criando nova configuração SLA...');
     
@@ -280,9 +281,9 @@ slaRoutes.get('/configurations/:id', async (req, res) => {
 
 /**
  * PUT /api/sla/configurations/:id
- * Atualiza uma configuração SLA existente
+ * Atualiza uma configuração SLA existente (apenas admin)
  */
-slaRoutes.put('/configurations/:id', async (req, res) => {
+slaRoutes.put('/configurations/:id', requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     
@@ -332,9 +333,9 @@ slaRoutes.put('/configurations/:id', async (req, res) => {
 
 /**
  * DELETE /api/sla/configurations/:id
- * Remove uma configuração SLA
+ * Remove uma configuração SLA (apenas admin)
  */
-slaRoutes.delete('/configurations/:id', async (req, res) => {
+slaRoutes.delete('/configurations/:id', requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     

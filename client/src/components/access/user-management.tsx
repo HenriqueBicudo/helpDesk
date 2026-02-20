@@ -20,7 +20,9 @@ import {
   UserX,
   Calendar,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  List,
+  LayoutGrid
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -66,6 +68,7 @@ const roleColors = {
 } as const;
 
 export function UserManagement() {
+  const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -640,7 +643,7 @@ export function UserManagement() {
         </Dialog>
       </div>
 
-      {/* Filtros */}
+      {/* Filtros e Toggle de Visualização */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -680,21 +683,169 @@ export function UserManagement() {
             ))}
           </SelectContent>
         </Select>
+
+        <div className="flex items-center gap-1 border rounded-md">
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('list')}
+            className="rounded-r-none"
+          >
+            <List className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === 'card' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('card')}
+            className="rounded-l-none"
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Lista de Usuários */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {isLoadingUsers ? (
-          <div className="col-span-full text-center py-8">
-            Carregando usuários...
+      {viewMode === 'list' ? (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left p-3 font-medium">Nome</th>
+                  <th className="text-left p-3 font-medium">Email</th>
+                  <th className="text-left p-3 font-medium">Tipo</th>
+                  <th className="text-left p-3 font-medium">Empresa</th>
+                  <th className="text-left p-3 font-medium">Equipe</th>
+                  <th className="text-center p-3 font-medium">Status</th>
+                  <th className="text-right p-3 font-medium">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoadingUsers ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8">
+                      Carregando usuários...
+                    </td>
+                  </tr>
+                ) : filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                      {searchTerm || roleFilter !== "all" || companyFilter !== "all" 
+                        ? "Nenhum usuário encontrado com os filtros aplicados" 
+                        : "Nenhum usuário cadastrado"}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((user: User) => (
+                    <tr key={user.id} className="border-t hover:bg-muted/30">
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">{user.fullName}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 text-sm">{user.email}</td>
+                      <td className="p-3">
+                        <Badge variant={roleColors[user.role]}>
+                          {roleLabels[user.role]}
+                        </Badge>
+                      </td>
+                      <td className="p-3 text-sm">
+                        {user.company || '-'}
+                      </td>
+                      <td className="p-3 text-sm">
+                        {user.team?.name || '-'}
+                      </td>
+                      <td className="p-3 text-center">
+                        <Badge variant={user.isActive ? "default" : "secondary"}>
+                          {user.isActive ? "Ativo" : "Inativo"}
+                        </Badge>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex justify-end gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleEditUser(user)}
+                            title="Editar"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleUserMutation.mutate({ 
+                              id: user.id, 
+                              isActive: !user.isActive 
+                            })}
+                            disabled={toggleUserMutation.isPending}
+                            title={user.isActive ? "Desativar" : "Ativar"}
+                          >
+                            {user.isActive ? (
+                              <UserX className="h-3 w-3" />
+                            ) : (
+                              <UserCheck className="h-3 w-3" />
+                            )}
+                          </Button>
+                          {!user.isActive && user.role !== 'admin' && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" title="Excluir">
+                                  <Trash2 className="h-3 w-3 text-red-500" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle className="flex items-center gap-2">
+                                    <AlertTriangle className="h-5 w-5 text-red-500" />
+                                    Confirmar Exclusão
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Tem certeza que deseja excluir o usuário "{user.fullName}"?
+                                    <br /><br />
+                                    <strong>Esta ação não pode ser desfeita</strong> e irá:
+                                    <ul className="list-disc list-inside mt-2 space-y-1">
+                                      <li>Remover o usuário permanentemente</li>
+                                      <li>Manter histórico de tickets para auditoria</li>
+                                      <li>Revogar todos os acessos</li>
+                                    </ul>
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deleteUserMutation.mutate(user.id)}
+                                    className="bg-red-600 hover:bg-red-700"
+                                    disabled={deleteUserMutation.isPending}
+                                  >
+                                    {deleteUserMutation.isPending ? "Excluindo..." : "Sim, Excluir"}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="col-span-full text-center py-8 text-muted-foreground">
-            {searchTerm || roleFilter !== "all" || companyFilter !== "all" 
-              ? "Nenhum usuário encontrado com os filtros aplicados" 
-              : "Nenhum usuário cadastrado"}
-          </div>
-        ) : (
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {isLoadingUsers ? (
+            <div className="col-span-full text-center py-8">
+              Carregando usuários...
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="col-span-full text-center py-8 text-muted-foreground">
+              {searchTerm || roleFilter !== "all" || companyFilter !== "all" 
+                ? "Nenhum usuário encontrado com os filtros aplicados" 
+                : "Nenhum usuário cadastrado"}
+            </div>
+          ) : (
           filteredUsers.map((user: User) => (
             <Card key={user.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
@@ -809,7 +960,8 @@ export function UserManagement() {
             </Card>
           ))
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

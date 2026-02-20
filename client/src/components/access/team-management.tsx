@@ -18,7 +18,9 @@ import {
   Calendar,
   Shield,
   Trash2,
-  X
+  X,
+  List,
+  LayoutGrid
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -46,6 +48,7 @@ interface CreateTeamForm {
 }
 
 export function TeamManagement() {
+  const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAddMembersDialogOpen, setIsAddMembersDialogOpen] = useState(false);
@@ -531,7 +534,7 @@ export function TeamManagement() {
         </Dialog>
       </div>
 
-      {/* Busca */}
+      {/* Busca e Toggle de Visualização */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -542,19 +545,145 @@ export function TeamManagement() {
             className="pl-8"
           />
         </div>
+        <div className="flex items-center gap-1 border rounded-md">
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('list')}
+            className="rounded-r-none"
+          >
+            <List className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === 'card' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('card')}
+            className="rounded-l-none"
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Lista de Equipes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {isLoading ? (
-          <div className="col-span-full text-center py-8">
-            Carregando equipes...
+      {viewMode === 'list' ? (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left p-3 font-medium">Nome</th>
+                  <th className="text-left p-3 font-medium">Descrição</th>
+                  <th className="text-center p-3 font-medium">Membros</th>
+                  <th className="text-center p-3 font-medium">Tickets</th>
+                  <th className="text-center p-3 font-medium">Status</th>
+                  <th className="text-right p-3 font-medium">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8">
+                      Carregando equipes...
+                    </td>
+                  </tr>
+                ) : filteredTeams.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                      {searchTerm ? "Nenhuma equipe encontrada" : "Nenhuma equipe cadastrada"}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTeams.map((team: Team) => (
+                    <tr key={team.id} className="border-t hover:bg-muted/30">
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">{team.name}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 text-sm">
+                        <div className="max-w-xs truncate">
+                          {team.description || '-'}
+                        </div>
+                      </td>
+                      <td className="p-3 text-center text-sm">
+                        {team._count?.members || 0}
+                      </td>
+                      <td className="p-3 text-center text-sm">
+                        {team._count?.assignedTickets || 0}
+                      </td>
+                      <td className="p-3 text-center">
+                        <Badge variant={team.isActive ? "default" : "secondary"}>
+                          {team.isActive ? "Ativa" : "Inativa"}
+                        </Badge>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex justify-end gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                              setSelectedTeamForMembers(team);
+                              setIsAddMembersDialogOpen(true);
+                            }}
+                            title="Adicionar membros"
+                          >
+                            <UserPlus className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleEditTeam(team)}
+                            title="Editar"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleTeamMutation.mutate({ 
+                              id: team.id, 
+                              isActive: !team.isActive 
+                            })}
+                            disabled={toggleTeamMutation.isPending}
+                            title={team.isActive ? "Desativar" : "Ativar"}
+                          >
+                            {team.isActive ? "Desativar" : "Ativar"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              if (confirm(`Tem certeza que deseja excluir a equipe "${team.name}"? Esta ação não pode ser desfeita.`)) {
+                                deleteTeamMutation.mutate(team.id);
+                              }
+                            }}
+                            disabled={deleteTeamMutation.isPending}
+                            title="Excluir equipe"
+                          >
+                            <Trash2 className="h-3 w-3 text-red-500" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        ) : filteredTeams.length === 0 ? (
-          <div className="col-span-full text-center py-8 text-muted-foreground">
-            {searchTerm ? "Nenhuma equipe encontrada" : "Nenhuma equipe cadastrada"}
-          </div>
-        ) : (
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {isLoading ? (
+            <div className="col-span-full text-center py-8">
+              Carregando equipes...
+            </div>
+          ) : filteredTeams.length === 0 ? (
+            <div className="col-span-full text-center py-8 text-muted-foreground">
+              {searchTerm ? "Nenhuma equipe encontrada" : "Nenhuma equipe cadastrada"}
+            </div>
+          ) : (
           filteredTeams.map((team: Team) => (
             <Card key={team.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
@@ -686,7 +815,8 @@ export function TeamManagement() {
             </Card>
           ))
         )}
-      </div>
+        </div>
+      )}
 
     </div>
   );

@@ -2,15 +2,15 @@ import { Router } from 'express';
 import { db } from '../../db-postgres';
 import { automationTriggers, users } from '../../../shared/drizzle-schema';
 import { eq } from 'drizzle-orm';
-import { requireAuthAndPermission } from '../../middleware/auth';
+import { requireAdmin } from '../../middleware/auth';
 
 const router = Router();
 
 /**
  * GET /api/automation-triggers
- * Lista todos os gatilhos de automação
+ * Lista todos os gatilhos de automação (apenas admin)
  */
-router.get('/', requireAuthAndPermission('settings:manage'), async (req, res) => {
+router.get('/', requireAdmin, async (req, res) => {
   try {
     const triggers = await db
       .select({
@@ -43,9 +43,9 @@ router.get('/', requireAuthAndPermission('settings:manage'), async (req, res) =>
 
 /**
  * GET /api/automation-triggers/:id
- * Busca um gatilho específico
+ * Busca um gatilho específico (apenas admin)
  */
-router.get('/:id', requireAuthAndPermission('settings:manage'), async (req, res) => {
+router.get('/:id', requireAdmin, async (req, res) => {
   try {
     const triggerId = parseInt(req.params.id);
     
@@ -68,9 +68,9 @@ router.get('/:id', requireAuthAndPermission('settings:manage'), async (req, res)
 
 /**
  * POST /api/automation-triggers
- * Cria um novo gatilho
+ * Cria um novo gatilho (apenas admin)
  */
-router.post('/', requireAuthAndPermission('settings:manage'), async (req, res) => {
+router.post('/', requireAdmin, async (req, res) => {
   try {
     const { name, description, triggerType, conditions, actions, isActive } = req.body;
     const userId = (req as any).user?.id;
@@ -102,9 +102,9 @@ router.post('/', requireAuthAndPermission('settings:manage'), async (req, res) =
 
 /**
  * PUT /api/automation-triggers/:id
- * Atualiza um gatilho
+ * Atualiza um gatilho (apenas admin)
  */
-router.put('/:id', requireAuthAndPermission('settings:manage'), async (req, res) => {
+router.put('/:id', requireAdmin, async (req, res) => {
   try {
     const triggerId = parseInt(req.params.id);
     const { name, description, triggerType, conditions, actions, isActive } = req.body;
@@ -143,9 +143,9 @@ router.put('/:id', requireAuthAndPermission('settings:manage'), async (req, res)
 
 /**
  * PATCH /api/automation-triggers/:id/toggle
- * Ativa/desativa um gatilho
+ * Ativa/desativa um gatilho (apenas admin)
  */
-router.patch('/:id/toggle', requireAuthAndPermission('settings:manage'), async (req, res) => {
+router.patch('/:id/toggle', requireAdmin, async (req, res) => {
   try {
     const triggerId = parseInt(req.params.id);
 
@@ -174,9 +174,9 @@ router.patch('/:id/toggle', requireAuthAndPermission('settings:manage'), async (
 
 /**
  * DELETE /api/automation-triggers/:id
- * Exclui um gatilho
+ * Exclui um gatilho (apenas admin)
  */
-router.delete('/:id', requireAuthAndPermission('settings:manage'), async (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const triggerId = parseInt(req.params.id);
 

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { db } from '../../db-postgres';
 import { ticketStatusConfig } from '@shared/drizzle-schema';
 import { eq, asc } from 'drizzle-orm';
-import { requireAuthAndPermission } from '../../middleware/auth';
+import { requireAdmin } from '../../middleware/auth';
 import { z } from 'zod';
 import { ticketStatusConfigSchema } from '@shared/schema/ticket-status';
 
@@ -54,7 +54,7 @@ router.get('/ticket-statuses/active', async (req: Request, res: Response) => {
 // POST /api/settings/ticket-statuses - Criar novo status (apenas admin)
 router.post(
   '/ticket-statuses',
-  requireAuthAndPermission('settings:manage'),
+  requireAdmin,
   async (req: Request, res: Response) => {
     try {
       const validatedData = updateStatusSchema.parse(req.body);
@@ -96,7 +96,7 @@ router.post(
 // PUT /api/settings/ticket-statuses/:id - Atualizar status (apenas admin)
 router.put(
   '/ticket-statuses/:id',
-  requireAuthAndPermission('settings:manage'),
+  requireAdmin,
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -153,7 +153,7 @@ router.put(
 // DELETE /api/settings/ticket-statuses/:id - Deletar status (apenas admin)
 router.delete(
   '/ticket-statuses/:id',
-  requireAuthAndPermission('settings:manage'),
+  requireAdmin,
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;

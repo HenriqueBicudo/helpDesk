@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { slaV2Service } from '../../services/slaV2.service.js';
 import { slaTemplateService } from '../../services/slaTemplate.service.js';
-import { requireAuth, requirePermission } from '../../middleware/auth.js';
+import { requireAuth, requirePermission, requireAdmin } from '../../middleware/auth.js';
 import { z } from 'zod';
 import { db } from '../../db-postgres.js';
 import { slaTemplates, businessCalendars, slaCalculations } from '../../../shared/schema/sla_v2.js';
@@ -9,18 +9,6 @@ import { tickets } from '../../../shared/drizzle-schema.js';
 import { eq, sql, desc, and, gte } from 'drizzle-orm';
 
 const router = Router();
-
-
-
-/**
- * ROTAS SLA V2.0 - API COMPLETA
- * 
- * Endpoints para gerenciar o novo sistema SLA:
- * - Templates SLA
- * - Calendários de negócio  
- * - Cálculos e histórico
- * - Recálculos manuais
- */
 
 // =============================================================================
 // TEMPLATES SLA V2
@@ -89,9 +77,9 @@ router.get('/templates/:id', requireAuth, async (req: Request, res: Response) =>
 
 /**
  * POST /api/sla/v2/templates
- * Criar novo template SLA
+ * Criar novo template SLA (apenas admin)
  */
-router.post('/templates', requireAuth, async (req: Request, res: Response) => {
+router.post('/templates', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { name, description, type, rules } = req.body;
 
@@ -128,9 +116,9 @@ router.post('/templates', requireAuth, async (req: Request, res: Response) => {
 
 /**
  * PUT /api/sla/v2/templates/:id
- * Atualizar template SLA existente
+ * Atualizar template SLA existente (apenas admin)
  */
-router.put('/templates/:id', requireAuth, async (req: Request, res: Response) => {
+router.put('/templates/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
     const templateId = Number(req.params.id);
     const { name, description, type, rules } = req.body;
@@ -173,9 +161,9 @@ router.put('/templates/:id', requireAuth, async (req: Request, res: Response) =>
 
 /**
  * DELETE /api/sla/v2/templates/:id
- * Deletar template SLA
+ * Deletar template SLA (apenas admin)
  */
-router.delete('/templates/:id', requireAuth, async (req: Request, res: Response) => {
+router.delete('/templates/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
     console.log(`🗑️ [SLA V2] Iniciando DELETE de template ID: ${req.params.id}`);
     

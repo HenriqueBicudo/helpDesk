@@ -24,6 +24,7 @@ import {
   requireActiveUser, 
   requirePermission, 
   requireAuthAndPermission,
+  requireAdmin,
   canUserAccessTicket,
   canUserEditTicket 
 } from "./middleware/auth";
@@ -2157,7 +2158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post(`${apiPrefix}/settings`, requireAuthAndPermission('settings:manage'), async (req: Request, res: Response) => {
+  app.post(`${apiPrefix}/settings`, requireAdmin, async (req: Request, res: Response) => {
     try {
       const data = updateSystemSettingsSchema.parse(req.body);
       
@@ -2196,7 +2197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put(`${apiPrefix}/settings/:key`, requireAuthAndPermission('settings:manage'), async (req: Request, res: Response) => {
+  app.put(`${apiPrefix}/settings/:key`, requireAdmin, async (req: Request, res: Response) => {
     try {
       const key = req.params.key;
       const { value } = req.body;
@@ -2218,7 +2219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete(`${apiPrefix}/settings/:key`, requireAuthAndPermission('settings:manage'), async (req: Request, res: Response) => {
+  app.delete(`${apiPrefix}/settings/:key`, requireAdmin, async (req: Request, res: Response) => {
     try {
       const key = req.params.key;
       const success = await storage.deleteSystemSetting(key);

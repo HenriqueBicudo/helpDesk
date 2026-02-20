@@ -20,7 +20,9 @@ import {
   XCircle,
   Search,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  List,
+  LayoutGrid
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -60,6 +62,7 @@ interface CreateCompanyForm {
 }
 
 export function CompanyManagement() {
+  const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
@@ -528,7 +531,7 @@ export function CompanyManagement() {
         </Dialog>
       </div>
 
-      {/* Busca */}
+      {/* Busca e Toggle de Visualização */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -539,19 +542,167 @@ export function CompanyManagement() {
             className="pl-8"
           />
         </div>
+        <div className="flex items-center gap-1 border rounded-md">
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('list')}
+            className="rounded-r-none"
+          >
+            <List className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === 'card' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('card')}
+            className="rounded-l-none"
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Lista de Empresas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {isLoading ? (
-          <div className="col-span-full text-center py-8">
-            Carregando empresas...
+      {viewMode === 'list' ? (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left p-3 font-medium">Nome</th>
+                  <th className="text-left p-3 font-medium">Email</th>
+                  <th className="text-left p-3 font-medium">Representante</th>
+                  <th className="text-center p-3 font-medium">Usuários</th>
+                  <th className="text-center p-3 font-medium">Tickets</th>
+                  <th className="text-center p-3 font-medium">Status</th>
+                  <th className="text-right p-3 font-medium">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8">
+                      Carregando empresas...
+                    </td>
+                  </tr>
+                ) : filteredCompanies.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                      {searchTerm ? "Nenhuma empresa encontrada" : "Nenhuma empresa cadastrada"}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredCompanies.map((company: Company) => (
+                    <tr key={company.id} className="border-t hover:bg-muted/30">
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">{company.name}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 text-sm">{company.email}</td>
+                      <td className="p-3 text-sm">
+                        {company.representative ? company.representative.name : '-'}
+                      </td>
+                      <td className="p-3 text-center text-sm">
+                        {company._count?.users || 0}
+                      </td>
+                      <td className="p-3 text-center text-sm">
+                        {company._count?.tickets || 0}
+                      </td>
+                      <td className="p-3 text-center">
+                        <Badge variant={company.isActive ? "default" : "secondary"}>
+                          {company.isActive ? "Ativa" : "Inativa"}
+                        </Badge>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex justify-end gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleEditCompany(company)}
+                            title="Editar"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleCompanyMutation.mutate({ 
+                              id: company.id, 
+                              isActive: !company.isActive 
+                            })}
+                            disabled={toggleCompanyMutation.isPending}
+                            title={company.isActive ? "Desativar" : "Ativar"}
+                          >
+                            {company.isActive ? (
+                              <XCircle className="h-3 w-3" />
+                            ) : (
+                              <CheckCircle className="h-3 w-3" />
+                            )}
+                          </Button>
+                          {!company.isActive && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" title="Excluir">
+                                  <Trash2 className="h-3 w-3 text-red-500" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle className="flex items-center gap-2">
+                                    <AlertTriangle className="h-5 w-5 text-red-500" />
+                                    Confirmar Exclusão
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Tem certeza que deseja excluir a empresa "{company.name}"?
+                                    <br /><br />
+                                    <strong>Esta ação não pode ser desfeita</strong> e irá:
+                                    <ul className="list-disc list-inside mt-2 space-y-1">
+                                      <li>Remover todos os usuários da empresa</li>
+                                      <li>Manter histórico de tickets para auditoria</li>
+                                      <li>Excluir todos os dados relacionados</li>
+                                    </ul>
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel disabled={deleteCompanyMutation.isPending}>
+                                    Cancelar
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      deleteCompanyMutation.mutate(company.id);
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700"
+                                    disabled={deleteCompanyMutation.isPending}
+                                  >
+                                    {deleteCompanyMutation.isPending ? "Excluindo..." : "Sim, Excluir"}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        ) : filteredCompanies.length === 0 ? (
-          <div className="col-span-full text-center py-8 text-muted-foreground">
-            {searchTerm ? "Nenhuma empresa encontrada" : "Nenhuma empresa cadastrada"}
-          </div>
-        ) : (
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {isLoading ? (
+            <div className="col-span-full text-center py-8">
+              Carregando empresas...
+            </div>
+          ) : filteredCompanies.length === 0 ? (
+            <div className="col-span-full text-center py-8 text-muted-foreground">
+              {searchTerm ? "Nenhuma empresa encontrada" : "Nenhuma empresa cadastrada"}
+            </div>
+          ) : (
           filteredCompanies.map((company: Company) => (
             <Card key={company.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
@@ -668,7 +819,8 @@ export function CompanyManagement() {
             </Card>
           ))
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
