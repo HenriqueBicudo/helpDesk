@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Loader2, CheckCircle2, Mail } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function AuthPage() {
   // Tab ativa (login ou registro)
@@ -18,6 +19,11 @@ export default function AuthPage() {
   
   // Dados dos formulários
   const [loginData, setLoginData] = useState({ username: "", password: "" });
+  
+  // Estado para esqueci minha senha
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
   const [registerData, setRegisterData] = useState({
     username: "",
     fullName: "",
@@ -52,6 +58,27 @@ export default function AuthPage() {
     },
     onSuccess: () => {
       setRegistrationSuccess(true);
+    },
+  });
+  
+  // Mutation para esqueci minha senha
+  const forgotPasswordMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const response = await fetch('/api/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Erro ao processar solicitação');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      setForgotPasswordSuccess(true);
     },
   });
   
@@ -153,6 +180,14 @@ export default function AuthPage() {
                         onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
                         required
                       />
+                      <Button 
+                        type="button"
+                        variant="link" 
+                        className="text-sm p-0 h-auto text-muted-foreground hover:text-primary"
+                        onClick={() => setShowForgotPassword(true)}
+                      >
+                        Esqueci minha senha
+                      </Button>
                     </div>
                   </CardContent>
                   <CardFooter>
@@ -376,6 +411,99 @@ export default function AuthPage() {
           </div>
         </div>
       </div>
+
+      {/* Dialog de Esqueci Minha Senha */}
+      <Dialog open={showForgotPassword} onOpenChange={(open) => {
+        setShowForgotPassword(open);
+        if (!open) {
+          setForgotPasswordEmail("");
+          setForgotPasswordSuccess(false);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Esqueci minha senha</DialogTitle>
+            <DialogDescription>
+              Digite seu email cadastrado para receber uma nova senha temporária.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!forgotPasswordSuccess ? (
+            <>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="forgot-email">Email</Label>
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    placeholder="seu.email@exemplo.com"
+                    value={forgotPasswordEmail}
+                    onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setForgotPasswordEmail("");
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => forgotPasswordMutation.mutate(forgotPasswordEmail)}
+                  disabled={!forgotPasswordEmail || forgotPasswordMutation.isPending}
+                >
+                  {forgotPasswordMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    "Enviar nova senha"
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <div className="flex flex-col items-center text-center space-y-4 py-4">
+              <div className="rounded-full bg-green-100 p-4">
+                <CheckCircle2 className="h-12 w-12 text-green-600" />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-xl font-semibold">Email enviado!</h3>
+                <p className="text-muted-foreground">
+                  Se o email estiver cadastrado, você receberá uma nova senha temporária em instantes.
+                </p>
+              </div>
+              
+              <Alert>
+                <Mail className="h-4 w-4" />
+                <AlertDescription>
+                  Verifique sua caixa de entrada e spam. Ao fazer login com a nova senha, 
+                  você será solicitado a alterá-la.
+                </AlertDescription>
+              </Alert>
+              
+              <Button
+                className="w-full"
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setForgotPasswordEmail("");
+                  setForgotPasswordSuccess(false);
+                }}
+              >
+                Fechar
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

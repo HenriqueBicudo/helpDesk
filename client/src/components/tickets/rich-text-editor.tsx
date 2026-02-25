@@ -3,6 +3,10 @@ import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableCell } from '@tiptap/extension-table-cell'
+import { TableHeader } from '@tiptap/extension-table-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,7 +27,13 @@ import {
   Clock,
   Paperclip,
   FileText,
-  Send
+  Send,
+  Maximize2,
+  Table as TableIcon,
+  Plus,
+  Minus,
+  Columns,
+  Rows
 } from 'lucide-react'
 import { useState, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -31,6 +41,38 @@ import { apiRequest } from '@/lib/queryClient'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Slider } from '@/components/ui/slider'
+
+// Extensão customizada de Image que suporta redimensionamento
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        renderHTML: attributes => {
+          if (!attributes.width) return {}
+          return { width: attributes.width }
+        },
+      },
+      height: {
+        default: null,
+        renderHTML: attributes => {
+          if (!attributes.height) return {}
+          return { height: attributes.height }
+        },
+      },
+      style: {
+        default: null,
+        renderHTML: attributes => {
+          if (!attributes.style) return {}
+          return { style: attributes.style }
+        },
+      },
+    }
+  },
+})
 
 interface RichTextEditorProps {
   content?: string
@@ -39,6 +81,13 @@ interface RichTextEditorProps {
   placeholder?: string
   showTemplates?: boolean
   showTimeTracking?: boolean
+  showInternalToggle?: boolean
+  showTimeLog?: boolean
+  showTaskCompletion?: boolean // Para mostrar opção de concluir tarefa
+  showSubmitButton?: boolean // Para ocultar todo o footer de controles
+  showAttachments?: boolean // Para mostrar seção de anexos
+  showTitle?: boolean // Para mostrar título "Nova Interação"
+  resetContent?: string // Conteúdo para restaurar após envio
   ticketId?: number // Adicionar para buscar contratos da empresa do ticket
   customerHours?: {
     monthly: number
@@ -51,6 +100,7 @@ interface RichTextEditorProps {
     content: string
     category: string
   }>
+  submitLabel?: string
 }
 
 interface InteractionData {
@@ -86,9 +136,17 @@ export function RichTextEditor({
   placeholder = 'Escreva sua resposta...',
   showTemplates = true,
   showTimeTracking = true,
+  showInternalToggle = true,
+  showTimeLog = true,
+  showTaskCompletion = false,
+  showSubmitButton = true,
+  showAttachments = true,
+  showTitle = true,
+  resetContent,
   ticketId,
   customerHours,
-  templates = []
+  templates = [],
+  submitLabel = 'Enviar Resposta'
 }: RichTextEditorProps) {
   const [isInternal, setIsInternal] = useState(false) // Padrão: comentário público
   const [timeSpent, setTimeSpent] = useState<string>('00:00') // Mudança: formato HH:MM
@@ -96,6 +154,8 @@ export function RichTextEditor({
   const [attachments, setAttachments] = useState<File[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   const [selectedStatus, setSelectedStatus] = useState<string>('')
+  const [showImageResizeDialog, setShowImageResizeDialog] = useState(false)
+  const [imageWidth, setImageWidth] = useState(100)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Buscar contratos disponíveis para o ticket (baseado na empresa do ticket)
@@ -115,9 +175,11 @@ export function RichTextEditor({
         // Desabilitar link do StarterKit para usar nossa configuração customizada
         link: false,
       }),
-      Image.configure({
+      ResizableImage.configure({
+        inline: true,
+        allowBase64: true,
         HTMLAttributes: {
-          class: 'max-w-full h-auto rounded-lg',
+          class: 'editor-image',
         },
       }),
       Link.configure({
@@ -126,6 +188,15 @@ export function RichTextEditor({
       Placeholder.configure({
         placeholder,
       }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: {
+          class: 'editor-table',
+        },
+      }),
+      TableRow,
+      TableCell,
+      TableHeader,
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -145,6 +216,43 @@ export function RichTextEditor({
     if (url && editor) {
       editor.chain().focus().setLink({ href: url }).run()
     }
+  }, [editor])
+
+  // Editar dimensões de imagem selecionada
+  const editImageSize = useCallback(() => {
+    if (!editor) return
+    
+    // Verificar se há uma imagem selecionada
+    if (editor.isActive('image')) {
+      // Pegar largura atual se existir
+      const { style } = editor.getAttributes('image')
+      if (style) {
+        const match = style.match(/width:\s*(\d+)/)
+        if (match) {
+          setImageWidth(parseInt(match[1]))
+        }
+      }
+      setShowImageResizeDialog(true)
+    } else {
+      alert('Selecione uma imagem primeiro clicando nela')
+    }
+  }, [editor])
+
+  const applyImageResize = useCallback((widthPercent: number) => {
+    if (!editor) return
+    
+    if (widthPercent === 100) {
+      // Tamanho original - remover style
+      editor.commands.updateAttributes('image', {
+        style: null
+      })
+    } else {
+      // Aplicar novo tamanho
+      editor.commands.updateAttributes('image', {
+        style: `width: ${widthPercent}%; height: auto;`
+      })
+    }
+    setShowImageResizeDialog(false)
   }, [editor])
 
   // Inserir arquivos de imagem no editor e na lista de anexos
@@ -286,7 +394,11 @@ export function RichTextEditor({
     onSubmit?.(interactionData)
     
     // Limpar formulário
-    editor.commands.clearContent()
+    if (resetContent !== undefined) {
+      editor.commands.setContent(resetContent)
+    } else {
+      editor.commands.clearContent()
+    }
     setTimeSpent('00:00')
     setSelectedContractId('')
     setAttachments([])
@@ -311,24 +423,27 @@ export function RichTextEditor({
   }
 
   return (
+    <>
     <Card className="w-full shadow-xl hover:shadow-2xl transition-all border-4 border-l-8 border-l-blue-600 dark:border-l-blue-400 bg-gradient-to-br from-white via-blue-50/30 to-white dark:from-gray-800 dark:via-blue-950/20 dark:to-gray-800">
-      <CardHeader className="pb-3 pt-4 bg-gradient-to-r from-blue-50/80 to-transparent dark:from-blue-950/30 dark:to-transparent border-b-2 border-blue-100 dark:border-blue-900">
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-lg font-bold flex items-center gap-2">
-            <Send className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            Nova Interação
-          </CardTitle>
-          {customerHours && (
-            <div className="flex items-center gap-2 text-sm">
-              <Clock className="h-4.5 w-4.5" />
-              <span className="text-sm font-medium">Horas Disponíveis: </span>
-              <Badge variant={customerHours.remaining < 2 ? "destructive" : customerHours.remaining < 5 ? "secondary" : "default"} className="text-sm px-3 py-1">
-                {customerHours.remaining.toFixed(1)}h / {customerHours.monthly}h
-              </Badge>
-            </div>
-          )}
-        </div>
-      </CardHeader>
+      {showTitle && (
+        <CardHeader className="pb-3 pt-4 bg-gradient-to-r from-blue-50/80 to-transparent dark:from-blue-950/30 dark:to-transparent border-b-2 border-blue-100 dark:border-blue-900">
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-lg font-bold flex items-center gap-2">
+              <Send className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              Nova Interação
+            </CardTitle>
+            {customerHours && (
+              <div className="flex items-center gap-2 text-sm">
+                <Clock className="h-4.5 w-4.5" />
+                <span className="text-sm font-medium">Horas Disponíveis: </span>
+                <Badge variant={customerHours.remaining < 2 ? "destructive" : customerHours.remaining < 5 ? "secondary" : "default"} className="text-sm px-3 py-1">
+                  {customerHours.remaining.toFixed(1)}h / {customerHours.monthly}h
+                </Badge>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+      )}
       
       <CardContent className="space-y-3 pb-4">
         {/* Templates */}
@@ -425,6 +540,15 @@ export function RichTextEditor({
             <Button
               variant="ghost"
               size="sm"
+              onClick={editImageSize}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Redimensionar imagem selecionada"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={addLink}
               className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
               title="Inserir link"
@@ -450,6 +574,69 @@ export function RichTextEditor({
             >
               <FileText className="h-4 w-4" />
             </Button>
+            <Separator orientation="vertical" className="h-6" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Inserir tabela 3x3"
+            >
+              <TableIcon className="h-4 w-4" />
+            </Button>
+            {editor.isActive('table') && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().addColumnAfter().run()}
+                  className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+                  title="Adicionar coluna"
+                >
+                  <Plus className="h-3 w-3" />
+                  <Columns className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().deleteColumn().run()}
+                  className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+                  title="Remover coluna"
+                >
+                  <Minus className="h-3 w-3" />
+                  <Columns className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().addRowAfter().run()}
+                  className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+                  title="Adicionar linha"
+                >
+                  <Plus className="h-3 w-3" />
+                  <Rows className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().deleteRow().run()}
+                  className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+                  title="Remover linha"
+                >
+                  <Minus className="h-3 w-3" />
+                  <Rows className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().deleteTable().run()}
+                  className="h-9 p-2 rounded-md flex items-center justify-center text-xs"
+                  title="Excluir tabela"
+                >
+                  × Tabela
+                </Button>
+              </>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -492,105 +679,203 @@ export function RichTextEditor({
         </div>
 
         {/* Anexos */}
-        <div className="space-y-2">
+        {showAttachments && (
+          <div className="space-y-2">
             <div className="flex items-center gap-2.5">
-            <Label className="text-sm font-medium">Anexos</Label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              className="h-9 px-3 text-sm"
-            >
-              <Paperclip className="h-4 w-4 mr-1.5" />
-              Adicionar Arquivo
-            </Button>
-            <Input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              onChange={handleFileUpload}
-              className="hidden"
-              accept="image/*,.pdf,.doc,.docx,.txt"
-            />
-          </div>
-          
-          {attachments.length > 0 && (
-            <div className="space-y-2">
-              {attachments.map((file, index) => (
-                <div key={index} className="flex items-center justify-between p-2 border rounded-md bg-muted/10">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center h-8 w-8 rounded bg-muted/20">
-                      {getFileIcon(file.type)}
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium max-w-[260px] truncate">{file.name}</span>
-                      <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeAttachment(index)}
-                    aria-label={`Remover anexo ${file.name}`}
-                    className="h-8 w-8 flex items-center justify-center"
-                  >
-                    ✕
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Configurações */}
-        <div className="flex items-center justify-between flex-wrap gap-3 pt-3 border-t">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center space-x-2.5">
-              <Checkbox 
-                id="internal" 
-                checked={isInternal}
-                onCheckedChange={(checked) => setIsInternal(checked === true)}
+              <Label className="text-sm font-medium">Anexos</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                className="h-9 px-3 text-sm"
+              >
+                <Paperclip className="h-4 w-4 mr-1.5" />
+                Adicionar Arquivo
+              </Button>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={handleFileUpload}
+                className="hidden"
+                accept="image/*,.pdf,.doc,.docx,.txt"
               />
-              <Label htmlFor="internal" className="text-sm">
-                Nota interna (não visível ao cliente)
-              </Label>
             </div>
-            
-            {showTimeTracking && (
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                <Input
-                  type="time"
-                  value={timeSpent}
-                  onChange={(e) => setTimeSpent(e.target.value || '00:00')}
-                  className="w-24 h-10 text-sm"
-                  step="900" // 15 minutos em segundos
-                />
-                <Label className="text-sm">horas</Label>
+          
+            {attachments.length > 0 && (
+              <div className="space-y-2">
+                {attachments.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 border rounded-md bg-muted/10">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center h-8 w-8 rounded bg-muted/20">
+                        {getFileIcon(file.type)}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium max-w-[260px] truncate">{file.name}</span>
+                        <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeAttachment(index)}
+                      aria-label={`Remover anexo ${file.name}`}
+                      className="h-8 w-8 flex items-center justify-center"
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                ))}
               </div>
             )}
-            {/* Status change selector: se vazio = sem alteração */}
-            <div className="flex items-center gap-2">
-              <Label className="text-sm">Alterar status</Label>
-              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger className="w-40 h-10 text-sm">
-                  <SelectValue placeholder="Sem alteração" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem alteração</SelectItem>
-                  <SelectItem value="resolved">Concluído</SelectItem>
-                  <SelectItem value="closed">Cancelado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
-          
-          <Button onClick={handleSubmit} className="ml-auto h-10 px-6 rounded-md bg-primary text-white hover:bg-primary/90 shadow-md flex items-center gap-2 text-base font-medium">
-            <Send className="h-4 w-4" />
-            <span>Enviar Resposta</span>
-          </Button>
-        </div>
+        )}
+
+        {/* Configurações */}
+        {showSubmitButton && (
+          <div className="flex items-center justify-between flex-wrap gap-3 pt-3 border-t">
+            <div className="flex items-center gap-3 flex-wrap">
+              {showInternalToggle && (
+                <div className="flex items-center space-x-2.5">
+                  <Checkbox 
+                    id="internal" 
+                    checked={isInternal}
+                    onCheckedChange={(checked) => setIsInternal(checked === true)}
+                  />
+                  <Label htmlFor="internal" className="text-sm">
+                    Nota interna (não visível ao cliente)
+                  </Label>
+                </div>
+              )}
+              
+              {showTimeLog && (
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  <Input
+                    type="time"
+                    value={timeSpent}
+                    onChange={(e) => setTimeSpent(e.target.value || '00:00')}
+                    className="w-24 h-10 text-sm"
+                    step="900" // 15 minutos em segundos
+                  />
+                  <Label className="text-sm">horas</Label>
+                </div>
+              )}
+              {/* Status change selector: se vazio = sem alteração */}
+              {showTaskCompletion && (
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm">Ao enviar:</Label>
+                  <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                    <SelectTrigger className="w-40 h-10 text-sm">
+                      <SelectValue placeholder="Sem alteração" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem alteração</SelectItem>
+                      <SelectItem value="completed">Concluir tarefa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            
+            <Button onClick={handleSubmit} className="ml-auto h-10 px-6 rounded-md bg-primary text-white hover:bg-primary/90 shadow-md flex items-center gap-2 text-base font-medium">
+              <Send className="h-4 w-4" />
+              <span>{submitLabel}</span>
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
+
+    {/* Dialog de redimensionamento de imagem */}
+    <Dialog open={showImageResizeDialog} onOpenChange={setShowImageResizeDialog}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Ajustar Tamanho da Imagem</DialogTitle>
+          <DialogDescription>
+            Arraste o controle para ajustar o tamanho da imagem
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-6 py-4">
+          {/* Preview visual do tamanho */}
+          <div className="flex items-center justify-center p-4 bg-muted rounded-lg">
+            <div 
+              className="bg-primary/20 border-2 border-primary rounded transition-all duration-200 flex items-center justify-center"
+              style={{ width: `${imageWidth}%`, height: '120px' }}
+            >
+              <span className="text-sm font-medium">{imageWidth}%</span>
+            </div>
+          </div>
+
+          {/* Slider de controle */}
+          <div className="space-y-2">
+            <Label>Largura: {imageWidth}%</Label>
+            <Slider
+              value={[imageWidth]}
+              onValueChange={(value) => setImageWidth(value[0])}
+              min={10}
+              max={100}
+              step={5}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Pequeno</span>
+              <span>Médio</span>
+              <span>Grande</span>
+            </div>
+          </div>
+
+          {/* Botões de tamanho rápido */}
+          <div className="space-y-2">
+            <Label className="text-sm">Tamanhos Rápidos:</Label>
+            <div className="grid grid-cols-4 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImageWidth(25)}
+                className="text-xs"
+              >
+                Pequeno<br/>25%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImageWidth(50)}
+                className="text-xs"
+              >
+                Médio<br/>50%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImageWidth(75)}
+                className="text-xs"
+              >
+                Grande<br/>75%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImageWidth(100)}
+                className="text-xs"
+              >
+                Original<br/>100%
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowImageResizeDialog(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={() => applyImageResize(imageWidth)}>
+            Aplicar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>
   )
 }

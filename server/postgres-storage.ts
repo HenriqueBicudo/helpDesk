@@ -1,4 +1,4 @@
-﻿import { eq, desc, count, sql, and, gte, lte, or } from 'drizzle-orm';
+﻿import { eq, desc, count, sql, and, gte, lte, or, asc } from 'drizzle-orm';
 import { db, client } from './db-postgres';
 import * as schema from '../shared/drizzle-schema';
 import { contracts } from '../shared/schema/contracts';
@@ -966,7 +966,7 @@ export class PostgresStorage implements IStorage {
       .from(schema.ticketInteractions)
       .leftJoin(schema.users, eq(schema.ticketInteractions.userId, schema.users.id))
       .where(eq(schema.ticketInteractions.ticketId, ticketId))
-      .orderBy(desc(schema.ticketInteractions.createdAt));
+      .orderBy(desc(schema.ticketInteractions.createdAt)); // Ordenar da mais nova para a mais antiga
     
     return result.map(row => ({
       id: row.id,
@@ -1073,6 +1073,7 @@ export class PostgresStorage implements IStorage {
   async createAttachment(attachment: InsertAttachment): Promise<Attachment> {
     const result = await db.insert(schema.attachments).values({
       ticketId: attachment.ticketId,
+      interactionId: attachment.interactionId || null, // Vincular à interação se fornecido
       fileName: attachment.fileName,
       originalName: attachment.fileName, // Usando fileName como originalName por agora
       mimeType: attachment.mimeType,

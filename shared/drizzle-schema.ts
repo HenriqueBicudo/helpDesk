@@ -36,6 +36,8 @@ export const interactionTypeEnum = pgEnum('interaction_type', ['comment', 'inter
 export const attachmentTypeEnum = pgEnum('attachment_type', ['image', 'document', 'video', 'other']);
 export const planTypeEnum = pgEnum('plan_type', ['basic', 'standard', 'premium', 'enterprise']);
 export const linkTypeEnum = pgEnum('link_type', ['related', 'duplicate', 'blocks', 'blocked_by', 'child', 'parent']);
+export const taskTypeEnum = pgEnum('task_type', ['support', 'parallel']);
+export const taskStatusEnum = pgEnum('task_status', ['open', 'in_progress', 'pending', 'completed', 'cancelled']);
 
 // Tabela de usuários
 export const users = pgTable('users', {
@@ -49,6 +51,8 @@ export const users = pgTable('users', {
   company: varchar('company', { length: 100 }), // Empresa do usuário (para usuários clientes)
   teamId: integer('team_id'), // Referência para equipes (será adicionada após criação da tabela teams)
   avatarInitials: varchar('avatar_initials', { length: 10 }),
+  avatarUrl: text('avatar_url'), // URL da foto de perfil
+  emailSignature: text('email_signature'), // Assinatura de email em HTML
   isActive: boolean('is_active').notNull().default(true), // Para desativar usuários
   firstLogin: boolean('first_login').notNull().default(false), // Flag para indicar se precisa trocar senha no primeiro login
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -141,7 +145,7 @@ export const tickets = pgTable('tickets', {
   id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
   subject: varchar('subject', { length: 200 }).notNull(),
   description: text('description').notNull(),
-  status: statusEnum('status').notNull().default('open'),
+  status: varchar('status', { length: 50 }).notNull().default('open').references(() => ticketStatusConfig.id),
   priority: priorityEnum('priority').notNull().default('medium'),
   category: varchar('category', { length: 255 }).notNull(),
   teamId: integer('team_id').references(() => teams.id), // ID da equipe (categoria principal)
@@ -155,6 +159,8 @@ export const tickets = pgTable('tickets', {
   // Campos de prazos SLA calculados pelo motor de SLA
   responseDueAt: timestamp('response_due_at'), // Prazo para primeira resposta
   solutionDueAt: timestamp('solution_due_at'), // Prazo para solução definitiva
+  // Controle de tarefas de apoio
+  pausedByTaskId: integer('paused_by_task_id'), // ID da tarefa de apoio que está pausando este ticket
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -396,3 +402,51 @@ export const automationTriggers = pgTable('automation_triggers', {
 
 export type AutomationTrigger = typeof automationTriggers.$inferSelect;
 export type NewAutomationTrigger = typeof automationTriggers.$inferInsert;
+// Tabela de tarefas (Tasks)
+export const tasks = pgTable('tasks', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  ticketId: integer('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+  taskNumber: integer('task_number').notNull(), // T1, T2, T3... (sequencial por ticket)
+  taskCode: varchar('task_code', { length: 50 }).notNull().unique(), // Ex: 123-T1, 123-T2
+  type: taskTypeEnum('type').notNull(), // 'support' ou 'parallel'
+  subject: varchar('subject', { length: 200 }).notNull(),
+  description: text('description').notNull(),
+  status: taskStatusEnum('status').notNull().default('open'),
+  priority: priorityEnum('priority').notNull().default('medium'),
+  teamId: integer('team_id').references(() => teams.id),
+  assignedToId: integer('assigned_to_id').references(() => users.id), // Usuário que assumiu a tarefa
+  createdBy: integer('created_by').notNull().references(() => users.id),
+  
+  // Campos de SLA (herdados do ticket original)
+  responseDueAt: timestamp('response_due_at'),
+  solutionDueAt: timestamp('solution_due_at'),
+  
+  // Controle de horas
+  timeSpent: numeric('time_spent', { precision: 5, scale: 2 }).notNull().default('0'),
+  
+  // Data de conclusão
+  completedAt: timestamp('completed_at'),
+  completedBy: integer('completed_by').references(() => users.id),
+  
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// Tabela de interações de tarefas (comentários, apontamentos, etc)
+export const taskInteractions = pgTable('task_interactions', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id),
+  type: interactionTypeEnum('type').notNull(),
+  content: text('content'),
+  isInternal: boolean('is_internal').notNull().default(false),
+  timeSpent: numeric('time_spent', { precision: 5, scale: 2 }), // Horas apontadas
+  metadata: json('metadata'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export type Task = typeof tasks.$inferSelect;
+export type NewTask = typeof tasks.$inferInsert;
+
+export type TaskInteraction = typeof taskInteractions.$inferSelect;
+export type NewTaskInteraction = typeof taskInteractions.$inferInsert;

@@ -162,3 +162,160 @@
     background: hsl(var(--primary) / 0.5);
   }
 }
+
+/* Estilos para imagens redimensionáveis no editor */
+.ProseMirror img.editor-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+
+.ProseMirror img.editor-image:hover {
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.3);
+}
+
+.ProseMirror img.editor-image.ProseMirror-selectednode {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  position: relative;
+}
+
+/* Dica visual quando imagem está selecionada */
+.ProseMirror img.editor-image.ProseMirror-selectednode::after {
+  content: '⤢ Clique no botão de redimensionar';
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: hsl(var(--primary));
+  color: white;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    top: -35px;
+  }
+  to {
+    opacity: 1;
+    top: -28px;
+  }
+}
+
+/* Container para imagens com controles de redimensionamento */
+.ProseMirror span[data-type="resizable-image"] {
+  display: inline-flex;
+  position: relative;
+  max-width: 100%;
+}
+
+.ProseMirror span[data-type="resizable-image"] img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.ProseMirror span[data-type="resizable-image"].ProseMirror-selectednode::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid hsl(var(--primary));
+  border-radius: 0.5rem;
+  pointer-events: none;
+}
+
+/* Estilos para tabelas no editor */
+.ProseMirror table.editor-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 1rem 0;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border));
+}
+
+.ProseMirror table.editor-table td,
+.ProseMirror table.editor-table th {
+  min-width: 1em;
+  border: 1px solid hsl(var(--border));
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+  background-color: hsl(var(--background));
+}
+
+.ProseMirror table.editor-table th {
+  font-weight: 600;
+  text-align: left;
+  background-color: hsl(var(--muted));
+}
+
+.ProseMirror table.editor-table .selectedCell {
+  background-color: hsl(var(--accent));
+}
+
+.ProseMirror table.editor-table .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background-color: hsl(var(--primary));
+  pointer-events: none;
+  cursor: col-resize;
+}
+
+.ProseMirror table.editor-table:hover {
+  border-color: hsl(var(--primary) / 0.5);
+}
+
+/* Estilos para tabelas no preview (prose) */
+.prose table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 1rem 0;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border));
+}
+
+.prose table td,
+.prose table th {
+  min-width: 1em;
+  border: 1px solid hsl(var(--border));
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+  background-color: hsl(var(--background));
+}
+
+.prose table th {
+  font-weight: 600;
+  text-align: left;
+  background-color: hsl(var(--muted));
+}
+
+/* Estilos para imagens no preview (prose) */
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  display: inline-block;
+}

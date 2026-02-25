@@ -2,6 +2,10 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
 import Placeholder from '@tiptap/extension-placeholder'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableCell } from '@tiptap/extension-table-cell'
+import { TableHeader } from '@tiptap/extension-table-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,10 +19,49 @@ import {
   Image as ImageIcon, 
   Paperclip,
   FileText,
-  Send
+  Send,
+  Maximize2,
+  Table as TableIcon,
+  Plus,
+  Minus,
+  Columns,
+  Rows
 } from 'lucide-react'
 import { useState, useCallback, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Slider } from '@/components/ui/slider'
+import { Separator } from '@/components/ui/separator'
+
+// Extensão customizada de Image que suporta redimensionamento
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        renderHTML: attributes => {
+          if (!attributes.width) return {}
+          return { width: attributes.width }
+        },
+      },
+      height: {
+        default: null,
+        renderHTML: attributes => {
+          if (!attributes.height) return {}
+          return { height: attributes.height }
+        },
+      },
+      style: {
+        default: null,
+        renderHTML: attributes => {
+          if (!attributes.style) return {}
+          return { style: attributes.style }
+        },
+      },
+    }
+  },
+})
 
 interface ClientRichTextEditorProps {
   content?: string
@@ -40,6 +83,8 @@ export function ClientRichTextEditor({
   placeholder = 'Escreva seu comentário...'
 }: ClientRichTextEditorProps) {
   const [attachments, setAttachments] = useState<File[]>([])
+  const [showImageResizeDialog, setShowImageResizeDialog] = useState(false)
+  const [imageWidth, setImageWidth] = useState(100)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const editor = useEditor({
@@ -47,14 +92,25 @@ export function ClientRichTextEditor({
       StarterKit.configure({
         link: false,
       }),
-      Image.configure({
+      ResizableImage.configure({
+        inline: true,
+        allowBase64: true,
         HTMLAttributes: {
-          class: 'max-w-full h-auto rounded-lg',
+          class: 'editor-image',
         },
       }),
       Placeholder.configure({
         placeholder,
       }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: {
+          class: 'editor-table',
+        },
+      }),
+      TableRow,
+      TableCell,
+      TableHeader,
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -67,6 +123,43 @@ export function ClientRichTextEditor({
     if (url && editor) {
       editor.chain().focus().setImage({ src: url }).run()
     }
+  }, [editor])
+
+  // Editar dimensões de imagem selecionada
+  const editImageSize = useCallback(() => {
+    if (!editor) return
+    
+    // Verificar se há uma imagem selecionada
+    if (editor.isActive('image')) {
+      // Pegar largura atual se existir
+      const { style } = editor.getAttributes('image')
+      if (style) {
+        const match = style.match(/width:\s*(\d+)/)
+        if (match) {
+          setImageWidth(parseInt(match[1]))
+        }
+      }
+      setShowImageResizeDialog(true)
+    } else {
+      alert('Selecione uma imagem primeiro clicando nela')
+    }
+  }, [editor])
+
+  const applyImageResize = useCallback((widthPercent: number) => {
+    if (!editor) return
+    
+    if (widthPercent === 100) {
+      // Tamanho original - remover style
+      editor.commands.updateAttributes('image', {
+        style: null
+      })
+    } else {
+      // Aplicar novo tamanho
+      editor.commands.updateAttributes('image', {
+        style: `width: ${widthPercent}%; height: auto;`
+      })
+    }
+    setShowImageResizeDialog(false)
   }, [editor])
 
   // Inserir arquivos de imagem no editor e na lista de anexos
@@ -174,6 +267,7 @@ export function ClientRichTextEditor({
   }
 
   return (
+    <>
     <Card className="w-full shadow-xl hover:shadow-2xl transition-all border-4 border-l-8 border-l-emerald-600 dark:border-l-emerald-400 bg-gradient-to-br from-white via-emerald-50/30 to-white dark:from-gray-800 dark:via-emerald-950/20 dark:to-gray-800">
       <CardHeader className="pb-3 pt-4 bg-gradient-to-r from-emerald-50/80 to-transparent dark:from-emerald-950/30 dark:to-transparent border-b-2 border-emerald-100 dark:border-emerald-900">
         <CardTitle className="text-lg font-bold flex items-center gap-2">
@@ -235,6 +329,78 @@ export function ClientRichTextEditor({
             >
               <ImageIcon className="h-4 w-4" />
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={editImageSize}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Redimensionar imagem selecionada"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+            <Separator orientation="vertical" className="h-6" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+              className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+              title="Inserir tabela 3x3"
+            >
+              <TableIcon className="h-4 w-4" />
+            </Button>
+            {editor.isActive('table') && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().addColumnAfter().run()}
+                  className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+                  title="Adicionar coluna"
+                >
+                  <Plus className="h-3 w-3" />
+                  <Columns className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().deleteColumn().run()}
+                  className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+                  title="Remover coluna"
+                >
+                  <Minus className="h-3 w-3" />
+                  <Columns className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().addRowAfter().run()}
+                  className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+                  title="Adicionar linha"
+                >
+                  <Plus className="h-3 w-3" />
+                  <Rows className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().deleteRow().run()}
+                  className="h-9 w-9 p-2 rounded-md flex items-center justify-center"
+                  title="Remover linha"
+                >
+                  <Minus className="h-3 w-3" />
+                  <Rows className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => editor.chain().focus().deleteTable().run()}
+                  className="h-9 p-2 rounded-md flex items-center justify-center text-xs"
+                  title="Excluir tabela"
+                >
+                  × Tabela
+                </Button>
+              </>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -326,5 +492,96 @@ export function ClientRichTextEditor({
         </div>
       </CardContent>
     </Card>
+
+    {/* Dialog de redimensionamento de imagem */}
+    <Dialog open={showImageResizeDialog} onOpenChange={setShowImageResizeDialog}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Ajustar Tamanho da Imagem</DialogTitle>
+          <DialogDescription>
+            Arraste o controle para ajustar o tamanho da imagem
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-6 py-4">
+          {/* Preview visual do tamanho */}
+          <div className="flex items-center justify-center p-4 bg-muted rounded-lg">
+            <div 
+              className="bg-primary/20 border-2 border-primary rounded transition-all duration-200 flex items-center justify-center"
+              style={{ width: `${imageWidth}%`, height: '120px' }}
+            >
+              <span className="text-sm font-medium">{imageWidth}%</span>
+            </div>
+          </div>
+
+          {/* Slider de controle */}
+          <div className="space-y-2">
+            <Label>Largura: {imageWidth}%</Label>
+            <Slider
+              value={[imageWidth]}
+              onValueChange={(value) => setImageWidth(value[0])}
+              min={10}
+              max={100}
+              step={5}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Pequeno</span>
+              <span>Médio</span>
+              <span>Grande</span>
+            </div>
+          </div>
+
+          {/* Botões de tamanho rápido */}
+          <div className="space-y-2">
+            <Label className="text-sm">Tamanhos Rápidos:</Label>
+            <div className="grid grid-cols-4 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImageWidth(25)}
+                className="text-xs"
+              >
+                Pequeno<br/>25%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImageWidth(50)}
+                className="text-xs"
+              >
+                Médio<br/>50%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImageWidth(75)}
+                className="text-xs"
+              >
+                Grande<br/>75%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImageWidth(100)}
+                className="text-xs"
+              >
+                Original<br/>100%
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowImageResizeDialog(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={() => applyImageResize(imageWidth)}>
+            Aplicar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>
   )
 }

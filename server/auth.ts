@@ -10,6 +10,9 @@ import connectPg from "connect-pg-simple";
 import { Pool } from "pg";
 import { generateRandomPassword, sendPasswordEmail } from "./utils/password";
 import { loginRateLimiter } from "./middleware/rate-limit";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 const scryptAsync = promisify(scrypt);
 
@@ -354,6 +357,90 @@ export function setupAuth(app: Express) {
       });
     } catch (error) {
       console.error("Erro ao trocar senha:", error);
+      res.status(500).json({ message: "Erro interno do servidor" });
+    }
+  });
+
+  // Configurar upload de avatar
+  const uploadsDir = path.join(process.cwd(), 'uploads', 'avatars');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  const avatarStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+      const userId = (req.user as UserSchema).id;
+      const uniqueSuffix = Date.now();
+      cb(null, `avatar-${userId}-${uniqueSuffix}${path.extname(file.originalname)}`);
+    }
+  });
+
+  const avatarUpload = multer({
+    storage: avatarStorage,
+    limits: {
+      fileSize: 5 * 1024 * 1024 // 5MB
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Apenas imagens são permitidas'));
+      }
+    }
+  });
+
+  // Rota para upload de avatar
+  app.post("/api/auth/upload-avatar", avatarUpload.single('avatar'), async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Não autenticado" });
+    }
+
+    try {
+      const userId = (req.user as UserSchema).id;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ message: "Nenhum arquivo enviado" });
+      }
+
+      // Construir URL do avatar
+      const avatarUrl = `/api/uploads/avatars/${file.filename}`;
+
+      // Deletar avatar antigo se existir
+      const currentUser = await storage.getUser(userId!);
+      if (currentUser?.avatarUrl) {
+        const oldFilePath = path.join(process.cwd(), 'uploads', 'avatars', path.basename(currentUser.avatarUrl));
+        if (fs.existsSync(oldFilePath)) {
+          fs.unlinkSync(oldFilePath);
+        }
+      }
+
+      // Atualizar usuário com novo avatar
+      const updated = await storage.updateUser(userId!, { avatarUrl } as any);
+      const refreshedUser = updated || await storage.getUser(userId!);
+
+      if (!refreshedUser) {
+        return res.status(500).json({ message: 'Falha ao atualizar avatar' });
+      }
+
+      // Atualizar sessão
+      req.login(refreshedUser, (err) => {
+        if (err) {
+          console.error('Erro ao atualizar sessão:', err);
+        }
+
+        const { password, ...userWithoutPassword } = refreshedUser as UserSchema;
+        return res.json({
+          ...userWithoutPassword,
+          message: "Avatar atualizado com sucesso"
+        });
+      });
+    } catch (error) {
+      console.error("Erro ao fazer upload de avatar:", error);
       res.status(500).json({ message: "Erro interno do servidor" });
     }
   });

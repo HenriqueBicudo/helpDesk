@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,9 @@ import {
   CheckCircle2,
   TrendingUp,
   Timer,
-  User
+  User,
+  ListTodo,
+  ExternalLink
 } from "lucide-react";
 import { getInitials, formatDate } from "@/lib/utils";
 
@@ -61,6 +64,7 @@ export default function MyTeam() {
   const { user } = useAuth();
   const clientRestrictions = useClientRestrictions();
   const [searchTerm, setSearchTerm] = useState("");
+  const [, setLocation] = useLocation();
 
   // Query para buscar todas as equipes do usuário
   const { data: userTeams = [], isLoading } = useQuery({
@@ -85,11 +89,31 @@ export default function MyTeam() {
     enabled: !!user?.id && !clientRestrictions.isClient
   });
 
+  // Query para buscar todas as tarefas
+  const { data: allTasks = [] } = useQuery({
+    queryKey: ['all-tasks'],
+    queryFn: async () => {
+      const response = await fetch(`/api/tasks`);
+      if (!response.ok) throw new Error('Erro ao carregar tarefas');
+      return response.json();
+    },
+    enabled: !!user?.id && !clientRestrictions.isClient
+  });
+
   // Função para filtrar tickets ativos de uma equipe específica
   const getTeamActiveTickets = (teamId: number) => {
     return allTickets.filter((ticket: any) => {
       const isActive = ['open', 'in_progress', 'pending'].includes(ticket.status);
       const belongsToTeam = ticket.teamId === teamId;
+      return isActive && belongsToTeam;
+    });
+  };
+
+  // Função para filtrar tarefas ativas de uma equipe específica
+  const getTeamActiveTasks = (teamId: number) => {
+    return allTasks.filter((taskData: any) => {
+      const isActive = taskData.task.status !== 'completed' && taskData.task.status !== 'cancelled';
+      const belongsToTeam = taskData.task.teamId === teamId;
       return isActive && belongsToTeam;
     });
   };
@@ -275,7 +299,7 @@ export default function MyTeam() {
             <div>
               <h1 className="text-3xl font-bold">Minhas Equipes</h1>
               <p className="text-muted-foreground">
-                Dashboard completo dos chamados e performance das suas equipes
+                Dashboard completo dos chamados, tarefas e performance das suas equipes
               </p>
             </div>
             <Badge variant="outline" className="px-3 py-1">
@@ -528,6 +552,77 @@ export default function MyTeam() {
                       </div>
                     </div>
                   )}
+
+                  {/* Tarefas da Equipe */}
+                  {(() => {
+                    const teamTasks = getTeamActiveTasks(team.id);
+                    
+                    if (teamTasks.length > 0) {
+                      return (
+                        <div>
+                          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 justify-between">
+                            <div className="flex items-center gap-2">
+                              <ListTodo className="h-4 w-4" />
+                              Tarefas Ativas
+                            </div>
+                            <Badge variant="secondary">{teamTasks.length}</Badge>
+                          </h3>
+                          <div className="space-y-2">
+                            {teamTasks.slice(0, 5).map((taskData: any) => {
+                              const task = taskData.task;
+                              const statusConfig = {
+                                open: { color: 'bg-blue-500', text: 'Aberta' },
+                                in_progress: { color: 'bg-yellow-500', text: 'Em Progresso' },
+                                pending: { color: 'bg-orange-500', text: 'Pendente' }
+                              };
+                              const config = statusConfig[task.status as keyof typeof statusConfig] || statusConfig.open;
+                              
+                              return (
+                                <Card 
+                                  key={task.id}
+                                  className="cursor-pointer hover:shadow-md transition-shadow"
+                                  onClick={() => setLocation(`/tasks/${task.taskCode}`)}
+                                >
+                                  <CardContent className="py-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{task.taskCode} - {task.subject}</p>
+                                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                          <span className="flex items-center gap-1">
+                                            <Ticket className="h-3 w-3" />
+                                            Ticket #{task.ticketId}
+                                          </span>
+                                          <span className="flex items-center gap-1">
+                                            <Clock className="h-3 w-3" />
+                                            {task.timeSpent}h gastas
+                                          </span>
+                                          {taskData.createdBy && (
+                                            <span className="flex items-center gap-1">
+                                              <User className="h-3 w-3" />
+                                              {taskData.createdBy.fullName}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col gap-1 items-end">
+                                        <Badge className={`${config.color} text-white border-0 text-xs`}>
+                                          {config.text}
+                                        </Badge>
+                                        <Badge variant={task.type === 'support' ? 'default' : 'secondary'} className="text-xs">
+                                          {task.type === 'support' ? 'Apoio' : 'Paralela'}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   {/* Lista de Tickets */}
                   {teamTickets.length === 0 ? (

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 import { cn, getInitials } from '@/lib/utils';
-import { ChevronRight, LayoutDashboard, Ticket, Settings, FileBarChart, Database, User, Shield, FileText, Target, BarChart3, Users, PanelLeftClose, PanelLeftOpen, Building2 } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { ChevronRight, LayoutDashboard, Ticket, Settings, FileBarChart, Database, User, Shield, FileText, Target, BarChart3, Users, PanelLeftClose, PanelLeftOpen, Building2, ListTodo } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/use-auth';
 import { useClientRestrictions } from '@/hooks/use-client-restrictions';
 import { ROLE_LABELS } from '@shared/permissions';
@@ -105,6 +105,8 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [ticketsHovered, setTicketsHovered] = useState(false);
   const ticketsHoverTimer = React.useRef<NodeJS.Timeout | null>(null);
+  const [tasksHovered, setTasksHovered] = useState(false);
+  const tasksHoverTimer = React.useRef<NodeJS.Timeout | null>(null);
   
   const [expandedSections, setExpandedSections] = useState(() => {
     const saved = localStorage.getItem('sidebar-sections');
@@ -114,7 +116,8 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
       management: true,
       sla: true,
       system: true,
-      tickets: true
+      tickets: true,
+      tasks: true
     };
   });
   
@@ -195,6 +198,7 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
             ) : user ? (
               <>
                 <Avatar className="h-10 w-10 ring-2 ring-white/20">
+                  <AvatarImage src={user?.avatarUrl || undefined} />
                   <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground font-semibold backdrop-blur">
                     {getInitials(user.fullName)}
                   </AvatarFallback>
@@ -217,6 +221,7 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Avatar className="h-10 w-10 ring-2 ring-white/20 cursor-pointer">
+                    <AvatarImage src={user?.avatarUrl || undefined} />
                     <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground font-semibold backdrop-blur">
                       {user ? getInitials(user.fullName) : <User className="h-5 w-5" />}
                     </AvatarFallback>
@@ -470,6 +475,182 @@ export function Sidebar({ isOpen = true }: SidebarProps) {
                     </div>
                   )}
                 </div>
+                
+                {/* Tarefas */}
+                {user?.role === 'client_user' || user?.role === 'client_manager' ? (
+                  // Para clientes: Link direto simples
+                  <SidebarLink 
+                    href="/tasks" 
+                    icon={<ListTodo className="h-5 w-5" />}
+                    active={location === '/tasks'}
+                    collapsed={!isExpanded}
+                  >
+                    Tarefas
+                  </SidebarLink>
+                ) : (
+                  // Para equipe helpdesk: Dropdown com opções
+                  <div className="relative">
+                    {!isExpanded ? (
+                      <>
+                        <div
+                          id="tasks-icon"
+                          className={cn(
+                            "flex items-center text-sm font-medium rounded-lg group transition-all cursor-pointer relative overflow-hidden",
+                            "p-2.5 justify-center mx-1 my-1",
+                            (location === '/tasks' || location === '/tasks/kanban' || location === '/tasks-by-agent')
+                              ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/30 scale-[1.02]"
+                              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-white/10 hover:shadow-md backdrop-blur-sm border border-transparent hover:border-white/20"
+                          )}
+                          onMouseEnter={() => {
+                            if (tasksHoverTimer.current) {
+                              clearTimeout(tasksHoverTimer.current);
+                            }
+                            setTasksHovered(true);
+                          }}
+                          onMouseLeave={() => {
+                            tasksHoverTimer.current = setTimeout(() => {
+                              setTasksHovered(false);
+                            }, 300);
+                          }}
+                        >
+                          {!(location === '/tasks' || location === '/tasks/kanban' || location === '/tasks-by-agent') && (
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 to-indigo-500/0 group-hover:from-blue-500/10 group-hover:to-indigo-500/10 transition-all duration-300" />
+                          )}
+                          
+                          <div className="relative z-10 flex items-center justify-center">
+                            <ListTodo className={cn(
+                              "h-5 w-5 transition-all",
+                              (location === '/tasks' || location === '/tasks/kanban' || location === '/tasks-by-agent') ? "text-white" : "text-sidebar-foreground/70 group-hover:text-sidebar-foreground"
+                            )} />
+                          </div>
+                        </div>
+                        
+                        {!(location === '/tasks' || location === '/tasks/kanban' || location === '/tasks-by-agent') && 
+                        tasksHovered && (() => {
+                          const iconRect = document.getElementById('tasks-icon')?.getBoundingClientRect();
+                          if (!iconRect) return null;
+                          
+                          return (
+                            <div 
+                              id="tasks-submenu"
+                              className="fixed bg-sidebar border border-sidebar-border rounded-lg shadow-2xl p-2 space-y-1 min-w-[140px] z-[100]"
+                              style={{
+                                left: `${iconRect.right + 4}px`,
+                                top: `${iconRect.top}px`
+                              }}
+                              onMouseEnter={() => {
+                                if (tasksHoverTimer.current) {
+                                  clearTimeout(tasksHoverTimer.current);
+                                }
+                                setTasksHovered(true);
+                              }}
+                              onMouseLeave={() => {
+                                tasksHoverTimer.current = setTimeout(() => {
+                                  setTasksHovered(false);
+                                }, 200);
+                              }}
+                            >
+                              <div
+                                className={cn(
+                                  "py-2 px-3 text-sm font-medium rounded-md cursor-pointer transition-all",
+                                  location === '/tasks'
+                                    ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md"
+                                    : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-white/10"
+                                )}
+                                onClick={() => {
+                                  if (tasksHoverTimer.current) {
+                                    clearTimeout(tasksHoverTimer.current);
+                                  }
+                                  setLocation('/tasks');
+                                  setTimeout(() => setTasksHovered(false), 150);
+                                }}
+                              >
+                                📋 Lista
+                              </div>
+                              
+                              <div
+                                className={cn(
+                                  "py-2 px-3 text-sm font-medium rounded-md cursor-pointer transition-all",
+                                  location === '/tasks/kanban'
+                                    ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md"
+                                    : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-white/10"
+                                )}
+                                onClick={() => {
+                                  if (tasksHoverTimer.current) {
+                                    clearTimeout(tasksHoverTimer.current);
+                                  }
+                                  setLocation('/tasks/kanban');
+                                  setTimeout(() => setTasksHovered(false), 150);
+                                }}
+                              >
+                                Kanban
+                              </div>
+                              
+
+                            </div>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      <div
+                        onMouseEnter={() => setTasksHovered(true)}
+                        onMouseLeave={() => setTasksHovered(false)}
+                      >
+                        <div
+                          className={cn(
+                            "flex items-center text-sm font-medium rounded-lg group transition-all cursor-pointer relative overflow-hidden",
+                            "py-2.5 px-3 mx-2 my-1",
+                            (location === '/tasks' || location === '/tasks/kanban' || location === '/tasks-by-agent')
+                              ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/30 scale-[1.02]"
+                              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-white/10 hover:shadow-md backdrop-blur-sm border border-transparent hover:border-white/20"
+                          )}
+                          onClick={() => toggleSection('tasks')}
+                        >
+                          {!(location === '/tasks' || location === '/tasks/kanban' || location === '/tasks-by-agent') && (
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 to-indigo-500/0 group-hover:from-blue-500/10 group-hover:to-indigo-500/10 transition-all duration-300" />
+                          )}
+                          
+                          <div className="relative z-10 flex items-center w-full">
+                            <div className={cn(
+                              "flex items-center justify-center transition-all",
+                              (location === '/tasks' || location === '/tasks/kanban' || location === '/tasks-by-agent') ? "text-white" : "text-sidebar-foreground/70 group-hover:text-sidebar-foreground"
+                            )}>
+                              <ListTodo className="h-5 w-5" />
+                            </div>
+                            <span className={cn("ml-3 truncate", (location === '/tasks' || location === '/tasks/kanban' || location === '/tasks-by-agent') && "font-semibold")}>Tarefas</span>
+                            <ChevronRight className={cn(
+                              "ml-auto h-4 w-4 transition-transform",
+                              (expandedSections.tasks || tasksHovered) && "rotate-90"
+                            )} />
+                          </div>
+                        </div>
+                  
+                        {(expandedSections.tasks || tasksHovered) && (
+                          <div className="ml-10 pl-2 border-l-2 border-white/10 space-y-0.5 mt-1">
+                            <SidebarLink 
+                              href="/tasks" 
+                              level={2}
+                              active={location === '/tasks'}
+                              collapsed={!isExpanded}
+                            >
+                              Lista
+                            </SidebarLink>
+                      
+                            <SidebarLink 
+                              href="/tasks/kanban" 
+                              level={2}
+                              active={location === '/tasks/kanban'}
+                              collapsed={!isExpanded}
+                            >
+                              Kanban
+                            </SidebarLink>
+                      
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>

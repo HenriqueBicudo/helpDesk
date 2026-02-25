@@ -12,6 +12,9 @@ import { ForcePasswordChangeDialog } from "@/components/auth/force-password-chan
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Tickets from "@/pages/tickets";
+import Tasks from "@/pages/tasks";
+import TaskDetails from "@/pages/task-details";
+import TasksKanban from "@/pages/tasks-kanban";
 import TicketsKanban from "@/pages/tickets-kanban";
 import TicketDetails from "@/pages/ticket-details";
 import Settings from "@/pages/settings";
@@ -37,6 +40,9 @@ function Router() {
       <ProtectedRoute path="/tickets" component={Tickets} />
       <ProtectedRoute path="/tickets/kanban" component={TicketsKanban} />
       <ProtectedRoute path="/tickets/:id" component={TicketDetails} />
+      <ProtectedRoute path="/tasks" component={Tasks} />
+      <ProtectedRoute path="/tasks/kanban" component={TasksKanban} />      
+      <ProtectedRoute path="/tasks/:taskCode" component={TaskDetails} />
       <ProtectedRoute 
         path="/access" 
         component={() => (

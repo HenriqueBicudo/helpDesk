@@ -32,6 +32,8 @@ import { loginRateLimiter, createResourceRateLimiter, resetPasswordRateLimiter }
 import { sanitizeRequestBody } from "./middleware/sanitize";
 import { emailService } from "./email-service";
 import { ContractService } from "./services/contract.service";
+import { generateRandomPassword, sendPasswordEmail } from "./utils/password";
+import { hashPassword } from "./auth";
 import { slaEngineService } from "./services/slaEngine.service";
 import { slaV2Service } from "./services/slaV2.service";
 import { automationService } from "./services/automation.service";
@@ -48,6 +50,7 @@ import { tagsRoutes } from './http/routes/tags.routes';
 import automationTriggersRoutes from './http/routes/automation-triggers.routes';
 import teamCategoriesRoutes from './http/routes/team-categories.routes';
 import servicesRoutes from './http/routes/services.routes';
+import tasksRoutes from './http/routes/tasks.routes';
 import { resetUserPassword } from './routes/auth-reset';
 // import googleMeetRoutes from './http/routes/google-meet.routes'; // DESABILITADO
 
@@ -101,6 +104,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Servir arquivos de upload estaticamente em /api/uploads
   app.use(`${apiPrefix}/uploads`, express.static(uploadDir));
+
+  // Servir avatars de usuários
+  const avatarsDir = path.join(process.cwd(), 'uploads', 'avatars');
+  if (!fs.existsSync(avatarsDir)) {
+    fs.mkdirSync(avatarsDir, { recursive: true });
+  }
+  app.use(`${apiPrefix}/uploads/avatars`, express.static(avatarsDir));
 
   // Health check endpoint
   app.get(`${apiPrefix}/health`, (req: Request, res: Response) => {
@@ -222,6 +232,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Rota para esqueci minha senha
+  app.post(`${apiPrefix}/forgot-password`, async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body;
+      
+      // Validação básica
+      if (!email) {
+        return res.status(400).json({ 
+          message: 'Email é obrigatório' 
+        });
+      }
+      
+      if (!/\S+@\S+\.\S+/.test(email)) {
+        return res.status(400).json({ 
+          message: 'Email inválido' 
+        });
+      }
+      
+      // Buscar usuário pelo email
+      const users = await storage.getAllUsers();
+      const user = users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
+      
+      // Por segurança, sempre retornar sucesso mesmo se o email não existir
+      // Isso evita que atacantes descubram quais emails estão cadastrados
+      if (!user) {
+        console.log(`⚠️ Tentativa de reset para email não cadastrado: ${email}`);
+        return res.json({ 
+          success: true,
+          message: 'Se o email estiver cadastrado, você receberá uma nova senha em instantes.' 
+        });
+      }
+      
+      // Gerar nova senha
+      const newPassword = generateRandomPassword(12);
+      const hashedPassword = await hashPassword(newPassword);
+      
+      // Atualizar senha e marcar como primeiro login
+      await storage.updateUser(user.id, {
+        password: hashedPassword,
+        firstLogin: true
+      } as any);
+      
+      // Enviar email com a nova senha
+      const emailSent = await sendPasswordEmail({
+        to: user.email,
+        fullName: user.fullName,
+        username: user.username,
+        password: newPassword,
+        isReset: true
+      });
+      
+      if (emailSent) {
+        console.log(`✅ Senha resetada e enviada por email para ${user.email}`);
+      } else {
+        console.log(`⚠️ Senha resetada mas email não foi enviado para ${user.email}`);
+      }
+      
+      res.json({ 
+        success: true,
+        message: 'Se o email estiver cadastrado, você receberá uma nova senha em instantes.'
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao processar esqueci minha senha:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Erro ao processar solicitação. Tente novamente mais tarde.' 
+      });
+    }
+  });
+
   // Contract routes (modular) 
   app.use(`${apiPrefix}/contracts`, contractSimpleRoutes);
   
@@ -261,6 +342,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Services routes (serviços hierárquicos)
   app.use(`${apiPrefix}/services`, servicesRoutes);
+
+  // Tasks routes (tarefas de apoio e paralelas)
+  app.use(`${apiPrefix}/tasks`, tasksRoutes);
 
   // Rota específica para contratos ativos de um solicitante (para uso no frontend)
   app.get(`${apiPrefix}/requesters/:requesterId/contracts`, async (req: Request, res: Response) => {
@@ -1783,6 +1867,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const file of files) {
           const att = await storage.createAttachment({
             ticketId,
+            interactionId: interaction.id, // Vincular anexo à interação
             fileName: file.filename,
             fileSize: file.size,
             mimeType: file.mimetype,

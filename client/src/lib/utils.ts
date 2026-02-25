@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export function cn(...inputs: ClassValue[]) {
@@ -13,7 +13,14 @@ export function formatDate(date: Date | string, formatStr: string = "dd/MM/yyyy 
   return format(dateObj, formatStr, { locale: ptBR });
 }
 
+export function formatRelativeTime(date: Date | string): string {
+  if (!date) return "";
+  const dateObj = date instanceof Date ? date : new Date(date);
+  return formatDistanceToNow(dateObj, { addSuffix: true, locale: ptBR });
+}
+
 export function getInitials(name: string): string {
+  if (!name || typeof name !== 'string') return '??';
   return name
     .split(" ")
     .map((part) => part.charAt(0))

@@ -489,13 +489,25 @@ export default function TicketsKanban() {
     const activeData = active.data.current;
     const overData = over.data.current;
     
-    if (activeData?.type === 'ticket' && overData?.type === 'column') {
+    // Se arrastou um ticket
+    if (activeData?.type === 'ticket') {
       const ticket = activeData.ticket;
-      const newStatus = overData.status;
-      const newAssigneeId = overData.assigneeId;
+      let newStatus: string | undefined;
+      let newAssigneeId: number | undefined;
+      
+      // Se soltou sobre uma coluna
+      if (overData?.type === 'column') {
+        newStatus = overData.status;
+        newAssigneeId = overData.assigneeId;
+      }
+      // Se soltou sobre outro ticket, pegar o status e assignee desse ticket
+      else if (overData?.type === 'ticket') {
+        newStatus = overData.ticket.status;
+        newAssigneeId = overData.ticket.assigneeId;
+      }
       
       // Se o status ou assignee mudou, atualizar o ticket
-      if (ticket.status !== newStatus || ticket.assigneeId !== newAssigneeId) {
+      if (newStatus && (ticket.status !== newStatus || ticket.assigneeId !== newAssigneeId)) {
         const updates: Partial<Ticket> = { status: newStatus };
         
         // Se moveu para uma coluna de um agente específico, atribuir o ticket

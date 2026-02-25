@@ -39,6 +39,8 @@ export const userSchema = z.object({
   company: z.string().nullable().optional(), // Empresa do usuário (para usuários clientes)
   teamId: z.number().nullable().optional(), // ID do team do usuário
   avatarInitials: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(), // URL da foto de perfil
+  emailSignature: z.string().nullable().optional(), // Assinatura de email em HTML
   isActive: z.boolean().default(true),
   firstLogin: z.boolean().default(false), // Flag para indicar se precisa trocar senha no primeiro login
   createdAt: z.date().optional()
@@ -244,6 +246,7 @@ export const insertTicketInteractionSchema = ticketInteractionSchema.omit({
 export const attachmentSchema = z.object({
   id: z.number().optional(),
   ticketId: z.number(),
+  interactionId: z.number().optional().nullable(), // Vincular anexo à interação específica
   fileName: z.string().min(1),
   fileSize: z.number().min(0),
   mimeType: z.string().min(1),
@@ -328,3 +331,72 @@ export type SystemSetting = z.infer<typeof systemSettingSchema>;
 export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
 export type UpdateSystemSettings = z.infer<typeof updateSystemSettingsSchema>;
 export type Team = z.infer<typeof teamSchema>;
+// Tipos e schemas para Tasks
+export const TASK_TYPES = ['support', 'parallel'] as const;
+export const TASK_STATUS = ['open', 'in_progress', 'pending', 'completed', 'cancelled'] as const;
+
+export type TaskType = typeof TASK_TYPES[number];
+export type TaskStatus = typeof TASK_STATUS[number];
+
+export const taskTypeSchema = z.enum(TASK_TYPES);
+export const taskStatusSchema = z.enum(TASK_STATUS);
+
+// Schema de Task
+export const taskSchema = z.object({
+  id: z.number().optional(),
+  ticketId: z.number(),
+  taskNumber: z.number(),
+  taskCode: z.string(),
+  type: taskTypeSchema,
+  subject: z.string().min(3),
+  description: z.string().min(10),
+  status: taskStatusSchema.default('open'),
+  priority: ticketPrioritySchema.default('medium'),
+  teamId: z.number().optional().nullable(),
+  createdBy: z.number(),
+  responseDueAt: z.date().optional().nullable(),
+  solutionDueAt: z.date().optional().nullable(),
+  timeSpent: z.string().default('0'),
+  completedAt: z.date().optional().nullable(),
+  completedBy: z.number().optional().nullable(),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional(),
+});
+
+export const insertTaskSchema = taskSchema.omit({
+  id: true,
+  taskNumber: true,
+  taskCode: true,
+  timeSpent: true,
+  completedAt: true,
+  completedBy: true,
+  createdBy: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Schema de TaskInteraction
+export const taskInteractionSchema = z.object({
+  id: z.number().optional(),
+  taskId: z.number(),
+  userId: z.number().optional().nullable(),
+  type: z.enum(['comment', 'internal_note', 'status_change', 'assignment', 'time_log']),
+  content: z.string().optional().nullable(),
+  isInternal: z.boolean().default(false),
+  timeSpent: z.union([z.string(), z.number()]).optional().nullable().transform(val => {
+    if (val === null || val === undefined) return null;
+    return typeof val === 'number' ? val.toString() : val;
+  }),
+  metadata: z.any().optional(),
+  createdAt: z.date().optional(),
+});
+
+export const insertTaskInteractionSchema = taskInteractionSchema.omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Task = z.infer<typeof taskSchema>;
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type TaskInteraction = z.infer<typeof taskInteractionSchema>;
+export type InsertTaskInteraction = z.infer<typeof insertTaskInteractionSchema>;

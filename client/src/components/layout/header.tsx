@@ -6,7 +6,7 @@ import { SlaNotificationBadge } from '@/components/notifications/sla-notificatio
 import { GlobalSearch } from '@/components/layout/global-search';
 import { useAuth } from '@/hooks/use-auth';
 import { Link, useLocation } from 'wouter';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getInitials } from '@/lib/utils';
 import { useState } from 'react';
@@ -85,6 +85,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               ) : (
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full hover:bg-primary/10">
                   <Avatar className="h-10 w-10 ring-2 ring-primary/20">
+                    <AvatarImage src={user?.avatarUrl || undefined} />
                     <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white font-semibold text-sm">
                       {user ? getInitials(user.fullName) : 'U'}
                     </AvatarFallback>

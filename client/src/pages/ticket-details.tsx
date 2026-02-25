@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/app-layout';
@@ -10,6 +10,7 @@ import { TicketTimeline } from '@/components/tickets/ticket-timeline';
 import { ClientTicketTimeline } from '@/components/tickets/client-ticket-timeline';
 import { TicketTags } from '@/components/tickets/ticket-tags';
 import { TicketLinks } from '@/components/tickets/ticket-links';
+import { TicketTasks } from '@/components/tickets/ticket-tasks';
 import { TicketActions } from '@/components/tickets/ticket-actions';
 import { SlaIndicators } from '@/components/tickets/sla-indicators';
 import { TicketParticipants } from '@/components/tickets/ticket-participants';
@@ -114,7 +115,7 @@ export default function TicketDetails() {
   const [meetDate, setMeetDate] = useState('');
   const [meetTime, setMeetTime] = useState('');
   const [meetDuration, setMeetDuration] = useState('60');
-  
+
   // States para serviços hierárquicos
   const [expandedServices, setExpandedServices] = useState<Set<number>>(new Set());
   const [selectedServiceId, setSelectedServiceId] = useState<number | undefined>(undefined);
@@ -129,10 +130,39 @@ export default function TicketDetails() {
   });
 
   // Fetch ticket interactions
-  const { data: interactions = [] } = useQuery<Interaction[]>({
+  const { data: rawInteractions = [] } = useQuery<Interaction[]>({
     queryKey: [`/api/tickets/${ticketId}/interactions`],
     enabled: ticketId > 0,
   });
+
+  // Incluir a descrição do ticket como primeira interação na timeline
+  const interactions = useMemo(() => {
+    if (!ticket) return rawInteractions;
+    
+    // Criar uma pseudo-interação com a descrição inicial do ticket
+    const initialInteraction: Interaction = {
+      id: -1, // ID negativo para distinguir de interações reais
+      type: 'comment',
+      content: ticket.description,
+      isInternal: false,
+      timeSpent: 0,
+      createdAt: ticket.createdAt,
+      user: ticket.requester ? {
+        id: ticket.requester.id!,
+        fullName: ticket.requester.fullName,
+        email: ticket.requester.email,
+        role: 'client_user',
+        avatarInitials: getInitials(ticket.requester.fullName)
+      } : undefined as any
+    };
+
+    // Adicionar a interação inicial e ordenar por data (mais nova primeiro)
+    return [...rawInteractions, initialInteraction].sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateB - dateA;
+    });
+  }, [rawInteractions, ticket]);
 
   // Fetch linked tickets for this ticket
   const { data: linkedTickets = [] } = useQuery<TicketLink[]>({
@@ -173,7 +203,7 @@ export default function TicketDetails() {
 
   // Fetch teams (for team dropdown)
   const { data: teams = [] } = useTeams();
-  
+
   // Buscar serviços hierárquicos (independente de equipe)
   const { data: serviceTree = [] } = useQuery<any[]>({
     queryKey: ['/api/services/tree'],
@@ -395,15 +425,15 @@ export default function TicketDetails() {
   // Função para abrir o dialog de agendamento do Google Meet
   const handleOpenMeetDialog = () => {
     if (!ticket) return;
-    
+
     // Definir data e hora padrão (hoje + 1 hora)
     const now = new Date();
     now.setHours(now.getHours() + 1);
     now.setMinutes(0);
-    
+
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().slice(0, 5);
-    
+
     setMeetDate(dateStr);
     setMeetTime(timeStr);
     setShowMeetDialog(true);
@@ -419,7 +449,7 @@ export default function TicketDetails() {
       });
       return;
     }
-    
+
     setIsCreatingMeet(true);
     try {
       const res = await fetch(`/api/tickets/${ticketId}/create-meet`, {
@@ -439,9 +469,9 @@ export default function TicketDetails() {
       }
 
       const data = await res.json();
-      
+
       setShowMeetDialog(false);
-      
+
       toast({
         title: "Google Meet criado!",
         description: `Reunião agendada para ${new Date(meetDate + 'T' + meetTime).toLocaleString('pt-BR')}. Convites enviados para todos os participantes.`,
@@ -458,10 +488,10 @@ export default function TicketDetails() {
           isInternal: false,
         }),
       });
-      
+
       // Atualizar timeline
       queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}/interactions`] });
-      
+
     } catch (error) {
       console.error('Erro ao criar meet:', error);
       toast({
@@ -511,16 +541,16 @@ export default function TicketDetails() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
       queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
-      toast({ 
-        title: 'Sucesso', 
-        description: 'Ticket atribuído com sucesso.' 
+      toast({
+        title: 'Sucesso',
+        description: 'Ticket atribuído com sucesso.'
       });
     },
     onError: () => {
-      toast({ 
-        title: 'Erro', 
-        description: 'Não foi possível atribuir o ticket.', 
-        variant: 'destructive' 
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atribuir o ticket.',
+        variant: 'destructive'
       });
     }
   });
@@ -539,19 +569,21 @@ export default function TicketDetails() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
       queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
-      toast({ 
-        title: 'Sucesso', 
-        description: 'Equipe responsável atualizada com sucesso.' 
+      toast({
+        title: 'Sucesso',
+        description: 'Equipe responsável atualizada com sucesso.'
       });
     },
     onError: () => {
-      toast({ 
-        title: 'Erro', 
-        description: 'Não foi possível atualizar a equipe responsável.', 
-        variant: 'destructive' 
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atualizar a equipe responsável.',
+        variant: 'destructive'
       });
     }
   });
+
+
 
   // Mutation to update ticket service
   const updateServiceMutation = useMutation({
@@ -567,16 +599,16 @@ export default function TicketDetails() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/tickets/${ticketId}`] });
       queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
-      toast({ 
-        title: 'Sucesso', 
-        description: 'Serviço atualizado com sucesso.' 
+      toast({
+        title: 'Sucesso',
+        description: 'Serviço atualizado com sucesso.'
       });
     },
     onError: () => {
-      toast({ 
-        title: 'Erro', 
-        description: 'Não foi possível atualizar o serviço.', 
-        variant: 'destructive' 
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atualizar o serviço.',
+        variant: 'destructive'
       });
     }
   });
@@ -597,26 +629,26 @@ export default function TicketDetails() {
   // Função para filtrar serviços por busca
   const filterServicesBySearch = (services: any[]): any[] => {
     if (!serviceSearchTerm) return services;
-    
+
     const term = serviceSearchTerm.toLowerCase();
-    
+
     const filtered = services.filter(service => {
-      const matches = service.name.toLowerCase().includes(term) || 
-                     service.description?.toLowerCase().includes(term);
-      
+      const matches = service.name.toLowerCase().includes(term) ||
+        service.description?.toLowerCase().includes(term);
+
       if (service.children && service.children.length > 0) {
         const filteredChildren = filterServicesBySearch(service.children);
         if (matches || filteredChildren.length > 0) {
           return true;
         }
       }
-      
+
       return matches;
     }).map(service => ({
       ...service,
       children: service.children ? filterServicesBySearch(service.children) : []
     }));
-    
+
     return filtered;
   };
 
@@ -637,7 +669,7 @@ export default function TicketDetails() {
 
     const path: string[] = [service.name];
     let current = service;
-    
+
     while (current.parentId) {
       const parent = findParent(current.parentId, tree);
       if (parent) {
@@ -647,7 +679,7 @@ export default function TicketDetails() {
         break;
       }
     }
-    
+
     return path.join(' > ');
   };
 
@@ -659,22 +691,21 @@ export default function TicketDetails() {
 
     return (
       <div key={service.id}>
-        <div 
-          className={`flex items-center gap-2 p-2 rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors ${
-            isSelected ? 'bg-accent text-accent-foreground' : ''
-          }`}
+        <div
+          className={`flex items-center gap-2 p-2 rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors ${isSelected ? 'bg-accent text-accent-foreground' : ''
+            }`}
           style={{ paddingLeft: `${level * 16 + 8}px` }}
           onClick={(e) => {
             e.stopPropagation();
             setSelectedServiceId(service.id);
             updateServiceMutation.mutate({ serviceId: service.id });
-            
+
             // Se o serviço tem equipe padrão associada, pré-selecionar a equipe
             if (service.teamId) {
               setSelectedTeamId(service.teamId);
               updateTeamMutation.mutate({ teamId: service.teamId });
             }
-            
+
             setIsServiceDropdownOpen(false);
             setServiceSearchTerm('');
           }}
@@ -691,7 +722,7 @@ export default function TicketDetails() {
             </button>
           )}
           {!hasChildren && <div className="w-4" />}
-          
+
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium truncate">{service.name}</div>
             {service.description && (
@@ -772,7 +803,7 @@ export default function TicketDetails() {
               <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
               Voltar
             </Button>
-            
+
             {/* Botão Google Meet - DESABILITADO
             <Button 
               variant="outline" 
@@ -785,7 +816,7 @@ export default function TicketDetails() {
               {isCreatingMeet ? 'Criando...' : 'Google Meet'}
             </Button>
             */}
-            
+
             <div className="flex-1">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="text-xs text-muted-foreground">
@@ -863,8 +894,8 @@ export default function TicketDetails() {
                 {/* Barra de Horas */}
                 {ticket.contract && (
                   <div className="flex-1 space-y-0.5">
-                    <Progress 
-                      value={((parseFloat(ticket.contract.usedHours || '0') / ticket.contract.includedHours) * 100)} 
+                    <Progress
+                      value={((parseFloat(ticket.contract.usedHours || '0') / ticket.contract.includedHours) * 100)}
                       className="h-1.5"
                     />
                     <div className="flex justify-between text-[10px] text-muted-foreground">
@@ -950,7 +981,7 @@ export default function TicketDetails() {
                       className="pl-9 h-9"
                     />
                   </div>
-                  
+
                   <Select
                     value={ticket.assigneeId?.toString() || 'unassigned'}
                     onValueChange={(value) => {
@@ -969,26 +1000,36 @@ export default function TicketDetails() {
                         <span className="text-muted-foreground">Não atribuído</span>
                       </SelectItem>
                       {helpdeskUsers
-                        .filter((user: any) => 
-                          !assigneeSearch || 
+                        .filter((user: any) =>
+                          !assigneeSearch ||
                           user.fullName.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
                           user.email.toLowerCase().includes(assigneeSearch.toLowerCase())
                         )
                         .map((user: any) => (
-                        <SelectItem key={user.id} value={user.id!.toString()}>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-5 w-5">
-                              <AvatarFallback className="text-xs">
-                                {getInitials(user.fullName)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span>{user.fullName}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
+                          <SelectItem key={user.id} value={user.id!.toString()}>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-5 w-5">
+                                <AvatarFallback className="text-xs">
+                                  {getInitials(user.fullName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span>{user.fullName}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </CardContent>
+              </Card>
+            )}
+
+            {/* Tarefas do Ticket - Apenas para helpdesk */}
+            {!clientRestrictions.isClient && (
+              <Card className="shadow-md hover:shadow-lg transition-all border-2 border-l-4 border-l-yellow-300 dark:border-l-yellow-200 bg-white dark:bg-gray-800">
+                <TicketTasks
+                  ticketId={ticket.id!}
+                  ticketSubject={ticket.subject}
+                />
               </Card>
             )}
 
@@ -1065,9 +1106,9 @@ export default function TicketDetails() {
                         // Atualizar a equipe
                         const team = teams.find((t: any) => t.id === teamId);
                         if (team) {
-                          updateCategoryMutation.mutate({ 
+                          updateCategoryMutation.mutate({
                             category: team.name.toLowerCase().replace(/ /g, '_'),
-                            teamId: teamId 
+                            teamId: teamId
                           });
                         }
                       }}
@@ -1085,14 +1126,14 @@ export default function TicketDetails() {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   {/* Seleção de Serviço */}
                   {serviceTree.length > 0 && (
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
                         Serviço (Opcional)
                       </label>
-                      
+
                       <div className="relative">
                         <button
                           type="button"
@@ -1118,7 +1159,7 @@ export default function TicketDetails() {
                           </span>
                           <ChevronDown className="h-4 w-4 opacity-50" />
                         </button>
-                        
+
                         {isServiceDropdownOpen && (
                           <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
                             <div className="p-2 border-b">
@@ -1133,7 +1174,7 @@ export default function TicketDetails() {
                                 />
                               </div>
                             </div>
-                            
+
                             <div className="max-h-[300px] overflow-y-auto p-1">
                               {filteredServices.length === 0 ? (
                                 <div className="text-center py-4 text-sm text-muted-foreground">
@@ -1143,7 +1184,7 @@ export default function TicketDetails() {
                                 filteredServices.map((service: any) => renderServiceTree(service, 0))
                               )}
                             </div>
-                            
+
                             {selectedServiceId && (
                               <div className="border-t p-2">
                                 <button
@@ -1189,40 +1230,12 @@ export default function TicketDetails() {
                 linkedTickets={mappedLinkedTickets}
               />
             )}
+
+
           </div>
 
           {/* Conteúdo Principal - Interações */}
           <div className="flex-1 space-y-4 pl-4 bg-gradient-to-b from-white/70 to-gray-50/70 dark:from-gray-950/30 dark:to-gray-900/30 rounded-r-lg p-4">
-            {/* Detalhes do Ticket */}
-            <Card className="shadow-xl hover:shadow-2xl transition-all border-4 border-l-8 border-l-indigo-600 dark:border-l-indigo-400 bg-gradient-to-br from-white via-indigo-50/30 to-white dark:from-gray-800 dark:via-indigo-950/20 dark:to-gray-800">
-              <CardHeader className="py-4 bg-gradient-to-r from-indigo-50/80 to-transparent dark:from-indigo-950/30 dark:to-transparent border-b-2 border-indigo-100 dark:border-indigo-900">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-12 w-12 ring-4 ring-indigo-200 dark:ring-indigo-800 shadow-lg">
-                      <AvatarFallback className="text-sm font-bold bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">
-                        {getInitials(ticket.requester?.fullName || 'Unknown')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="font-bold text-lg text-gray-900 dark:text-gray-100">{ticket.requester?.fullName}</div>
-                      <div className="text-sm font-medium text-indigo-600 dark:text-indigo-400">{ticket.requester?.email}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <Badge variant="outline" className="text-xs font-semibold border-2">
-                      {ticket?.createdAt ? formatDate(ticket.createdAt) : 'N/A'}
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pb-5 pt-4 px-5">
-                <div
-                  className="prose prose-sm max-w-none dark:prose-invert"
-                  dangerouslySetInnerHTML={{ __html: ticket.description }}
-                />
-              </CardContent>
-            </Card>
-
             {/* Editor de Nova Interação */}
             {!isClosed ? (
               clientRestrictions.isClient ? (
@@ -1243,6 +1256,8 @@ export default function TicketDetails() {
                 />
               ) : (
                 <RichTextEditor
+                  content={user?.emailSignature ? `<p></p><hr/><br/>${user.emailSignature}` : ''}
+                  resetContent={user?.emailSignature ? `<p></p><hr/><br/>${user.emailSignature}` : ''}
                   onSubmit={handleCreateInteraction}
                   showTemplates={true}
                   showTimeTracking={true}
@@ -1413,7 +1428,7 @@ export default function TicketDetails() {
               Selecione a empresa que será vinculada a este ticket.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Empresa</Label>
@@ -1447,12 +1462,12 @@ export default function TicketDetails() {
               </Select>
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setCompanyDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={() => updateCompanyMutation.mutate(selectedCompanyId)}
               disabled={updateCompanyMutation.isPending}
             >
